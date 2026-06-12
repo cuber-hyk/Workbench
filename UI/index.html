@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Workbench UI Prototype</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">W</span>
+        <span>Workbench</span>
+      </div>
+      <nav class="nav-list" aria-label="主导航">
+        <button class="nav-item active" data-view="projects"><span>▦</span>项目</button>
+        <button class="nav-item" data-view="skills"><span>◇</span>Skills</button>
+        <button class="nav-item" data-view="radar"><span>◎</span>AI Radar</button>
+        <button class="nav-item" data-view="settings"><span>⚙</span>设置</button>
+      </nav>
+      <section class="local-strip" aria-label="本机工作区状态">
+        <strong>本机工作区</strong>
+        <div class="status-grid">
+          <span><b>SQLite</b><small>本地数据</small></span>
+          <span><b>Symlink</b><small>Skills 启用</small></span>
+          <span><b>Tauri</b><small>桌面壳</small></span>
+        </div>
+        <div class="path-chip">AppData\Roaming\workbench-app</div>
+      </section>
+      <div class="sidebar-footer">
+        <button class="theme-toggle" type="button" aria-label="切换主题背景">
+          <span class="theme-icon">◐</span>
+          <span class="theme-label">浅色主题</span>
+        </button>
+        <div class="local-status"><span class="status-dot"></span><span>本地模式</span></div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <section class="view active" id="projects">
+        <header class="page-header">
+          <div><h1>项目</h1><p>管理本地开发项目并快速启动</p></div>
+          <button class="button primary" data-dialog="project-dialog">＋ 添加项目</button>
+        </header>
+        <div class="toolbar">
+          <label class="search"><span>⌕</span><input placeholder="搜索项目名称、路径或标签"></label>
+          <button class="button">全部标签⌄</button>
+        </div>
+        <div class="split-layout">
+          <div class="panel list-panel card-list">
+            <button class="row-card selected" type="button">
+              <span class="row-main"><strong>Workbench App</strong><i>已配置启动</i></span>
+              <span class="meta-line">E:\Development\12-工具-Utility\Workbench <code>cmd: pnpm tauri dev</code></span>
+              <span class="tags"><i>Tauri</i><i>React</i><i>本地优先</i></span>
+            </button>
+            <button class="row-card" type="button">
+              <span class="row-main"><strong>ai-radar</strong><i>未配置命令</i></span>
+              <span class="meta-line">E:\Development\01-Web-全栈\ai-radar</span>
+              <span class="tags"><i>Python</i><i>信息库</i></span>
+            </button>
+            <button class="row-card" type="button">
+              <span class="row-main"><strong>cc-switch</strong><i>参考项目</i></span>
+              <span class="meta-line">E:\Development\12-工具-Utility\Agent\cc-switch <code>cmd: pnpm tauri dev</code></span>
+              <span class="tags"><i>Tauri</i><i>Skills</i></span>
+            </button>
+          </div>
+          <aside class="panel detail-panel">
+            <div class="detail-title"><div><h2>Workbench App</h2><p>本地 AI 开发工作台</p></div><button class="icon-button" title="编辑">✎</button></div>
+            <button class="button full">打开目录</button>
+            <div class="form-grid">
+              <label>项目路径<input value="E:\Development\12-工具-Utility\Workbench"></label>
+              <label>启动命令<input value="pnpm tauri dev"></label>
+              <label>启动工作目录<input value="E:\Development\12-工具-Utility\Workbench"></label>
+              <label>标签<input value="Tauri, React, 本地优先"></label>
+              <label class="full">备注<textarea rows="4">统一管理项目、Skills 与 AI Radar。</textarea></label>
+            </div>
+            <div class="command-box"><span>在新的系统终端窗口执行：<code>pnpm tauri dev</code></span><button class="button primary launch-demo">启动</button></div>
+            <div class="boundary-note danger"><span class="status-dot"></span><p>Workbench 不捕获日志，也不停止或重启进程；重复启动由用户在系统终端中自行处理。</p></div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="view" id="skills">
+        <header class="page-header">
+          <div><h1>Skills</h1><p>统一根目录 · 24 个 Skills</p></div>
+          <div class="header-actions"><button class="button">↻ 扫描</button><button class="button primary" data-dialog="import-dialog">⇩ 导入 Skills</button></div>
+        </header>
+        <div class="root-bar"><span><strong>统一根目录</strong>C:\Users\dev\.workbench\skills</span><button class="button">打开目录</button></div>
+        <div class="toolbar">
+          <label class="search"><span>⌕</span><input placeholder="搜索名称或描述"></label>
+          <button class="button">全部分类⌄</button><button class="button">全部启用状态⌄</button>
+        </div>
+        <div class="split-layout">
+          <div class="panel list-panel">
+            <div class="table-head skills-grid"><span>Skill</span><span>分类</span><span>全局启用</span><span>项目启用</span></div>
+            <button class="table-row skills-grid selected">
+              <span class="title-cell"><strong>security-review</strong><small>认证、输入与敏感功能的安全审查指南</small></span>
+              <span class="tags"><i>安全</i></span><span class="tool-icons"><b>C</b><b>Cl</b></span><span>2 个项目</span>
+            </button>
+            <button class="table-row skills-grid">
+              <span class="title-cell"><strong>playwright-cli</strong><small>浏览器自动化与页面测试</small></span>
+              <span class="tags"><i>测试</i></span><span class="tool-icons"><b>C</b></span><span>1 个项目</span>
+            </button>
+            <button class="table-row skills-grid">
+              <span class="title-cell"><strong>design-doc-mermaid</strong><small>从描述或代码生成 Mermaid 图</small></span>
+              <span class="tags"><i>文档</i></span><span class="tool-icons"><b>Cl</b></span><span>未启用</span>
+            </button>
+            <button class="table-row skills-grid">
+              <span class="title-cell"><strong>humanizer</strong><small>改善文本自然度与可读性</small></span>
+              <span class="tags"><i>写作</i></span><span class="tool-icons"><b>C</b><b>O</b></span><span>3 个项目</span>
+            </button>
+          </div>
+          <aside class="panel detail-panel">
+            <div class="detail-title"><div><h2>security-review</h2><p>分类：安全</p></div><button class="button">打开目录</button></div>
+            <p class="description">认证、用户输入、密钥与敏感功能的安全审查指南。</p>
+            <div class="setting-group"><h3>全局工具启用</h3>
+              <label>Codex<input type="checkbox" checked><span class="switch"></span></label>
+              <label>Claude Code<input type="checkbox" checked><span class="switch"></span></label>
+              <label>OpenCode<input type="checkbox"><span class="switch"></span></label>
+            </div>
+            <div class="setting-group"><h3>项目级启用</h3>
+              <label><span>Workbench App<small>Codex</small></span><input type="checkbox" checked><span class="switch"></span></label>
+              <label><span>cc-switch<small>Claude Code</small></span><input type="checkbox" checked><span class="switch"></span></label>
+              <label><span>ai-radar<small>Codex</small></span><input type="checkbox"><span class="switch"></span></label>
+            </div>
+            <div class="file-block"><span>SKILL.md</span><code>C:\Users\dev\.workbench\skills\security-review\SKILL.md</code></div>
+            <div class="header-actions"><button class="button">打开文件</button><button class="button">修改分类</button></div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="view" id="radar">
+        <header class="page-header">
+          <div><h1>AI Radar</h1><p>32 条本地记录</p></div>
+          <button class="button primary" data-dialog="radar-dialog">＋ 添加条目</button>
+        </header>
+        <div class="toolbar">
+          <label class="search"><span>⌕</span><input placeholder="搜索名称、标签或备注"></label>
+          <button class="button">全部分类⌄</button><button class="button">全部标签⌄</button><button class="button">☆ 仅收藏</button>
+        </div>
+        <div class="split-layout">
+          <div class="panel list-panel card-list">
+            <button class="row-card selected" type="button"><span class="row-main"><strong>Model Context Protocol</strong><i>★ 已收藏</i></span><span class="meta-line">项目 · MCP · Agent · 今天</span><p>连接 AI 应用与外部工具、数据的开放协议。</p></button>
+            <button class="row-card" type="button"><span class="row-main"><strong>Claude Code 最佳实践</strong><i>★ 已收藏</i></span><span class="meta-line">资讯 · Claude · 开发 · 昨天</span><p>记录 Claude Code 在本地项目中的使用经验。</p></button>
+            <button class="row-card" type="button"><span class="row-main"><strong>Qwen3 技术报告</strong><i>☆</i></span><span class="meta-line">论文 · 模型 · 6月8日</span><p>本地记录技术报告链接和阅读备注。</p></button>
+            <button class="row-card" type="button"><span class="row-main"><strong>OpenAI Codex</strong><i>☆</i></span><span class="meta-line">项目 · Codex · 6月5日</span><p>用于跟踪 Codex 相关能力和本地工作流。</p></button>
+          </div>
+          <aside class="panel detail-panel">
+            <div class="detail-title"><div><h2>Model Context Protocol</h2><p>项目 · 已收藏</p></div><button class="button">打开链接</button></div>
+            <div class="form-grid">
+              <label>名称<input value="Model Context Protocol"></label>
+              <label>分类<select><option>项目</option><option>资讯</option><option>论文</option><option>其他</option></select></label>
+              <label class="full">链接<input value="https://modelcontextprotocol.io"></label>
+              <label class="full">标签<input value="MCP, Agent, 协议"></label>
+              <label class="full">备注<textarea rows="4">连接 AI 应用与外部工具、数据的开放协议。</textarea></label>
+            </div>
+            <div class="command-box"><span>收藏状态：已收藏 · 更新时间 2026-06-12 10:30</span></div>
+            <button class="button">编辑条目</button>
+          </aside>
+        </div>
+      </section>
+
+      <section class="view" id="settings">
+        <header class="page-header"><div><h1>设置</h1><p>管理 Workbench 的本地路径与工具目录</p></div></header>
+        <div class="settings-stack">
+          <section class="settings-panel"><h2>Skills 存储</h2><p>Workbench Skills 根目录是所有 Skill 的唯一真实来源。</p><div class="settings-row"><span><small>统一 Skills 根目录</small>C:\Users\dev\.workbench\skills</span><button class="button">更改</button></div></section>
+          <section class="settings-panel"><h2>支持的工具目录</h2><p>Workbench 通过符号链接为以下工具启用 Skills。</p>
+            <div class="settings-row"><span><strong>Codex</strong><small>C:\Users\dev\.codex\skills</small></span><i class="available">可用</i></div>
+            <div class="settings-row"><span><strong>Claude Code</strong><small>C:\Users\dev\.claude\skills</small></span><i class="available">可用</i></div>
+            <div class="settings-row"><span><strong>OpenCode</strong><small>C:\Users\dev\.config\opencode\skills</small></span><i class="available">可用</i></div>
+          </section>
+          <section class="settings-panel"><h2>Skills 路径映射</h2><p>真实副本、全局链接和项目链接保持单一来源关系。</p>
+            <div class="path-map">
+              <div><small>真实副本</small><strong>C:\Users\dev\.workbench\skills\*\SKILL.md</strong></div>
+              <div><small>全局链接</small><strong>工具全局 skills 目录中的符号链接</strong></div>
+              <div><small>项目链接</small><strong>受支持项目内工具 skills 目录中的符号链接</strong></div>
+            </div>
+          </section>
+          <section class="settings-panel"><h2>本地数据</h2><p>项目、分类和 AI Radar 数据保存在系统应用数据目录。</p><div class="settings-row"><span><small>数据存储位置</small>C:\Users\dev\AppData\Roaming\workbench-app</span><button class="button">打开目录</button></div></section>
+          <section class="settings-panel"><h2>主题背景</h2><p>切换 Workbench 原型的浅色或深色界面。</p><div class="settings-row"><span><small>当前主题</small><strong class="theme-current">浅色主题</strong></span><button class="button theme-toggle" type="button">切换主题</button></div></section>
+          <div class="notice">符号链接目标已存在时，Workbench 不会覆盖或删除已有内容。</div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="import-dialog">
+    <form method="dialog" class="dialog-card large">
+      <header><div><h2>导入 Skills</h2><p>从 ZIP 文件或已解压文件夹导入到统一根目录</p></div><button class="icon-button">×</button></header>
+      <div class="source-actions"><button type="button" class="button primary">选择 ZIP 文件</button><button type="button" class="button">选择文件夹</button></div>
+      <div class="path-box">C:\Users\dev\Downloads\skills-pack.zip</div>
+      <div class="dialog-section-title"><strong>发现 4 个可导入 Skills</strong><button type="button" class="button">重新扫描</button></div>
+      <div class="import-list">
+        <label><input type="checkbox" checked><span><strong>database-business-guard</strong><small>数据库业务代码检查指南</small></span><i>可导入</i></label>
+        <label><input type="checkbox" checked><span><strong>drawio</strong><small>专业 draw.io 图表生成</small></span><i>可导入</i></label>
+        <label><input type="checkbox" disabled><span><strong>security-review</strong><small>安全审查指南</small></span><em>名称冲突</em></label>
+        <label><input type="checkbox" checked><span><strong>humanizer</strong><small>文本自然化处理</small></span><i>可导入</i></label>
+      </div>
+      <div class="warning">同名 Skill 不会覆盖或合并。security-review 将跳过导入。</div>
+      <footer><button class="button">取消</button><button class="button primary">导入 3 个 Skills</button></footer>
+    </form>
+  </dialog>
+
+  <dialog id="project-dialog"><form method="dialog" class="dialog-card"><header><h2>添加项目</h2><button class="icon-button">×</button></header><label>项目路径<input value="E:\Development\NewProject"></label><label>项目名称<input value="NewProject"></label><label>启动命令<input placeholder="例如 pnpm dev"></label><label>启动工作目录<input placeholder="默认使用项目路径"></label><footer><button class="button">取消</button><button class="button primary">添加项目</button></footer></form></dialog>
+  <dialog id="radar-dialog"><form method="dialog" class="dialog-card"><header><h2>添加 Radar 条目</h2><button class="icon-button">×</button></header><label>名称<input placeholder="条目名称"></label><label>分类<select><option>项目</option><option>资讯</option><option>论文</option><option>其他</option></select></label><label>链接<input placeholder="https://"></label><label>标签<input placeholder="使用逗号分隔"></label><label>备注<textarea rows="4"></textarea></label><footer><button class="button">取消</button><button class="button primary">添加条目</button></footer></form></dialog>
+  <div class="toast" role="status">已在新的系统终端窗口中启动项目</div>
+  <script src="app.js"></script>
+</body>
+</html>

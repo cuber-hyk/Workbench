@@ -1,0 +1,244 @@
+{
+  "color": {
+    "light": {
+      "background": {
+        "$type": "color",
+        "$value": "#f5f7f9"
+      },
+      "panel": {
+        "$type": "color",
+        "$value": "#ffffff"
+      },
+      "sidebar": {
+        "$type": "color",
+        "$value": "#12171c"
+      },
+      "sidebarActive": {
+        "$type": "color",
+        "$value": "#1b3032"
+      },
+      "text": {
+        "$type": "color",
+        "$value": "#171c22"
+      },
+      "muted": {
+        "$type": "color",
+        "$value": "#697480"
+      },
+      "border": {
+        "$type": "color",
+        "$value": "#dce2e7"
+      },
+      "accent": {
+        "$type": "color",
+        "$value": "#0d9184"
+      },
+      "accentSoft": {
+        "$type": "color",
+        "$value": "#e5f7f4"
+      },
+      "attention": {
+        "$type": "color",
+        "$value": "#ed8a22"
+      },
+      "success": {
+        "$type": "color",
+        "$value": "#31bb75"
+      },
+      "dangerBackground": {
+        "$type": "color",
+        "$value": "#fff0f0"
+      },
+      "dangerText": {
+        "$type": "color",
+        "$value": "#7b2b2b"
+      },
+      "warningBackground": {
+        "$type": "color",
+        "$value": "#fff4d6"
+      },
+      "warningText": {
+        "$type": "color",
+        "$value": "#8a5713"
+      }
+    },
+    "dark": {
+      "background": {
+        "$type": "color",
+        "$value": "#12161b"
+      },
+      "panel": {
+        "$type": "color",
+        "$value": "#191f26"
+      },
+      "sidebar": {
+        "$type": "color",
+        "$value": "#0c1014"
+      },
+      "sidebarActive": {
+        "$type": "color",
+        "$value": "#173331"
+      },
+      "text": {
+        "$type": "color",
+        "$value": "#edf3f6"
+      },
+      "muted": {
+        "$type": "color",
+        "$value": "#9ba7b2"
+      },
+      "border": {
+        "$type": "color",
+        "$value": "#2b3540"
+      },
+      "accent": {
+        "$type": "color",
+        "$value": "#15a99a"
+      },
+      "accentSoft": {
+        "$type": "color",
+        "$value": "#173331"
+      },
+      "attention": {
+        "$type": "color",
+        "$value": "#f59a37"
+      },
+      "success": {
+        "$type": "color",
+        "$value": "#31bb75"
+      },
+      "dangerBackground": {
+        "$type": "color",
+        "$value": "#321f22"
+      },
+      "dangerText": {
+        "$type": "color",
+        "$value": "#ffc9c9"
+      },
+      "warningBackground": {
+        "$type": "color",
+        "$value": "#3b2f18"
+      },
+      "warningText": {
+        "$type": "color",
+        "$value": "#ffd58a"
+      }
+    }
+  },
+  "font": {
+    "family": {
+      "ui": {
+        "$type": "fontFamily",
+        "$value": ["Segoe UI", "Microsoft YaHei", "sans-serif"]
+      },
+      "mono": {
+        "$type": "fontFamily",
+        "$value": ["Consolas", "monospace"]
+      }
+    },
+    "size": {
+      "body": {
+        "$type": "dimension",
+        "$value": "13px"
+      },
+      "caption": {
+        "$type": "dimension",
+        "$value": "10px"
+      },
+      "supporting": {
+        "$type": "dimension",
+        "$value": "11px"
+      },
+      "rowTitle": {
+        "$type": "dimension",
+        "$value": "15px"
+      },
+      "brand": {
+        "$type": "dimension",
+        "$value": "18px"
+      }
+    },
+    "weight": {
+      "regular": {
+        "$type": "fontWeight",
+        "$value": 400
+      },
+      "medium": {
+        "$type": "fontWeight",
+        "$value": 600
+      },
+      "brand": {
+        "$type": "fontWeight",
+        "$value": 650
+      }
+    }
+  },
+  "space": {
+    "xs": {
+      "$type": "dimension",
+      "$value": "5px"
+    },
+    "sm": {
+      "$type": "dimension",
+      "$value": "8px"
+    },
+    "md": {
+      "$type": "dimension",
+      "$value": "12px"
+    },
+    "lg": {
+      "$type": "dimension",
+      "$value": "16px"
+    },
+    "xl": {
+      "$type": "dimension",
+      "$value": "20px"
+    }
+  },
+  "radius": {
+    "control": {
+      "$type": "dimension",
+      "$value": "5px"
+    },
+    "panel": {
+      "$type": "dimension",
+      "$value": "6px"
+    },
+    "row": {
+      "$type": "dimension",
+      "$value": "8px"
+    },
+    "pill": {
+      "$type": "dimension",
+      "$value": "999px"
+    }
+  },
+  "size": {
+    "sidebarWidth": {
+      "$type": "dimension",
+      "$value": "220px"
+    },
+    "buttonHeight": {
+      "$type": "dimension",
+      "$value": "36px"
+    },
+    "iconButton": {
+      "$type": "dimension",
+      "$value": "34px"
+    },
+    "detailPanelWidth": {
+      "$type": "dimension",
+      "$value": "396px"
+    },
+    "minimumDesktopWidth": {
+      "$type": "dimension",
+      "$value": "1024px"
+    }
+  },
+  "shadow": {
+    "dialog": {
+      "$type": "shadow",
+      "$value": "0 24px 80px rgba(15, 25, 32, 0.24)"
+    }
+  }
+}
