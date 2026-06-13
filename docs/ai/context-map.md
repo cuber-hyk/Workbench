@@ -1,0 +1,33 @@
+# Context Map
+
+本文档用于快速定位 Workbench App 的长期上下文。
+
+Do not read `docs/plans/`, `docs/audits/`, or archived directories by default.
+
+## 产品与范围
+
+- `docs/PRD.md`：MVP 产品范围、功能需求、非目标和验收标准。
+- `README.md`：项目状态、运行方式和模块概览。
+- `CONTEXT.md`：当前阶段、关键边界和模块状态。
+
+## 架构与实现
+
+- `docs/ARCHITECTURE.md`：技术栈、目录结构、核心模块、数据模型和关键流程。
+- `src/App.tsx`：当前前端页面和主要交互入口。
+- `src/lib/types/domain.ts`：前端领域类型。
+- `src/lib/api/workbenchApi.ts`：前端到 Tauri commands 的 API 边界。
+- `src-tauri/src/lib.rs`：Tauri command 注册入口。
+- `src-tauri/src/skills.rs`：Skills 扫描、导入、启用、冲突、删除和 SQLite 逻辑。
+
+## 设计
+
+- `DESIGN.md`：设计系统规则和 UI 模式。
+- `design-tokens.json`：设计 token 精确值。
+- `UI/`：讨论用静态原型，不是正式构建入口。
+
+## Dev Flow
+
+- `AGENTS.md`：项目级 Agent 工作规则。
+- `docs/plans/`：当前开发计划。
+- `docs/audits/`：审核记录。
+- `docs/adr/`：架构决策记录。

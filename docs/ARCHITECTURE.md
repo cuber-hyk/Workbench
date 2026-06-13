@@ -35,13 +35,13 @@ Tauri 负责应用窗口、系统能力调用和打包。Rust 后端不作为独
 
 SQLite 用于保存项目、Skills 元信息、分类、启用关系、AI Radar 条目和应用设置。
 
-数据库文件放在系统 app data 目录，例如：
+数据库文件放在 Workbench 本地数据根目录：
 
 ```text
-AppData/Roaming/workbench-app/workbench.sqlite
+~/.workbench/workbench.sqlite
 ```
 
-源码目录只保存代码、文档和静态原型。
+默认 Skills 唯一真实副本目录为 `~/.workbench/skills`。源码目录只保存代码、文档和静态原型。
 
 ### 2.4 本地系统能力
 
@@ -58,11 +58,19 @@ MVP 不内嵌终端，不捕获项目启动日志，不管理已启动进程。
 
 ## 3. 项目目录结构
 
-建议目录结构：
+当前目录结构：
 
 ```text
 Workbench/
+├─ AGENTS.md
+├─ CONTEXT.md
 ├─ docs/
+│  ├─ ai/
+│  │  └─ context-map.md
+│  ├─ adr/
+│  ├─ audits/
+│  ├─ capabilities/
+│  ├─ plans/
 │  ├─ PRD.md
 │  └─ ARCHITECTURE.md
 ├─ UI/
@@ -70,35 +78,22 @@ Workbench/
 │  ├─ styles.css
 │  └─ app.js
 ├─ src/
-│  ├─ app/
-│  │  ├─ App.tsx
-│  │  ├─ routes.tsx
-│  │  └─ providers.tsx
 │  ├─ components/
-│  │  ├─ layout/
-│  │  ├─ ui/
-│  │  └─ shared/
-│  ├─ features/
-│  │  ├─ projects/
-│  │  ├─ skills/
-│  │  ├─ radar/
-│  │  └─ settings/
 │  ├─ lib/
 │  │  ├─ api/
 │  │  ├─ types/
-│  │  └─ utils/
+│  ├─ App.tsx
 │  ├─ main.tsx
-│  └─ index.css
+│  └─ styles.css
 ├─ src-tauri/
 │  ├─ src/
 │  │  ├─ main.rs
-│  │  ├─ commands/
-│  │  ├─ db/
-│  │  ├─ services/
-│  │  ├─ models/
-│  │  └─ platform/
+│  │  ├─ lib.rs
+│  │  └─ skills.rs
 │  ├─ tauri.conf.json
 │  └─ Cargo.toml
+├─ DESIGN.md
+├─ design-tokens.json
 ├─ package.json
 ├─ tsconfig.json
 └─ vite.config.ts
@@ -106,14 +101,14 @@ Workbench/
 
 说明：
 
+- `AGENTS.md` 保存项目级 Agent 工作规则。
+- `CONTEXT.md` 保存当前阶段、模块状态和重要边界。
 - `docs/` 保存产品和架构文档。
+- `docs/ai/context-map.md` 保存长期上下文索引。
+- `docs/capabilities/`、`docs/audits/`、`docs/adr/` 保存后续可沉淀的能力、审核和架构决策记录。
 - `UI/` 保存讨论用静态原型，不作为正式前端代码入口。
-- `src/features/` 按业务模块组织 React 页面、组件和 hooks。
 - `src/lib/api/` 封装 Tauri `invoke` 调用。
-- `src-tauri/src/commands/` 存放前端可调用的 Tauri commands。
-- `src-tauri/src/services/` 存放业务逻辑，例如 Skills 扫描、导入、符号链接管理。
-- `src-tauri/src/db/` 存放数据库连接、迁移和仓储逻辑。
-- `src-tauri/src/platform/` 存放系统差异逻辑，例如终端启动、路径打开、符号链接创建。
+- `src-tauri/src/skills.rs` 集中实现当前 Skills commands、SQLite 与文件系统逻辑，避免 MVP 阶段提前拆分。
 
 ## 4. 前端模块说明
 
@@ -168,9 +163,16 @@ MVP 导航模块：
 关键原则：
 
 - Workbench Skills 根目录保存 Skill 唯一真实副本。
-- 全局工具目录和项目工具目录只放由 Workbench 管理的符号链接。
-- 创建符号链接失败时明确提示，不回退复制。
-- 目标位置已有真实目录或非 Workbench 管理的符号链接时，不覆盖、不删除。
+- 全局工具目录和项目工具目录只放由 Workbench 管理的符号链接或复制副本。
+- 默认使用 Auto 同步：优先创建符号链接，失败时原子复制。
+- 目标位置已有内容且没有对应 Workbench 启用记录时，不覆盖、不删除。
+- 停用时依据数据库记录，只移除对应的受管符号链接或完整副本。
+- 扫描全局工具目录时识别内容一致状态和内容冲突状态。
+- 内容一致状态在扫描时自动登记为 Workbench 管理，不修改文件内容。
+- 解决内容冲突必须由用户显式触发。
+- 内容冲突按 Skill 统一解决：用户从 `.workbench`、`.codex`、`.claude`、`.opencode` 的可用版本中选择一个唯一版本源。
+- 解决冲突前必须备份被替换版本，不自动合并目录内容。
+- 删除 Skill 只删除统一根目录内容和 Workbench 管理的启用目标，不删除未被 Workbench 管理的工具目录。
 
 ### 4.4 AI Radar 模块
 
@@ -210,76 +212,22 @@ MVP 导航模块：
 
 ## 5. Tauri 后端模块说明
 
-### 5.1 Commands 层
+`src-tauri/src/lib.rs` 注册前端唯一可调用的 Tauri commands。
 
-Commands 是前端唯一可调用入口。
+当前已实现的 Skills 能力集中在 `src-tauri/src/skills.rs`：
 
-建议按模块拆分：
+- 扫描和解析 `SKILL.md`。
+- 系统选择器、ZIP / 文件夹导入与冲突检查。
+- SQLite 设置、分类和启用关系读写。
+- Codex、Claude Code、OpenCode 的目标路径计算。
+- Auto 同步：优先创建受管符号链接，失败时复制完整目录。
+- 检测全局工具目录中的内容一致状态和内容冲突。
+- 扫描时自动登记内容一致的全局启用，统一解决 Skill 级版本冲突并备份被替换版本。
+- 创建、检测和移除受管符号链接或副本。
+- 删除统一根目录中的 Skill 并清理对应 Workbench 管理记录。
+- 打开本地文件或目录。
 
-```text
-commands/
-├─ project_commands.rs
-├─ skill_commands.rs
-├─ radar_commands.rs
-├─ settings_commands.rs
-└─ system_commands.rs
-```
-
-Commands 层只做：
-
-- 参数接收。
-- 基础校验。
-- 调用 service。
-- 返回结构化结果。
-
-不在 Commands 层堆业务逻辑。
-
-### 5.2 Services 层
-
-Services 承载核心业务逻辑。
-
-建议拆分：
-
-```text
-services/
-├─ project_service.rs
-├─ skill_service.rs
-├─ radar_service.rs
-├─ settings_service.rs
-├─ import_service.rs
-└─ symlink_service.rs
-```
-
-重点服务：
-
-- `project_service`：项目增删改查、启动命令校验、启动请求封装。
-- `skill_service`：Skills 扫描、元信息解析、分类管理。
-- `import_service`：ZIP / 文件夹扫描、导入冲突检查、复制到根目录。
-- `symlink_service`：创建、检测、移除 Workbench 管理的符号链接。
-- `radar_service`：Radar 条目增删改查、搜索和筛选。
-- `settings_service`：应用设置读写。
-
-### 5.3 DB 层
-
-DB 层负责：
-
-- SQLite 连接初始化。
-- 数据库迁移。
-- Repository 查询封装。
-
-建议使用显式 SQL 和迁移文件，避免 MVP 阶段引入复杂 ORM。
-
-### 5.4 Platform 层
-
-Platform 层封装系统差异。
-
-职责：
-
-- 打开文件或目录。
-- 选择文件或目录。
-- 在系统终端启动命令。
-- 创建目录符号链接。
-- 判断路径是否为符号链接。
+MVP 阶段保持单文件模块；当模块职责产生实际维护压力时再按 commands、database 和 filesystem 边界拆分。
 
 ## 6. 核心数据模型
 
@@ -306,86 +254,49 @@ Platform 层封装系统差异。
 - `path` 应唯一。
 - `launch_workdir` 默认等于 `path`。
 
-### 6.2 skill_categories
+### 6.2 skill_metadata
 
-保存 Skill 分类。
-
-| 字段 | 说明 |
-| --- | --- |
-| id | 主键 |
-| name | 分类名称 |
-| sort_order | 排序 |
-| created_at | 创建时间 |
-| updated_at | 更新时间 |
-
-约束：
-
-- 分类名称唯一。
-- 未分类不一定入库，可作为系统默认视图。
-
-### 6.3 skills
-
-保存扫描到或导入的 Skill 元信息。
+保存扫描结果之外需要持久化的 Skill 元信息。Skill 名称、描述和路径直接从根目录扫描获得，不重复写入数据库。
 
 | 字段 | 说明 |
 | --- | --- |
-| id | 主键 |
-| name | Skill 名称 |
-| description | Skill 描述 |
-| directory_name | 根目录下的目录名 |
-| root_path | Workbench Skills 根目录 |
-| skill_path | `SKILL.md` 完整路径 |
-| category_id | 分类 ID |
-| source | 来源：local / zip / folder |
-| content_hash | 内容哈希 |
-| created_at | 创建时间 |
-| updated_at | 更新时间 |
+| directory_name | Skill 目录名，主键 |
+| category | 分类名称，默认 `未分类` |
 
 约束：
 
 - `directory_name` 在统一 Skills 根目录下唯一。
 - 每个 Skill 只能属于一个分类。
 
-### 6.4 tool_targets
+### 6.3 工具目标
 
-保存支持的工具及其全局 Skills 目录。
+工具目标暂不入库，由后端提供固定定义：
 
-| 字段 | 说明 |
-| --- | --- |
-| id | 主键 |
-| tool_key | 工具标识，例如 codex / claude / opencode |
-| name | 展示名称 |
-| global_skills_dir | 全局 Skills 目录 |
-| supports_project_scope | 是否支持项目级启用 |
-| enabled | 是否在 Workbench 中启用该工具 |
-| created_at | 创建时间 |
-| updated_at | 更新时间 |
+- Codex：`~/.codex/skills`，项目目录为 `<project>/.codex/skills`。
+- Claude Code：`~/.claude/skills`，项目目录为 `<project>/.claude/skills`。
+- OpenCode：`~/.config/opencode/skills`，项目目录为 `<project>/.opencode/skills`。
 
-### 6.5 skill_enablements
+### 6.4 skill_enablements
 
 保存 Skill 启用关系。
 
 | 字段 | 说明 |
 | --- | --- |
-| id | 主键 |
-| skill_id | Skill ID |
-| tool_key | 工具标识 |
+| directory_name | Skill 目录名 |
+| tool | 工具标识 |
 | scope | global / project |
-| project_id | 项目 ID，仅项目级启用时存在 |
+| project_name | 项目名称，全局启用时为空 |
+| project_path | 项目路径，全局启用时为空 |
 | link_path | 符号链接目标路径 |
-| managed_by_workbench | 是否由 Workbench 管理 |
-| status | active / conflict / error |
-| last_error | 最近错误 |
-| created_at | 创建时间 |
-| updated_at | 更新时间 |
+| sync_method | 实际同步方式：symlink / copy |
 
 约束：
 
-- 全局启用唯一键：`skill_id + tool_key + scope`
-- 项目启用唯一键：`skill_id + tool_key + scope + project_id`
-- Workbench 停用时只移除 `managed_by_workbench = true` 的链接。
+- 唯一键为 `directory_name + tool + scope + project_path`。
+- Symlink 停用前必须确认目标指向统一根目录对应 Skill。
+- Copy 停用时允许删除数据库明确记录的完整目标副本。
 
-### 6.6 radar_items
+### 6.5 radar_items
 
 保存 AI Radar 本地条目。
 
@@ -408,22 +319,18 @@ Platform 层封装系统差异。
 
 后续导入能力可以增加 `radar_import_runs` 表记录导入批次，包括来源类型、来源路径、导入数量、跳过数量、冲突数量和导入时间。该表不进入 MVP 初始实现。
 
-### 6.7 app_settings
+### 6.6 app_settings
 
 保存应用设置。
 
 | 字段 | 说明 |
 | --- | --- |
 | key | 设置键 |
-| value_json | 设置值 |
-| updated_at | 更新时间 |
+| value | 设置值 |
 
 建议设置项：
 
-- `skills_root_path`
-- `theme`
-- `database_path`
-- `tool_targets`
+- `skills_root`
 
 ## 7. 关键流程
 
@@ -450,7 +357,7 @@ Platform 层封装系统差异。
 
 1. 用户配置 Workbench Skills 根目录。
 2. 前端调用 `scan_skills()`。
-3. 后端递归查找 `SKILL.md`。
+3. 后端检查根目录各直接子目录中的 `SKILL.md`。
 4. 后端解析 frontmatter 中的 `name` 和 `description`。
 5. 后端更新 `skills` 表。
 6. 前端刷新 Skills 列表。
@@ -461,10 +368,10 @@ Platform 层封装系统差异。
 
 1. 用户选择 Skill、工具和启用范围。
 2. 前端调用 `enable_skill(...)`。
-3. 后端计算符号链接目标路径。
+3. 后端计算目标路径。
 4. 后端检查目标路径。
-5. 若目标不存在，创建符号链接并记录启用关系。
-6. 若目标已存在且非 Workbench 管理，返回冲突。
+5. 若目标不存在，优先创建符号链接；失败时原子复制，并记录实际同步方式。
+6. 若目标已存在且非 Workbench 管理，返回冲突，不覆盖目标内容。
 
 ### 7.4 停用 Skill
 
@@ -472,23 +379,50 @@ Platform 层封装系统差异。
 
 1. 用户关闭启用开关。
 2. 前端调用 `disable_skill(enablement_id)`。
-3. 后端确认该链接由 Workbench 管理。
-4. 后端移除符号链接。
+3. 后端读取 Workbench 记录的实际同步方式和目标路径。
+4. 后端移除受管符号链接或完整副本。
 5. 后端更新启用关系状态。
 
 ### 7.5 导入 Skills
 
 流程：
 
-1. 用户选择 ZIP 文件或已解压文件夹。
-2. 后端扫描所有包含 `SKILL.md` 的目录。
-3. 前端展示可导入列表和冲突列表。
-4. 用户勾选导入项。
-5. 后端复制选中目录到统一 Skills 根目录。
-6. 同名目录不覆盖、不合并，返回冲突。
-7. 导入完成后默认不启用。
+1. 用户点击导入，选择 ZIP 文件或已解压文件夹。
+2. 前端调用系统文件选择器或文件夹选择器。
+3. 后端扫描来源中所有包含 `SKILL.md` 的目录。
+4. 后端将所有可导入目录复制到统一 Skills 根目录。
+5. 同名目录不覆盖、不合并，返回跳过结果。
+6. 导入完成后默认不启用。
 
-### 7.6 管理 AI Radar
+### 7.6 全局启用状态扫描和冲突解决
+
+流程：
+
+1. 用户扫描 Skills。
+2. 后端对每个 Skill 检查 Codex、Claude Code、OpenCode 的全局目标目录。
+3. 若目标不存在，状态为未启用。
+4. 若目标由 Workbench 数据库记录管理，状态为 Workbench 管理。
+5. 若目标存在但未被 Workbench 记录管理，后端比较目标目录和统一根目录中的 Skill 内容。
+6. 内容一致时，后端自动登记为 Workbench 管理，不修改目标文件。
+7. 内容不一致时，状态为冲突，前端展示 Skill 级冲突面板。
+8. 用户从 `.workbench`、`.codex`、`.claude`、`.opencode` 的可用版本中选择一个唯一版本源。
+9. 后端将被替换版本备份到 `~/.workbench/backups/skills/<timestamp>/<tool>/<skill>`。
+10. 选中的版本写入 Workbench 根目录，已存在的全局工具目录统一重新同步。
+11. 冲突解决不自动合并文件。
+
+### 7.7 删除 Skill
+
+流程：
+
+1. 用户在 Skills 表格操作列点击删除图标。
+2. 前端展示删除确认弹窗。
+3. 后端读取该 Skill 的 Workbench 管理启用记录。
+4. 后端移除仍然有效的受管符号链接或完整副本。
+5. 后端删除分类记录和启用记录。
+6. 后端删除统一根目录中的 Skill。
+7. 未被 Workbench 管理的外部工具目录内容保持不变。
+
+### 7.8 管理 AI Radar
 
 流程：
 
@@ -498,7 +432,7 @@ Platform 层封装系统差异。
 4. 后端写入 SQLite。
 5. 前端刷新列表和详情。
 
-### 7.7 导入 AI Radar 数据源
+### 7.9 导入 AI Radar 数据源
 
 该流程属于后续阶段，不进入 MVP。
 
@@ -520,8 +454,10 @@ Platform 层封装系统差异。
 ## 8. 错误处理原则
 
 - 文件系统操作失败时返回结构化错误，不吞掉异常。
-- 符号链接冲突必须显式提示用户。
+- Skills 目标冲突必须显式提示用户。
 - 导入同名 Skill 时不覆盖、不合并。
+- 全局工具目录同名 Skill 内容冲突不自动合并，替换前必须备份。
+- 删除 Skill 不删除未被 Workbench 管理的工具目录内容。
 - 启动命令工作目录不存在时禁止启动。
 - 数据库迁移失败时阻止应用继续进入主界面。
 
@@ -533,7 +469,10 @@ Platform 层封装系统差异。
 
 - `SKILL.md` 扫描和解析。
 - ZIP / 文件夹导入冲突处理。
-- 符号链接创建和冲突判断。
+- Auto 同步创建、停用和冲突判断。
+- 全局工具目录同名 Skill 状态检测。
+- Skill 级冲突解决备份和统一替换。
+- 删除 Skill 时清理受管目标和数据库记录。
 - 项目启动命令参数校验。
 - SQLite repository 增删改查。
 
@@ -554,7 +493,7 @@ MVP 必须手动验证：
 
 - Windows 下打开目录。
 - Windows 下新终端执行启动命令。
-- Windows 下创建目录符号链接。
+- Windows 下 Auto 同步优先创建目录符号链接，权限不足时复制。
 - 目标路径存在时不会覆盖用户文件。
 
 ## 10. 后续扩展边界

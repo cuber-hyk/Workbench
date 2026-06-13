@@ -41,7 +41,7 @@ owner: Codex
 - Tauri Rust 后端不是独立服务，只通过 Tauri command 暴露本地能力。
 - SQLite 是本地数据的持久化来源。
 - `UI/` 目录继续作为讨论原型保留，不作为正式前端代码入口。
-- 暂不创建项目级 `AGENTS.md`。
+- 创建项目级 `AGENTS.md`，仅记录 Workbench 项目规则和文档路由。
 
 ## Fact Sources
 
@@ -127,7 +127,7 @@ Verification:
 
 ### 5. Implement Project And Radar Persistence
 
-Status: todo
+Status: in_progress
 
 Tasks:
 
@@ -145,7 +145,7 @@ Verification:
 
 ### 6. Implement Skills Root, Scan, Import, And Enablement
 
-Status: todo
+Status: done
 
 Tasks:
 
@@ -153,8 +153,12 @@ Tasks:
 - 扫描根目录中的 `SKILL.md` 并解析名称、描述、路径。
 - 实现 Skill 分类管理。
 - 实现 ZIP 和已解压文件夹导入。
-- 实现全局工具和项目级工具的符号链接启用。
-- 符号链接冲突时提示，不覆盖、不删除、不回退复制。
+- 实现全局工具和项目级工具的 Auto 启用。
+- 默认使用 Auto 同步：优先符号链接，失败时复制；目标冲突时不覆盖、不删除。
+- 扫描全局工具目录中的同名 Skill 状态。
+- 内容一致的全局工具目录同名 Skill 会在扫描时自动登记为 Workbench 管理。
+- 支持选择唯一版本源并备份后解决内容冲突。
+- 支持删除 Skill，并清理 Workbench 管理的启用记录和受管目标。
 
 Verification:
 
@@ -162,8 +166,19 @@ Verification:
 - 可搜索和按分类筛选 Skills。
 - 可从 ZIP 或文件夹导入 Skills。
 - 同名 Skill 不覆盖、不合并。
-- 全局和项目级启用只创建 Workbench 管理的符号链接。
-- 停用时只移除 Workbench 管理的链接。
+- 全局和项目级启用只创建 Workbench 管理的符号链接或副本，并记录实际方式。
+- 停用时只移除 Workbench 管理的链接或完整副本。
+- 全局工具目录同名 Skill 可识别为内容一致或内容冲突。
+- 内容一致状态扫描后显示为 Workbench 管理。
+- 冲突解决前会备份被替换版本，不自动合并目录。
+- 内容冲突通过 Skill 级唯一版本源选择解决，不按工具分别解决。
+- 删除 Skill 不删除未被 Workbench 管理的工具目录内容。
+
+Implementation note:
+
+- 默认根目录为 `~/.workbench/skills`。
+- 已将 `~/.cc-switch/skills` 中 34 个有效 Skills 一次性复制到默认根目录，源目录保持不变。
+- 项目和 AI Radar 持久化按用户决定继续延后，未执行步骤 5。
 
 ### 7. Finish MVP Verification
 
@@ -187,7 +202,7 @@ Verification:
 
 ## Risks
 
-- Windows 符号链接权限可能导致创建失败，必须清晰提示，不回退复制。
+- Windows 符号链接权限不足时，Auto 同步会回退为 Copy。
 - Tauri、SQLite 和 React 工程初始化可能带来较多配置文件，需要保持目录结构清晰。
 - Skills 导入和启用涉及文件系统写入，必须优先保护用户已有文件。
 - UI 原型中的视觉细节不能直接照搬为临时硬编码，应通过 token 和共享组件收敛。
@@ -198,7 +213,7 @@ Verification:
 - 左侧导航和基础页面结构可用。
 - 项目、Skills、AI Radar、设置四个 MVP 模块可用。
 - 项目可以添加、查看、搜索、打开目录和启动命令。
-- Skills 可以配置根目录、扫描、分类、导入和通过符号链接启用。
+- Skills 可以配置根目录、扫描、分类、导入和通过 Auto 同步启用。
 - AI Radar 可以添加、搜索、筛选、收藏和打开链接。
 - 数据在应用重启后仍然保留。
 - UI 遵守 `DESIGN.md` 和 `design-tokens.json`。
@@ -211,9 +226,10 @@ Verification:
 - Design system: `DESIGN.md` and `design-tokens.json`
 - Static visual reference: `UI/`
 - Implementation code: `src/` and `src-tauri/`
-- ADR: not needed for the current confirmed route
-- Changelog: not needed until user-facing implementation begins
-- Context map: not needed yet
+- ADR: `docs/adr/`
+- Changelog: `CHANGELOG.md`
+- Context map: `docs/ai/context-map.md`
+- Agent guide: `AGENTS.md`
 
 ## Execution Readiness
 

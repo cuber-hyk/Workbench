@@ -226,6 +226,22 @@
       "$type": "dimension",
       "$value": "34px"
     },
+    "tableIconButton": {
+      "$type": "dimension",
+      "$value": "28px"
+    },
+    "tableRowMinHeight": {
+      "$type": "dimension",
+      "$value": "64px"
+    },
+    "skillsActionColumnWidth": {
+      "$type": "dimension",
+      "$value": "76px"
+    },
+    "skillsGlobalToolsColumnWidth": {
+      "$type": "dimension",
+      "$value": "126px"
+    },
     "detailPanelWidth": {
       "$type": "dimension",
       "$value": "396px"
