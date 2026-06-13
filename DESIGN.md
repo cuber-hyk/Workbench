@@ -1,6 +1,6 @@
 # Workbench App 设计系统
 
-## 1. 文档目的
+## Authority And Scope
 
 本文档记录 Workbench App 已确认的 UI 方向，是设计意图、布局规则、可复用 UI 模式和禁用模式的来源。
 
@@ -62,7 +62,7 @@ Workbench 使用固定左侧导航 + 右侧工作区。
 
 设置页面使用纵向堆叠面板。每个面板对应一个配置主题，例如 Skills 存储、支持的工具目录、本地数据或主题。
 
-## 5. 可复用组件和模式
+## Component Rules
 
 ### 5.1 按钮
 
@@ -140,7 +140,7 @@ Workbench 支持浅色和深色主题。
 - 避免用可见文案解释显而易见的 UI 机制。
 - 当文案描述重要 MVP 行为边界时，可以使用边界提示，例如项目启动不捕获日志。
 
-## 7. 视觉规则
+## Foundations
 
 已确认基础：
 
@@ -178,7 +178,7 @@ Workbench 支持浅色和深色主题。
 - Skills 列表使用表格行，项目和 Radar 列表使用 Row Card。
 - 侧边栏宽度为 220px。
 
-## 10. 已知空白
+## Known Gaps
 
 以下场景尚未设计：
 
@@ -191,11 +191,13 @@ Workbench 支持浅色和深色主题。
 - 可访问性焦点环细节。
 - 最终 React 共享组件 API。
 
-## 11. 来源
+## Sources
 
 - `docs/PRD.md`
 - `docs/ARCHITECTURE.md`
 - `UI/index.html`
 - `UI/styles.css`
 - `UI/app.js`
+- `src/components/ui.tsx`
+- `src/styles.css`
 - `design-tokens.json`
