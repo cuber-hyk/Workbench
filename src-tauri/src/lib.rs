@@ -13,6 +13,7 @@ pub fn run() {
             app_health,
             projects::list_projects,
             projects::launch_project,
+            projects::select_directory,
             projects::save_project,
             skills::get_skills_state,
             skills::set_skills_root,

@@ -210,6 +210,8 @@ code { font-family: Consolas, monospace; }
 .dialog-form { display: grid; gap: 12px; }
 .dialog-form label { display: grid; gap: 5px; color: var(--muted); font-size: 11px; font-weight: 600; }
 .dialog-form input, .dialog-form select, .dialog-form textarea, .path-box { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 5px; background: var(--panel); color: var(--text); }
+.field-with-action { display: grid; grid-template-columns: minmax(0, 1fr) 34px; gap: 8px; align-items: center; }
+.field-with-action input { min-width: 0; }
 .dialog-launch-configs { display: grid; gap: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
 .launch-config-editor { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
 .launch-config-editor .full { grid-column: 1 / -1; }

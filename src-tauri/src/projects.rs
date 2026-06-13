@@ -4,6 +4,7 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
+use tauri_plugin_dialog::DialogExt;
 
 type ProjectResult<T> = Result<T, String>;
 
@@ -61,6 +62,17 @@ pub fn launch_project(name: String, launch_configs: Vec<ProjectLaunchConfig>) ->
         )?;
     }
     Ok(())
+}
+
+#[tauri::command]
+pub async fn select_directory<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+) -> ProjectResult<Option<String>> {
+    Ok(app
+        .dialog()
+        .file()
+        .blocking_pick_folder()
+        .map(|path| path.to_string()))
 }
 
 fn default_workbench_root() -> ProjectResult<PathBuf> {
