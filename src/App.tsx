@@ -293,6 +293,8 @@ export function App() {
       {activeDialog === "project" && (
         <ProjectDialog
           project={projects.find((project) => project.id === editingProjectId)}
+          onSelectDirectory={() => workbenchApi.selectDirectory()}
+          onError={showToast}
           onSubmit={saveProject}
           onClose={() => {
             setActiveDialog(null);
@@ -1036,10 +1038,14 @@ function ToolIcon({ tool }: { tool: ToolTarget["key"] }) {
 
 function ProjectDialog({
   project,
+  onSelectDirectory,
+  onError,
   onSubmit,
   onClose
 }: {
   project?: Project;
+  onSelectDirectory: () => Promise<string | null>;
+  onError: (message: string) => void;
   onSubmit: (project: Project) => void;
   onClose: () => void;
 }) {
@@ -1081,6 +1087,28 @@ function ProjectDialog({
     setLaunchConfigs((configs) => configs.length > 1 ? configs.filter((config) => config.id !== id) : configs);
   }
 
+  async function chooseProjectPath() {
+    try {
+      const selectedPath = await onSelectDirectory();
+      if (selectedPath) {
+        handlePathChange(selectedPath);
+      }
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "无法打开目录选择器");
+    }
+  }
+
+  async function chooseLaunchWorkdir(id: string) {
+    try {
+      const selectedPath = await onSelectDirectory();
+      if (selectedPath) {
+        updateLaunchConfig(id, { workdir: selectedPath });
+      }
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "无法打开目录选择器");
+    }
+  }
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmedPath = path.trim();
@@ -1111,7 +1139,12 @@ function ProjectDialog({
       footer={<><Button onClick={onClose}>取消</Button><Button form="project-form" type="submit" variant="primary">{isEditing ? "保存" : "添加项目"}</Button></>}
     >
       <form id="project-form" className="dialog-form" onSubmit={handleSubmit}>
-        <label>项目路径<input value={path} onChange={(event) => handlePathChange(event.target.value)} placeholder="E:\\Development\\NewProject" autoFocus /></label>
+        <label>项目路径
+          <span className="field-with-action">
+            <input value={path} onChange={(event) => handlePathChange(event.target.value)} placeholder="E:\\Development\\NewProject" autoFocus />
+            <IconButton type="button" title="选择项目目录" onClick={() => void chooseProjectPath()}><FolderOpen size={15} /></IconButton>
+          </span>
+        </label>
         <label>项目名称<input value={name} onChange={(event) => setName(event.target.value)} placeholder="默认使用路径最后一级目录名" /></label>
         <label>标签<input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="例如 Tauri, 本地工具" /></label>
         <label>备注<textarea rows={3} value={note} onChange={(event) => setNote(event.target.value)} /></label>
@@ -1123,7 +1156,12 @@ function ProjectDialog({
           {launchConfigs.map((config, index) => (
             <div className="launch-config-editor" key={config.id}>
               <label>名称<input value={config.name} onChange={(event) => updateLaunchConfig(config.id, { name: event.target.value })} placeholder={index === 0 ? "Frontend" : "Backend"} /></label>
-              <label>工作目录<input value={config.workdir} onChange={(event) => updateLaunchConfig(config.id, { workdir: event.target.value })} placeholder="默认使用项目路径" /></label>
+              <label>工作目录
+                <span className="field-with-action">
+                  <input value={config.workdir} onChange={(event) => updateLaunchConfig(config.id, { workdir: event.target.value })} placeholder="默认使用项目路径" />
+                  <IconButton type="button" title="选择工作目录" onClick={() => void chooseLaunchWorkdir(config.id)}><FolderOpen size={15} /></IconButton>
+                </span>
+              </label>
               <label className="full">启动命令<input value={config.command} onChange={(event) => updateLaunchConfig(config.id, { command: event.target.value })} placeholder="例如 pnpm dev" /></label>
               <div className="launch-config-actions">
                 <label><input type="checkbox" checked={config.enabled} onChange={(event) => updateLaunchConfig(config.id, { enabled: event.target.checked })} />启用</label>

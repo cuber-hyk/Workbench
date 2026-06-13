@@ -83,6 +83,13 @@ export const workbenchApi = {
   async selectSkillImportSource(kind: "zip" | "folder") {
     return invoke<string | null>("select_skill_import_source", { kind });
   },
+  async selectDirectory() {
+    if (!isTauri) {
+      await delay();
+      throw new Error("目录选择器仅在 Tauri 桌面应用中可用");
+    }
+    return invoke<string | null>("select_directory");
+  },
   async resolveSkillConflict(
     directoryName: string,
     source: SkillVersionSource
