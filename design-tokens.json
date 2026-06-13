@@ -242,6 +242,14 @@
       "$type": "dimension",
       "$value": "126px"
     },
+    "projectsStatusColumnWidth": {
+      "$type": "dimension",
+      "$value": "88px"
+    },
+    "projectsActionColumnWidth": {
+      "$type": "dimension",
+      "$value": "112px"
+    },
     "detailPanelWidth": {
       "$type": "dimension",
       "$value": "396px"

@@ -101,10 +101,17 @@ code { font-family: Consolas, monospace; }
 .table-head { position: sticky; top: 0; z-index: 1; color: var(--muted); background: color-mix(in srgb, var(--panel), var(--bg) 45%); font-size: 11px; font-weight: 600; }
 .table-row { min-height: 70px; border: 0; border-top: 1px solid var(--border); background: var(--panel); color: var(--text); }
 .table-row:hover, .table-row.selected { background: var(--accent-soft); }
+.projects-grid { grid-template-columns: minmax(170px, 1fr) 84px 110px 62px 106px; }
 .skills-grid { grid-template-columns: minmax(190px, 1.5fr) 84px 118px 72px 76px; }
 .title-cell { display: grid; gap: 3px; min-width: 0; }
 .title-cell strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .title-cell small, .setting-group small { color: var(--muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.command-cell { min-width: 0; color: var(--muted); font-size: 11px; }
+.command-cell code { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.command-cell small { color: var(--muted); font-size: 10px; }
+.project-status-pill { display: inline-flex; align-items: center; max-width: 100%; min-height: 22px; padding: 3px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 10px; font-style: normal; font-weight: 700; white-space: nowrap; }
+.project-status-pill.muted-status { background: color-mix(in srgb, var(--panel), var(--bg) 35%); color: var(--muted); }
+.project-status-pill.launched { background: color-mix(in srgb, #31bb75, transparent 82%); color: #31bb75; }
 .tool-icons button { display: grid; place-items: center; min-width: 24px; height: 24px; padding: 0 5px; border: 1px solid var(--border); border-radius: 50%; background: color-mix(in srgb, var(--panel), var(--bg) 35%); color: var(--muted); font-size: 9px; font-weight: 700; }
 .tool-icons svg { width: 14px; height: 14px; fill: currentColor; }
 .tool-icons button.managed { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
@@ -113,6 +120,10 @@ code { font-family: Consolas, monospace; }
 .row-actions .icon-button { width: 30px; height: 30px; }
 .danger-icon { color: var(--danger-text); }
 .danger-icon:hover { border-color: var(--danger-text); background: var(--danger-bg); }
+.empty-state { display: grid; place-items: center; align-content: center; gap: 6px; min-height: 160px; padding: 24px; color: var(--muted); text-align: center; }
+.empty-state strong { color: var(--text); }
+.empty-state small { max-width: 320px; line-height: 1.6; }
+.detail-empty { min-height: 100%; }
 .inline-category-tag { max-width: 100%; width: fit-content; padding: 3px 7px; border: 0; border-radius: 4px; background: var(--accent-soft); color: var(--accent); font-size: 10px; font-weight: 600; }
 .inline-category-input { width: 100%; min-width: 0; padding: 5px 7px; border: 1px solid var(--accent); border-radius: 4px; background: var(--bg); color: var(--text); font-size: 10px; }
 
@@ -125,6 +136,16 @@ code { font-family: Consolas, monospace; }
 .form-grid label.full { grid-column: 1 / -1; }
 .form-grid input, .form-grid textarea, .form-grid select { width: 100%; min-width: 0; padding: 10px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg); color: var(--text); }
 .form-grid textarea { resize: vertical; }
+.detail-meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0; }
+.detail-meta-grid div { display: grid; gap: 4px; min-width: 0; padding: 10px; border: 1px solid var(--border); border-radius: 6px; background: color-mix(in srgb, var(--panel), var(--bg) 45%); }
+.detail-meta-grid small { color: var(--muted); font-size: 10px; }
+.detail-meta-grid strong { overflow-wrap: anywhere; }
+.launch-config-list { display: grid; gap: 8px; margin: 14px 0; padding-top: 12px; border-top: 1px solid var(--border); }
+.launch-config-list h3 { color: var(--muted); font-size: 11px; }
+.launch-config-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px; border: 1px solid var(--border); border-radius: 6px; background: color-mix(in srgb, var(--panel), var(--bg) 45%); }
+.launch-config-item span { display: grid; gap: 3px; min-width: 0; }
+.launch-config-item small, .launch-config-item code { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.disabled-pill { padding: 3px 7px; border-radius: 4px; background: color-mix(in srgb, var(--panel), var(--bg) 35%); color: var(--muted); font-size: 10px; font-style: normal; font-weight: 600; }
 .command-box { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 12px 0; padding: 12px; border: 1px solid var(--border); border-radius: 7px; background: color-mix(in srgb, var(--panel), var(--bg) 45%); }
 .command-box span { min-width: 0; overflow-wrap: anywhere; }
 .boundary-note { display: flex; gap: 10px; margin-top: 12px; padding: 12px; border-radius: 7px; background: var(--danger-bg); color: var(--danger-text); line-height: 1.55; }
@@ -189,6 +210,12 @@ code { font-family: Consolas, monospace; }
 .dialog-form { display: grid; gap: 12px; }
 .dialog-form label { display: grid; gap: 5px; color: var(--muted); font-size: 11px; font-weight: 600; }
 .dialog-form input, .dialog-form select, .dialog-form textarea, .path-box { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 5px; background: var(--panel); color: var(--text); }
+.dialog-launch-configs { display: grid; gap: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.launch-config-editor { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
+.launch-config-editor .full { grid-column: 1 / -1; }
+.launch-config-actions { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.launch-config-actions label { display: flex; align-items: center; gap: 7px; }
+.launch-config-actions input { width: auto; }
 .path-box { background: var(--bg); color: var(--muted); overflow-wrap: anywhere; }
 .import-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
 .import-summary span { color: var(--muted); font-size: 12px; }

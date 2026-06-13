@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import type { FormEvent } from "react";
 import {
   Box,
   ChevronDown,
@@ -18,7 +19,7 @@ import {
 } from "lucide-react";
 import { Button, IconButton, Modal, PageHeader, Panel, SearchInput, TagList } from "./components/ui";
 import { workbenchApi } from "./lib/api/workbenchApi";
-import type { AppSettings, ImportResult, Project, RadarItem, Skill, SkillVersionSource, ToolTarget, ViewKey } from "./lib/types/domain";
+import type { AppSettings, ImportResult, Project, ProjectLaunchConfig, RadarItem, Skill, SkillVersionSource, ToolTarget, ViewKey } from "./lib/types/domain";
 
 const views: Array<{ key: ViewKey; label: string; icon: JSX.Element }> = [
   { key: "projects", label: "项目", icon: <Box size={16} /> },
@@ -39,8 +40,10 @@ export function App() {
   const [selectedProjectId, setSelectedProjectId] = useState("workbench");
   const [selectedSkillId, setSelectedSkillId] = useState("security-review");
   const [selectedRadarId, setSelectedRadarId] = useState("mcp");
+  const [launchedProjectIds, setLaunchedProjectIds] = useState<string[]>([]);
   const [toast, setToast] = useState("");
   const [activeDialog, setActiveDialog] = useState<"project" | "skills-import" | "skill-delete" | "radar" | null>(null);
+  const [editingProjectId, setEditingProjectId] = useState("");
   const [importResults, setImportResults] = useState<ImportResult[]>([]);
   const [deleteSkillId, setDeleteSkillId] = useState("");
 
@@ -84,6 +87,24 @@ export function App() {
       showToast(success);
     } catch (error) {
       showToast(String(error));
+    }
+  }
+
+  function openProjectDialog(projectId = "") {
+    setEditingProjectId(projectId);
+    setActiveDialog("project");
+  }
+
+  async function saveProject(project: Project) {
+    try {
+      const nextProjects = await workbenchApi.saveProject(project);
+      setProjects(nextProjects);
+      setSelectedProjectId(project.id);
+      setActiveDialog(null);
+      setEditingProjectId("");
+      showToast(editingProjectId ? "项目已更新" : "项目已添加");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -139,13 +160,24 @@ export function App() {
       </aside>
 
       <main className="main">
-        {activeView === "projects" && selectedProject && (
+        {activeView === "projects" && (
           <ProjectsView
             projects={projects}
             selectedProject={selectedProject}
+            launchedProjectIds={launchedProjectIds}
             onSelect={setSelectedProjectId}
-            onLaunch={() => showToast("已在新的系统终端窗口中启动项目")}
-            onAdd={() => setActiveDialog("project")}
+            onLaunch={async (project) => {
+              try {
+                await workbenchApi.launchProject(project);
+                setLaunchedProjectIds((ids) => ids.includes(project.id) ? ids : [...ids, project.id]);
+                  const count = enabledLaunchConfigs(project).length;
+                  showToast(`已启动 ${project.name} 的 ${count} 个启动项`);
+              } catch (error) {
+                showToast(error instanceof Error ? error.message : String(error));
+              }
+            }}
+            onEdit={(project) => openProjectDialog(project.id)}
+            onAdd={() => openProjectDialog()}
           />
         )}
         {activeView === "skills" && selectedSkill && settings && (
@@ -258,7 +290,16 @@ export function App() {
       </main>
 
       {toast && <div className="toast show">{toast}</div>}
-      {activeDialog === "project" && <ProjectDialog onClose={() => setActiveDialog(null)} />}
+      {activeDialog === "project" && (
+        <ProjectDialog
+          project={projects.find((project) => project.id === editingProjectId)}
+          onSubmit={saveProject}
+          onClose={() => {
+            setActiveDialog(null);
+            setEditingProjectId("");
+          }}
+        />
+      )}
       {activeDialog === "skills-import" && (
         <SkillsImportDialog
           results={importResults}
@@ -292,71 +333,177 @@ export function App() {
 function ProjectsView({
   projects,
   selectedProject,
+  launchedProjectIds,
   onSelect,
   onLaunch,
+  onEdit,
   onAdd
 }: {
   projects: Project[];
-  selectedProject: Project;
+  selectedProject?: Project;
+  launchedProjectIds: string[];
   onSelect: (id: string) => void;
-  onLaunch: () => void;
+  onLaunch: (project: Project) => void;
+  onEdit: (project: Project) => void;
   onAdd: () => void;
 }) {
+  const [query, setQuery] = useState("");
+  const [tagFilter, setTagFilter] = useState("全部标签");
+  const [statusFilter, setStatusFilter] = useState("全部状态");
+  const tagOptions = useMemo(
+    () => ["全部标签", ...Array.from(new Set(projects.flatMap((project) => project.tags)))],
+    [projects]
+  );
+  const visibleProjects = projects.filter((project) => {
+    const normalizedQuery = query.trim().toLowerCase();
+    const matchesQuery = !normalizedQuery
+      || project.name.toLowerCase().includes(normalizedQuery)
+      || project.path.toLowerCase().includes(normalizedQuery);
+    const matchesTag = tagFilter === "全部标签" || project.tags.includes(tagFilter);
+    const status = getProjectLaunchStatus(project, launchedProjectIds);
+    const matchesStatus = statusFilter === "全部状态" || status === statusFilter;
+    return matchesQuery && matchesTag && matchesStatus;
+  });
+
   return (
     <section className="view">
       <PageHeader title="项目" description="管理本地开发项目并快速启动" actions={<Button variant="primary" onClick={onAdd}><Plus size={15} />添加项目</Button>} />
       <div className="toolbar">
-        <SearchInput placeholder="搜索项目名称或路径" />
-        <Button>全部标签<ChevronDown size={14} /></Button>
+        <SearchInput placeholder="搜索项目名称或路径" value={query} onChange={(event) => setQuery(event.target.value)} />
+        <select value={tagFilter} onChange={(event) => setTagFilter(event.target.value)}>
+          {tagOptions.map((tag) => <option key={tag}>{tag}</option>)}
+        </select>
+        <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+          <option>全部状态</option>
+          <option>可启动</option>
+          <option>未配置</option>
+          <option>已启动请求</option>
+        </select>
       </div>
       <div className="split-layout">
-        <Panel className="list-panel card-list">
-          {projects.map((project) => (
-            <button
-              key={project.id}
-              className={`row-card ${selectedProject.id === project.id ? "selected" : ""}`}
-              onClick={() => onSelect(project.id)}
-            >
-              <span className="row-main">
-                <strong>{project.name}</strong>
-                <i>{project.status === "missing-command" ? "未配置命令" : project.status === "reference" ? "参考项目" : "已配置启动"}</i>
-              </span>
-              <span className="meta-line">
-                {project.path} {project.launchCommand && <code>cmd: {project.launchCommand}</code>}
-              </span>
-              <TagList tags={project.tags} />
-            </button>
-          ))}
+        <Panel className="list-panel">
+          <div className="table-head projects-grid"><span>项目</span><span>标签</span><span>启动项</span><span>状态</span><span>操作</span></div>
+          {visibleProjects.map((project) => {
+            const launchStatus = getProjectLaunchStatus(project, launchedProjectIds);
+            return (
+              <div
+                key={project.id}
+                className={`table-row projects-grid ${selectedProject?.id === project.id ? "selected" : ""}`}
+                role="button"
+                tabIndex={0}
+                onClick={() => onSelect(project.id)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") onSelect(project.id);
+                }}
+              >
+                <span className="title-cell"><strong>{project.name}</strong><small>{project.path}</small></span>
+                <TagList tags={project.tags} />
+                <span className="command-cell">{formatLaunchConfigSummary(project)}</span>
+                <span><i className={`project-status-pill ${launchStatus === "未配置" ? "muted-status" : launchStatus === "已启动请求" ? "launched" : ""}`}>{launchStatus}</i></span>
+                <span className="row-actions">
+                  <IconButton
+                    title="打开目录"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void workbenchApi.openLocalPath(project.path);
+                    }}
+                  >
+                    <FolderOpen size={14} />
+                  </IconButton>
+                  <IconButton
+                    title="启动项目"
+                    disabled={enabledLaunchConfigs(project).length === 0}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onLaunch(project);
+                    }}
+                  >
+                    <Play size={14} />
+                  </IconButton>
+                  <IconButton
+                    title="编辑项目"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onEdit(project);
+                    }}
+                  >
+                    <Edit3 size={14} />
+                  </IconButton>
+                </span>
+              </div>
+            );
+          })}
+          {visibleProjects.length === 0 && (
+            <div className="empty-state">
+              <strong>暂无项目</strong>
+              <small>点击右上角“添加项目”记录本地项目路径和启动配置。</small>
+            </div>
+          )}
         </Panel>
 
         <Panel className="detail-panel">
-          <div className="detail-title">
-            <div>
-              <h2>{selectedProject.name}</h2>
-              <p>{selectedProject.note}</p>
+          {selectedProject ? (
+            <>
+              <div className="detail-title">
+                <div>
+                  <h2>{selectedProject.name}</h2>
+                  <p>{selectedProject.note}</p>
+                </div>
+                <IconButton title="编辑" onClick={() => onEdit(selectedProject)}><Edit3 size={15} /></IconButton>
+              </div>
+              <div className="form-grid">
+                <label>项目路径<input value={selectedProject.path} readOnly /></label>
+                <label>标签<input value={selectedProject.tags.join(", ")} readOnly /></label>
+                <label className="full">备注<textarea rows={4} value={selectedProject.note} readOnly /></label>
+              </div>
+              <div className="launch-config-list">
+                <h3>启动配置</h3>
+                {selectedProject.launchConfigs.length ? selectedProject.launchConfigs.map((config) => (
+                  <div className="launch-config-item" key={config.id}>
+                    <span>
+                      <strong>{config.name}</strong>
+                      <small>{config.workdir}</small>
+                      <code>{config.command || "未配置命令"}</code>
+                    </span>
+                    <i className={config.enabled ? "available" : "disabled-pill"}>{config.enabled ? "启用" : "停用"}</i>
+                  </div>
+                )) : <p className="muted">暂无启动配置。</p>}
+              </div>
+              <div className="detail-meta-grid">
+                <div><small>启动状态</small><strong>{getProjectLaunchStatus(selectedProject, launchedProjectIds)}</strong></div>
+                <div><small>启动方式</small><strong>系统终端窗口</strong></div>
+              </div>
+              <div className="boundary-note">
+                <span className="status-dot" />
+                <p>Workbench 不捕获日志，也不停止或重启进程；重复启动由用户在系统终端中自行处理。</p>
+              </div>
+            </>
+          ) : (
+            <div className="empty-state detail-empty">
+              <strong>还没有项目</strong>
+              <small>添加项目后，可以配置启动项并在新的系统终端窗口中执行。</small>
             </div>
-            <IconButton title="编辑"><Edit3 size={15} /></IconButton>
-          </div>
-          <Button full><FolderOpen size={15} />打开目录</Button>
-          <div className="form-grid">
-            <label>项目路径<input value={selectedProject.path} readOnly /></label>
-            <label>标签<input value={selectedProject.tags.join(", ")} readOnly /></label>
-            <label>启动命令<input value={selectedProject.launchCommand || "未配置"} readOnly /></label>
-            <label>启动工作目录<input value={selectedProject.launchWorkdir} readOnly /></label>
-            <label className="full">备注<textarea rows={4} value={selectedProject.note} readOnly /></label>
-          </div>
-          <div className="command-box">
-            <span>在新的系统终端窗口执行：<code>{selectedProject.launchCommand || "未配置启动命令"}</code></span>
-            <Button variant="primary" onClick={onLaunch} disabled={!selectedProject.launchCommand}><Play size={15} />启动</Button>
-          </div>
-          <div className="boundary-note">
-            <span className="status-dot" />
-            <p>Workbench 不捕获日志，也不停止或重启进程；重复启动由用户在系统终端中自行处理。</p>
-          </div>
+          )}
         </Panel>
       </div>
     </section>
   );
+}
+
+function getProjectLaunchStatus(project: Project, launchedProjectIds: string[]) {
+  if (launchedProjectIds.includes(project.id)) return "已启动请求";
+  return enabledLaunchConfigs(project).length ? "可启动" : "未配置";
+}
+
+function enabledLaunchConfigs(project: Project) {
+  return project.launchConfigs.filter((config) => config.enabled && config.command.trim());
+}
+
+function formatLaunchConfigSummary(project: Project) {
+  const total = project.launchConfigs.length;
+  const enabled = enabledLaunchConfigs(project).length;
+  if (total === 0) return <small>未配置</small>;
+  return <span>{enabled}/{total} 启动项</span>;
 }
 
 function SkillsView({
@@ -887,22 +1034,128 @@ function ToolIcon({ tool }: { tool: ToolTarget["key"] }) {
   );
 }
 
-function ProjectDialog({ onClose }: { onClose: () => void }) {
+function ProjectDialog({
+  project,
+  onSubmit,
+  onClose
+}: {
+  project?: Project;
+  onSubmit: (project: Project) => void;
+  onClose: () => void;
+}) {
+  const [path, setPath] = useState(project?.path ?? "");
+  const [name, setName] = useState(project?.name ?? "");
+  const [tags, setTags] = useState(project?.tags.join(", ") ?? "");
+  const [launchConfigs, setLaunchConfigs] = useState<ProjectLaunchConfig[]>(
+    project?.launchConfigs.length
+      ? project.launchConfigs
+      : [createLaunchConfig("默认", project?.path ?? "")]
+  );
+  const [note, setNote] = useState(project?.note ?? "");
+  const isEditing = Boolean(project);
+
+  function handlePathChange(value: string) {
+    setPath(value);
+    if (!name.trim() || name === getProjectNameFromPath(path)) {
+      setName(getProjectNameFromPath(value));
+    }
+    setLaunchConfigs((configs) =>
+      configs.map((config) => ({
+        ...config,
+        workdir: !config.workdir.trim() || config.workdir === path ? value : config.workdir
+      }))
+    );
+  }
+
+  function updateLaunchConfig(id: string, patch: Partial<ProjectLaunchConfig>) {
+    setLaunchConfigs((configs) =>
+      configs.map((config) => config.id === id ? { ...config, ...patch } : config)
+    );
+  }
+
+  function addLaunchConfig() {
+    setLaunchConfigs((configs) => [...configs, createLaunchConfig(`启动项 ${configs.length + 1}`, path)]);
+  }
+
+  function removeLaunchConfig(id: string) {
+    setLaunchConfigs((configs) => configs.length > 1 ? configs.filter((config) => config.id !== id) : configs);
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmedPath = path.trim();
+    if (!trimmedPath) return;
+    const trimmedName = name.trim() || getProjectNameFromPath(trimmedPath);
+    onSubmit({
+      id: project?.id ?? createProjectId(trimmedName, trimmedPath),
+      name: trimmedName,
+      path: trimmedPath,
+      note: note.trim(),
+      tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean),
+      launchConfigs: launchConfigs
+        .map((config) => ({
+          ...config,
+          name: config.name.trim() || "启动项",
+          command: config.command.trim(),
+          workdir: config.workdir.trim() || trimmedPath
+        }))
+        .filter((config) => config.name || config.command || config.workdir)
+    });
+  }
+
   return (
     <Modal
-      title="添加项目"
+      title={isEditing ? "编辑项目" : "添加项目"}
       description="记录本地项目路径和启动方式"
       onClose={onClose}
-      footer={<><Button onClick={onClose}>取消</Button><Button variant="primary">添加项目</Button></>}
+      footer={<><Button onClick={onClose}>取消</Button><Button form="project-form" type="submit" variant="primary">{isEditing ? "保存" : "添加项目"}</Button></>}
     >
-      <div className="dialog-form">
-        <label>项目路径<input defaultValue="E:\\Development\\NewProject" /></label>
-        <label>项目名称<input defaultValue="NewProject" /></label>
-        <label>启动命令<input placeholder="例如 pnpm dev" /></label>
-        <label>启动工作目录<input placeholder="默认使用项目路径" /></label>
-      </div>
+      <form id="project-form" className="dialog-form" onSubmit={handleSubmit}>
+        <label>项目路径<input value={path} onChange={(event) => handlePathChange(event.target.value)} placeholder="E:\\Development\\NewProject" autoFocus /></label>
+        <label>项目名称<input value={name} onChange={(event) => setName(event.target.value)} placeholder="默认使用路径最后一级目录名" /></label>
+        <label>标签<input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="例如 Tauri, 本地工具" /></label>
+        <label>备注<textarea rows={3} value={note} onChange={(event) => setNote(event.target.value)} /></label>
+        <section className="dialog-launch-configs">
+          <div className="dialog-section-title">
+            <h3>启动配置</h3>
+            <Button type="button" onClick={addLaunchConfig}>添加启动项</Button>
+          </div>
+          {launchConfigs.map((config, index) => (
+            <div className="launch-config-editor" key={config.id}>
+              <label>名称<input value={config.name} onChange={(event) => updateLaunchConfig(config.id, { name: event.target.value })} placeholder={index === 0 ? "Frontend" : "Backend"} /></label>
+              <label>工作目录<input value={config.workdir} onChange={(event) => updateLaunchConfig(config.id, { workdir: event.target.value })} placeholder="默认使用项目路径" /></label>
+              <label className="full">启动命令<input value={config.command} onChange={(event) => updateLaunchConfig(config.id, { command: event.target.value })} placeholder="例如 pnpm dev" /></label>
+              <div className="launch-config-actions">
+                <label><input type="checkbox" checked={config.enabled} onChange={(event) => updateLaunchConfig(config.id, { enabled: event.target.checked })} />启用</label>
+                <Button type="button" onClick={() => removeLaunchConfig(config.id)} disabled={launchConfigs.length === 1}>删除</Button>
+              </div>
+            </div>
+          ))}
+        </section>
+      </form>
     </Modal>
   );
+}
+
+function getProjectNameFromPath(path: string) {
+  const normalized = path.trim().replace(/[\\/]+$/, "");
+  return normalized.split(/[\\/]/).pop() || "";
+}
+
+function createProjectId(name: string, path: string) {
+  const base = (name || getProjectNameFromPath(path) || "project").toLowerCase();
+  return `${base.replace(/[^a-z0-9\u4e00-\u9fa5]+/gi, "-").replace(/^-+|-+$/g, "")}-${Date.now().toString(36)}`;
+}
+
+function createLaunchConfig(name: string, workdir: string): ProjectLaunchConfig {
+  const id = `${name.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]+/gi, "-").replace(/^-+|-+$/g, "") || "launch"}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+  return {
+    id,
+    name,
+    command: "",
+    workdir,
+    enabled: true
+  };
 }
 
 function SkillsImportDialog({

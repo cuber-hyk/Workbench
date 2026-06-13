@@ -15,4 +15,4 @@ source_of_truth: docs/ARCHITECTURE.md
 - Skills 根目录、导入和扫描。
 - Skills 全局与项目级启用。
 - AI Radar 本地条目管理。
-- 项目启动命令。
+- 项目启动配置。

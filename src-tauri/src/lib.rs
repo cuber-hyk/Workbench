@@ -1,3 +1,4 @@
+mod projects;
 mod skills;
 
 #[tauri::command]
@@ -10,6 +11,9 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             app_health,
+            projects::list_projects,
+            projects::launch_project,
+            projects::save_project,
             skills::get_skills_state,
             skills::set_skills_root,
             skills::set_skill_category,

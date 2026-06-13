@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { projects, radarItems, settings, skillCategories, skills } from "./mockData";
-import type { ImportResult, SkillVersionSource, SkillsState, ToolTarget } from "../types/domain";
+import type { ImportResult, Project, SkillVersionSource, SkillsState, ToolTarget } from "../types/domain";
 
 const delay = async () => new Promise((resolve) => window.setTimeout(resolve, 80));
 const isTauri = "__TAURI_INTERNALS__" in window;
@@ -22,8 +22,34 @@ export const workbenchApi = {
     }
   },
   async listProjects() {
+    if (isTauri) {
+      return invoke<Project[]>("list_projects");
+    }
     await delay();
     return projects;
+  },
+  async saveProject(project: Project) {
+    if (!isTauri) {
+      await delay();
+      const index = projects.findIndex((item) => item.id === project.id);
+      if (index >= 0) {
+        projects[index] = project;
+      } else {
+        projects.push(project);
+      }
+      return projects;
+    }
+    return invoke<Project[]>("save_project", { project });
+  },
+  async launchProject(project: Project) {
+    if (!isTauri) {
+      await delay();
+      return;
+    }
+    return invoke<void>("launch_project", {
+      name: project.name,
+      launchConfigs: project.launchConfigs
+    });
   },
   async listSkills() {
     return (await skillsState()).skills;
