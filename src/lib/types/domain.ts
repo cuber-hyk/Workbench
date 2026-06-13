@@ -6,9 +6,15 @@ export interface Project {
   path: string;
   note: string;
   tags: string[];
-  launchCommand: string;
-  launchWorkdir: string;
-  status: "configured" | "missing-command" | "reference";
+  launchConfigs: ProjectLaunchConfig[];
+}
+
+export interface ProjectLaunchConfig {
+  id: string;
+  name: string;
+  command: string;
+  workdir: string;
+  enabled: boolean;
 }
 
 export interface SkillCategory {
