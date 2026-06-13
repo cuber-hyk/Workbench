@@ -1,7 +1,17 @@
 import { invoke } from "@tauri-apps/api/core";
 import { projects, radarItems, settings, skillCategories, skills } from "./mockData";
+import type { ImportResult, SkillVersionSource, SkillsState, ToolTarget } from "../types/domain";
 
 const delay = async () => new Promise((resolve) => window.setTimeout(resolve, 80));
+const isTauri = "__TAURI_INTERNALS__" in window;
+
+async function skillsState(): Promise<SkillsState> {
+  if (isTauri) {
+    return await invoke<SkillsState>("get_skills_state");
+  }
+  await delay();
+  return { settings, skills };
+}
 
 export const workbenchApi = {
   async health() {
@@ -16,8 +26,7 @@ export const workbenchApi = {
     return projects;
   },
   async listSkills() {
-    await delay();
-    return skills;
+    return (await skillsState()).skills;
   },
   async listSkillCategories() {
     await delay();
@@ -28,7 +37,59 @@ export const workbenchApi = {
     return radarItems;
   },
   async getSettings() {
-    await delay();
-    return settings;
+    return (await skillsState()).settings;
+  },
+  async getSkillsState() {
+    return skillsState();
+  },
+  async setSkillsRoot(path: string) {
+    return invoke<SkillsState>("set_skills_root", { path });
+  },
+  async setSkillCategory(directoryName: string, category: string) {
+    return invoke<SkillsState>("set_skill_category", { directoryName, category });
+  },
+  async importSkillsFromFolder(sourcePath: string) {
+    return invoke<ImportResult[]>("import_skills_from_folder", { sourcePath });
+  },
+  async importSkillsFromZip(zipPath: string) {
+    return invoke<ImportResult[]>("import_skills_from_zip", { zipPath });
+  },
+  async selectSkillImportSource(kind: "zip" | "folder") {
+    return invoke<string | null>("select_skill_import_source", { kind });
+  },
+  async resolveSkillConflict(
+    directoryName: string,
+    source: SkillVersionSource
+  ) {
+    return invoke<SkillsState>("resolve_skill_conflict", { directoryName, source });
+  },
+  async deleteSkill(directoryName: string) {
+    return invoke<SkillsState>("delete_skill", { directoryName });
+  },
+  async setSkillEnabled(
+    directoryName: string,
+    tool: ToolTarget["key"],
+    enabled: boolean,
+    scope: "global" | "project",
+    projectName?: string,
+    projectPath?: string
+  ) {
+    return invoke<SkillsState>("set_skill_enabled", {
+      directoryName,
+      tool,
+      enabled,
+      scope,
+      projectName,
+      projectPath
+    });
+  },
+  async openLocalPath(path: string) {
+    return invoke<void>("open_local_path", { path });
+  },
+  async openGlobalSkillTarget(directoryName: string, tool: ToolTarget["key"]) {
+    return invoke<void>("open_global_skill_target", { directoryName, tool });
+  },
+  async openSkillSourceDirectory(directoryName: string) {
+    return invoke<void>("open_skill_source_directory", { directoryName });
   }
 };

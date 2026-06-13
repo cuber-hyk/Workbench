@@ -43,45 +43,73 @@ export const skillCategories: SkillCategory[] = [
 export const skills: Skill[] = [
   {
     id: "security-review",
+    directoryName: "security-review",
     name: "security-review",
     description: "认证、用户输入、密钥与敏感功能的安全审查指南。",
     category: "安全",
     skillPath: "C:\\Users\\dev\\.workbench\\skills\\security-review\\SKILL.md",
     enabledTools: ["codex", "claude"],
+    enabledToolMethods: [{ tool: "codex", syncMethod: "symlink" }, { tool: "claude", syncMethod: "copy" }],
+    globalToolStates: [
+      { tool: "codex", status: "managed", syncMethod: "symlink" },
+      { tool: "claude", status: "managed", syncMethod: "copy" },
+      { tool: "opencode", status: "disabled" }
+    ],
     enabledProjects: [
-      { projectName: "Workbench App", tool: "codex" },
-      { projectName: "ai-radar", tool: "codex" }
+      { projectName: "Workbench App", projectPath: "E:\\Development\\12-工具-Utility\\Workbench", tool: "codex", syncMethod: "copy" },
+      { projectName: "ai-radar", projectPath: "E:\\Development\\01-Web-全栈\\ai-radar", tool: "codex", syncMethod: "symlink" }
     ]
   },
   {
     id: "playwright-cli",
+    directoryName: "playwright-cli",
     name: "playwright-cli",
     description: "浏览器自动化与页面测试。",
     category: "测试",
     skillPath: "C:\\Users\\dev\\.workbench\\skills\\playwright-cli\\SKILL.md",
     enabledTools: ["codex"],
-    enabledProjects: [{ projectName: "Workbench App", tool: "codex" }]
+    enabledToolMethods: [{ tool: "codex", syncMethod: "copy" }],
+    globalToolStates: [
+      { tool: "codex", status: "managed", syncMethod: "copy" },
+      { tool: "claude", status: "managed", syncMethod: "copy" },
+      { tool: "opencode", status: "disabled" }
+    ],
+    enabledProjects: [{ projectName: "Workbench App", projectPath: "E:\\Development\\12-工具-Utility\\Workbench", tool: "codex", syncMethod: "copy" }]
   },
   {
     id: "design-doc-mermaid",
+    directoryName: "design-doc-mermaid",
     name: "design-doc-mermaid",
     description: "从描述或代码生成 Mermaid 图。",
     category: "文档",
     skillPath: "C:\\Users\\dev\\.workbench\\skills\\design-doc-mermaid\\SKILL.md",
     enabledTools: ["claude"],
+    enabledToolMethods: [{ tool: "claude", syncMethod: "symlink" }],
+    globalToolStates: [
+      { tool: "codex", status: "conflict" },
+      { tool: "claude", status: "managed", syncMethod: "symlink" },
+      { tool: "opencode", status: "disabled" }
+    ],
     enabledProjects: []
   },
   {
     id: "humanizer",
+    directoryName: "humanizer",
     name: "humanizer",
     description: "改善文本自然度与可读性。",
     category: "写作",
     skillPath: "C:\\Users\\dev\\.workbench\\skills\\humanizer\\SKILL.md",
     enabledTools: ["codex", "opencode"],
+    enabledToolMethods: [{ tool: "codex", syncMethod: "copy" }, { tool: "opencode", syncMethod: "copy" }],
+    globalToolStates: [
+      { tool: "codex", status: "managed", syncMethod: "copy" },
+      { tool: "claude", status: "managed", syncMethod: "copy" },
+      { tool: "opencode", status: "managed", syncMethod: "copy" }
+    ],
     enabledProjects: [
-      { projectName: "Workbench App", tool: "codex" },
-      { projectName: "ai-radar", tool: "opencode" },
-      { projectName: "cc-switch", tool: "codex" }
+      { projectName: "Workbench App", projectPath: "E:\\Development\\12-工具-Utility\\Workbench", tool: "codex", syncMethod: "copy" },
+      { projectName: "ai-radar", projectPath: "E:\\Development\\01-Web-全栈\\ai-radar", tool: "opencode", syncMethod: "copy" },
+      { projectName: "cc-switch", projectPath: "E:\\Development\\12-工具-Utility\\Agent\\cc-switch", tool: "codex", syncMethod: "symlink" }
     ]
   }
 ];
@@ -130,7 +158,7 @@ export const radarItems: RadarItem[] = [
 ];
 
 export const settings: AppSettings = {
-  dataDir: "C:\\Users\\dev\\AppData\\Roaming\\workbench-app",
+  workbenchRoot: "C:\\Users\\dev\\.workbench",
   skillsRoot: "C:\\Users\\dev\\.workbench\\skills",
   toolTargets: [
     {

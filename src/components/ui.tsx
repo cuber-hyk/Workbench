@@ -1,5 +1,5 @@
 import { X } from "lucide-react";
-import type { ButtonHTMLAttributes, PropsWithChildren, ReactNode } from "react";
+import type { ButtonHTMLAttributes, InputHTMLAttributes, PropsWithChildren, ReactNode } from "react";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "default" | "primary";
@@ -15,8 +15,8 @@ export function Button({ variant = "default", full, className = "", ...props }: 
   );
 }
 
-export function IconButton(props: ButtonHTMLAttributes<HTMLButtonElement>) {
-  return <button className="icon-button" {...props} />;
+export function IconButton({ className = "", ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
+  return <button className={`icon-button ${className}`} {...props} />;
 }
 
 export function Panel({ children, className = "" }: PropsWithChildren<{ className?: string }>) {
@@ -43,11 +43,11 @@ export function PageHeader({
   );
 }
 
-export function SearchInput({ placeholder }: { placeholder: string }) {
+export function SearchInput(props: InputHTMLAttributes<HTMLInputElement>) {
   return (
     <label className="search">
       <span>⌕</span>
-      <input aria-label={placeholder} placeholder={placeholder} />
+      <input aria-label={props.placeholder} {...props} />
     </label>
   );
 }
@@ -92,7 +92,7 @@ export function Modal({
           </div>
           <IconButton title="关闭" onClick={onClose}><X size={16} /></IconButton>
         </header>
-        {children}
+        <div className="dialog-body">{children}</div>
         <footer>{footer}</footer>
       </section>
     </div>

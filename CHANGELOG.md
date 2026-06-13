@@ -12,3 +12,26 @@
 - 实现项目、Skills、AI Radar、设置四个 MVP 页面及列表详情工作区。
 - 增加浅色与深色主题、共享 UI 组件和 mock API 边界。
 - 增加添加项目、导入 Skills 和添加 Radar 条目的 UI 弹窗流程。
+- 实现 Skills 统一根目录扫描、分类、ZIP / 文件夹导入和本地路径打开。
+- 实现 Codex、Claude Code、OpenCode 的全局及项目级符号链接启用。
+- 使用 `~/.workbench/workbench.sqlite` 保存 Skills 设置、分类和启用关系。
+- Skills 启用默认使用 Auto 同步：优先 Symlink，失败时回退 Copy，并记录实际同步方式。
+- Skills 导入使用系统选择器选择 ZIP 文件或已解压文件夹，并支持一次导入多个 Skills。
+- Skills 扫描可识别全局工具目录中的内容一致启用和内容冲突；内容一致时自动登记为 Workbench 管理，内容冲突时备份后解决。
+- 增加删除 Skill 功能，删除时清理 Workbench 管理的启用记录和受管目标。
+- 增加项目级 `AGENTS.md`、`CONTEXT.md`、context map、capabilities、audits 和 ADR 文档入口。
+
+### Changed
+
+- 优化桌面工作区高度布局，减少页面、列表、详情和弹窗之间的重复滚动条。
+- 调整 Skills 全局工具冲突处理布局，将版本选择和打开目录等辅助操作分层展示。
+- 将 Skills 筛选中的启用状态改为状态筛选，支持快速定位内容冲突。
+- 将 Skills 冲突解决调整为 Skill 级唯一版本源选择，避免按工具分别选择导致前后覆盖。
+- 将 Skills 列表中的全局工具标识改为可点击开关，并支持双击分类标签直接编辑分类。
+- 将删除 Skill 入口迁移到 Skills 表格操作列，并移除详情页危险区。
+- 将全局工具启用完全迁移到 Skills 表格，详情页仅在冲突时显示冲突解决面板。
+- 将打开 `SKILL.md` 入口迁移到 Skills 表格操作列，详情页仅保留文件路径信息。
+- 更新设计 token，固化 Skills 表格图标按钮、行高和列宽规则。
+- 将 Skills 表格中的全局工具入口改为参考 cc-switch 的工具图标。
+- 为单个项目启用增加项目级总开关。
+- 优化 Skills 导入结果弹窗，增加摘要、状态列表、打开统一根目录和更直白的导入边界说明。

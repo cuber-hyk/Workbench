@@ -24,14 +24,28 @@ export interface ToolTarget {
   available: boolean;
 }
 
+export type SkillVersionSource = "workbench" | ToolTarget["key"];
+
 export interface Skill {
   id: string;
+  directoryName: string;
   name: string;
   description: string;
   category: string;
   skillPath: string;
   enabledTools: ToolTarget["key"][];
-  enabledProjects: Array<{ projectName: string; tool: ToolTarget["key"] }>;
+  enabledToolMethods: Array<{ tool: ToolTarget["key"]; syncMethod: "symlink" | "copy" }>;
+  globalToolStates: Array<{
+    tool: ToolTarget["key"];
+    status: "disabled" | "managed" | "conflict";
+    syncMethod?: "symlink" | "copy";
+  }>;
+  enabledProjects: Array<{
+    projectName: string;
+    projectPath: string;
+    tool: ToolTarget["key"];
+    syncMethod: "symlink" | "copy";
+  }>;
 }
 
 export type RadarCategory = "项目" | "资讯" | "论文" | "其他";
@@ -48,7 +62,18 @@ export interface RadarItem {
 }
 
 export interface AppSettings {
-  dataDir: string;
+  workbenchRoot: string;
   skillsRoot: string;
   toolTargets: ToolTarget[];
+}
+
+export interface SkillsState {
+  settings: AppSettings;
+  skills: Skill[];
+}
+
+export interface ImportResult {
+  directoryName: string;
+  status: "imported" | "conflict" | "invalid";
+  message: string;
 }
