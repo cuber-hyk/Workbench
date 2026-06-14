@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-Workbench App 处于 MVP 模块接入阶段。正式工程已经建立，Skills 管理已接入本地 Tauri 后端和 SQLite；项目管理与 AI Radar 仍主要使用前端 mock data。
+Workbench App 处于 MVP 收口阶段。正式工程已经建立，项目管理、Skills 管理和 AI Radar 均已接入本地 Tauri 后端与 SQLite。
 
 ## 核心产品边界
 
@@ -21,9 +21,9 @@ Workbench App 处于 MVP 模块接入阶段。正式工程已经建立，Skills 
 
 ## 当前模块状态
 
-- 项目：页面和 mock data 可用，真实打开目录和启动命令待接入。
+- 项目：基本信息、启动项和目录选择已接入 SQLite 与 Tauri 本地能力。
 - Skills：扫描、分类、导入、全局启用、项目启用、冲突解决和删除已接入真实后端。
-- AI Radar：页面和 mock data 可用，真实持久化待接入。
+- AI Radar：本地增删改查、搜索筛选、收藏和打开链接已接入 SQLite 与 Tauri commands。
 - 设置：展示数据位置、Skills 根目录、工具目录和主题。
 
 ## 重要约束

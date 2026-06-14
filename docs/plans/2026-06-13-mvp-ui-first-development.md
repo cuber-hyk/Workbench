@@ -2,7 +2,7 @@
 artifact_type: plan
 status: active
 created: 2026-06-13
-updated: 2026-06-13
+updated: 2026-06-14
 owner: Codex
 ---
 
@@ -127,12 +127,12 @@ Verification:
 
 ### 5. Implement Project And Radar Persistence
 
-Status: in_progress
+Status: done
 
 Tasks:
 
 - 初始化 SQLite 连接、迁移和 repository 基础结构。
-- 实现项目增删改查、搜索、打开目录和启动配置。
+- 实现项目新增、编辑、查询、搜索、打开目录和启动配置。
 - 实现 AI Radar 增删改查、搜索、分类筛选、标签筛选、收藏和打开链接。
 - 将项目页和 Radar 页从 mock data 接入真实 Tauri commands。
 
@@ -178,7 +178,7 @@ Implementation note:
 
 - 默认根目录为 `~/.workbench/skills`。
 - 已将 `~/.cc-switch/skills` 中 34 个有效 Skills 一次性复制到默认根目录，源目录保持不变。
-- 项目和 AI Radar 持久化按用户决定继续延后，未执行步骤 5。
+- 项目与 AI Radar 已接入 `~/.workbench/workbench.sqlite`；Radar 支持真实增删改查、搜索筛选、收藏和打开链接。
 
 ### 7. Finish MVP Verification
 

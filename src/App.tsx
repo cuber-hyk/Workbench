@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { Button, IconButton, Modal, PageHeader, Panel, SearchInput, TagList } from "./components/ui";
 import { workbenchApi } from "./lib/api/workbenchApi";
-import type { AppSettings, ImportResult, Project, ProjectLaunchConfig, RadarItem, Skill, SkillVersionSource, ToolTarget, ViewKey } from "./lib/types/domain";
+import type { AppSettings, ImportResult, Project, ProjectLaunchConfig, RadarCategory, RadarItem, Skill, SkillVersionSource, ToolTarget, ViewKey } from "./lib/types/domain";
 
 const views: Array<{ key: ViewKey; label: string; icon: JSX.Element }> = [
   { key: "projects", label: "项目", icon: <Box size={16} /> },
@@ -42,8 +42,9 @@ export function App() {
   const [selectedRadarId, setSelectedRadarId] = useState("mcp");
   const [launchedProjectIds, setLaunchedProjectIds] = useState<string[]>([]);
   const [toast, setToast] = useState("");
-  const [activeDialog, setActiveDialog] = useState<"project" | "skills-import" | "skill-delete" | "radar" | null>(null);
+  const [activeDialog, setActiveDialog] = useState<"project" | "skills-import" | "skill-delete" | "radar" | "radar-delete" | null>(null);
   const [editingProjectId, setEditingProjectId] = useState("");
+  const [editingRadarId, setEditingRadarId] = useState("");
   const [importResults, setImportResults] = useState<ImportResult[]>([]);
   const [deleteSkillId, setDeleteSkillId] = useState("");
 
@@ -103,6 +104,41 @@ export function App() {
       setActiveDialog(null);
       setEditingProjectId("");
       showToast(editingProjectId ? "项目已更新" : "项目已添加");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function saveRadarItem(item: RadarItem) {
+    try {
+      const nextItems = await workbenchApi.saveRadarItem(item);
+      setRadarItems(nextItems);
+      setSelectedRadarId(item.id);
+      setActiveDialog(null);
+      setEditingRadarId("");
+      showToast(editingRadarId ? "Radar 条目已更新" : "Radar 条目已添加");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function deleteRadarItem(item: RadarItem) {
+    try {
+      const nextItems = await workbenchApi.deleteRadarItem(item.id);
+      setRadarItems(nextItems);
+      setSelectedRadarId(nextItems[0]?.id ?? "");
+      setActiveDialog(null);
+      showToast("Radar 条目已删除");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function toggleRadarFavorite(item: RadarItem) {
+    try {
+      const nextItems = await workbenchApi.saveRadarItem({ ...item, favorite: !item.favorite });
+      setRadarItems(nextItems);
+      showToast(item.favorite ? "已取消收藏" : "已收藏");
     } catch (error) {
       showToast(error instanceof Error ? error.message : String(error));
     }
@@ -276,8 +312,23 @@ export function App() {
             }}
           />
         )}
-        {activeView === "radar" && selectedRadar && (
-          <RadarView items={radarItems} selectedItem={selectedRadar} onSelect={setSelectedRadarId} onAdd={() => setActiveDialog("radar")} />
+        {activeView === "radar" && (
+          <RadarView
+            items={radarItems}
+            selectedItem={selectedRadar}
+            onSelect={setSelectedRadarId}
+            onAdd={() => {
+              setEditingRadarId("");
+              setActiveDialog("radar");
+            }}
+            onEdit={(item) => {
+              setEditingRadarId(item.id);
+              setActiveDialog("radar");
+            }}
+            onDelete={() => setActiveDialog("radar-delete")}
+            onToggleFavorite={(item) => void toggleRadarFavorite(item)}
+            onOpenLink={(url) => void workbenchApi.openRadarLink(url).catch((error) => showToast(String(error)))}
+          />
         )}
         {activeView === "settings" && settings && (
           <SettingsView
@@ -327,7 +378,23 @@ export function App() {
           }}
         />
       )}
-      {activeDialog === "radar" && <RadarDialog onClose={() => setActiveDialog(null)} />}
+      {activeDialog === "radar" && (
+        <RadarDialog
+          item={radarItems.find((item) => item.id === editingRadarId)}
+          onSubmit={saveRadarItem}
+          onClose={() => {
+            setActiveDialog(null);
+            setEditingRadarId("");
+          }}
+        />
+      )}
+      {activeDialog === "radar-delete" && selectedRadar && (
+        <DeleteRadarDialog
+          item={selectedRadar}
+          onClose={() => setActiveDialog(null)}
+          onConfirm={() => void deleteRadarItem(selectedRadar)}
+        />
+      )}
     </div>
   );
 }
@@ -896,27 +963,68 @@ function RadarView({
   items,
   selectedItem,
   onSelect,
-  onAdd
+  onAdd,
+  onEdit,
+  onDelete,
+  onToggleFavorite,
+  onOpenLink
 }: {
   items: RadarItem[];
-  selectedItem: RadarItem;
+  selectedItem?: RadarItem;
   onSelect: (id: string) => void;
   onAdd: () => void;
+  onEdit: (item: RadarItem) => void;
+  onDelete: (item: RadarItem) => void;
+  onToggleFavorite: (item: RadarItem) => void;
+  onOpenLink: (url: string) => void;
 }) {
+  const [query, setQuery] = useState("");
+  const [category, setCategory] = useState("全部分类");
+  const [tag, setTag] = useState("全部标签");
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
   const categories = useMemo(() => ["全部分类", "项目", "资讯", "论文", "其他"], []);
+  const tags = useMemo(
+    () => ["全部标签", ...Array.from(new Set(items.flatMap((item) => item.tags))).sort()],
+    [items]
+  );
+  const filteredItems = items.filter((item) => {
+    const normalizedQuery = query.trim().toLowerCase();
+    const matchesQuery =
+      !normalizedQuery ||
+      item.name.toLowerCase().includes(normalizedQuery) ||
+      item.note.toLowerCase().includes(normalizedQuery) ||
+      item.tags.some((itemTag) => itemTag.toLowerCase().includes(normalizedQuery));
+    return (
+      matchesQuery &&
+      (category === "全部分类" || item.category === category) &&
+      (tag === "全部标签" || item.tags.includes(tag)) &&
+      (!favoritesOnly || item.favorite)
+    );
+  });
+
   return (
     <section className="view">
       <PageHeader title="AI Radar" description={`${items.length} 条本地记录`} actions={<Button variant="primary" onClick={onAdd}><Plus size={15} />添加条目</Button>} />
       <div className="toolbar">
-        <SearchInput placeholder="搜索名称、标签或备注" />
-        <Button>{categories[0]}<ChevronDown size={14} /></Button>
-        <Button>全部标签<ChevronDown size={14} /></Button>
-        <Button>☆ 仅收藏</Button>
+        <SearchInput placeholder="搜索名称、标签或备注" value={query} onChange={(event) => setQuery(event.target.value)} />
+        <select aria-label="按分类筛选" value={category} onChange={(event) => setCategory(event.target.value)}>
+          {categories.map((option) => <option key={option}>{option}</option>)}
+        </select>
+        <select aria-label="按标签筛选" value={tag} onChange={(event) => setTag(event.target.value)}>
+          {tags.map((option) => <option key={option}>{option}</option>)}
+        </select>
+        <Button onClick={() => setFavoritesOnly((value) => !value)}>{favoritesOnly ? "★ 仅收藏" : "☆ 仅收藏"}</Button>
       </div>
       <div className="split-layout">
         <Panel className="list-panel card-list">
-          {items.map((item) => (
-            <button key={item.id} className={`row-card ${selectedItem.id === item.id ? "selected" : ""}`} onClick={() => onSelect(item.id)}>
+          {filteredItems.length === 0 && (
+            <div className="empty-state">
+              <strong>{items.length === 0 ? "暂无 Radar 条目" : "没有匹配的条目"}</strong>
+              <small>{items.length === 0 ? "点击“添加条目”记录第一条本地 AI 信息。" : "调整搜索词或筛选条件后重试。"}</small>
+            </div>
+          )}
+          {filteredItems.map((item) => (
+            <button key={item.id} className={`row-card ${selectedItem?.id === item.id ? "selected" : ""}`} onClick={() => onSelect(item.id)}>
               <span className="row-main"><strong>{item.name}</strong><i>{item.favorite ? "★ 已收藏" : "☆"}</i></span>
               <span className="meta-line">{item.category} · {item.tags.join(" · ")} · {item.updatedAt}</span>
               <p>{item.note}</p>
@@ -924,22 +1032,37 @@ function RadarView({
           ))}
         </Panel>
         <Panel className="detail-panel">
-          <div className="detail-title">
-            <div>
-              <h2>{selectedItem.name}</h2>
-              <p>{selectedItem.category} · {selectedItem.favorite ? "已收藏" : "未收藏"}</p>
+          {selectedItem ? (
+            <>
+              <div className="detail-title">
+                <div>
+                  <h2>{selectedItem.name}</h2>
+                  <p>{selectedItem.category} · {selectedItem.favorite ? "已收藏" : "未收藏"}</p>
+                </div>
+              </div>
+              <div className="form-grid">
+                <label>名称<input value={selectedItem.name} readOnly /></label>
+                <label>分类<input value={selectedItem.category} readOnly /></label>
+                <label className="full">链接<input value={selectedItem.url} readOnly /></label>
+                <label>标签<input value={selectedItem.tags.join(", ")} readOnly /></label>
+                <label>更新时间<input value={selectedItem.updatedAt} readOnly /></label>
+                <label className="full">备注<textarea rows={5} value={selectedItem.note} readOnly /></label>
+              </div>
+              <div className="detail-actions">
+                <div>
+                  <Button onClick={() => onToggleFavorite(selectedItem)}>{selectedItem.favorite ? "取消收藏" : "收藏"}</Button>
+                  <Button onClick={() => onOpenLink(selectedItem.url)} disabled={!selectedItem.url}>打开链接</Button>
+                  <Button onClick={() => onEdit(selectedItem)}>编辑条目</Button>
+                </div>
+                <Button className="danger" onClick={() => onDelete(selectedItem)}>删除条目</Button>
+              </div>
+            </>
+          ) : (
+            <div className="empty-state detail-empty">
+              <strong>选择一个 Radar 条目</strong>
+              <small>查看详情、收藏或打开链接。</small>
             </div>
-            <Button>打开链接</Button>
-          </div>
-          <div className="form-grid">
-            <label>名称<input value={selectedItem.name} readOnly /></label>
-            <label>分类<input value={selectedItem.category} readOnly /></label>
-            <label className="full">链接<input value={selectedItem.url} readOnly /></label>
-            <label>标签<input value={selectedItem.tags.join(", ")} readOnly /></label>
-            <label>更新时间<input value={selectedItem.updatedAt} readOnly /></label>
-            <label className="full">备注<textarea rows={5} value={selectedItem.note} readOnly /></label>
-          </div>
-          <Button>编辑条目</Button>
+          )}
         </Panel>
       </div>
     </section>
@@ -1305,21 +1428,80 @@ function globalStatusLabel(
   return `Workbench 管理 · ${syncMethodLabel(state.syncMethod ?? "copy")}`;
 }
 
-function RadarDialog({ onClose }: { onClose: () => void }) {
+function RadarDialog({
+  item,
+  onSubmit,
+  onClose
+}: {
+  item?: RadarItem;
+  onSubmit: (item: RadarItem) => void;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState(item?.name ?? "");
+  const [category, setCategory] = useState<RadarCategory>(item?.category ?? "项目");
+  const [url, setUrl] = useState(item?.url ?? "");
+  const [tags, setTags] = useState(item?.tags.join(", ") ?? "");
+  const [note, setNote] = useState(item?.note ?? "");
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmedName = name.trim();
+    if (!trimmedName) return;
+    onSubmit({
+      id: item?.id ?? createRadarId(trimmedName),
+      name: trimmedName,
+      category,
+      url: url.trim(),
+      tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean),
+      note: note.trim(),
+      favorite: item?.favorite ?? false,
+      updatedAt: item?.updatedAt ?? new Date().toISOString().slice(0, 10)
+    });
+  }
+
   return (
     <Modal
-      title="添加 Radar 条目"
+      title={item ? "编辑 Radar 条目" : "添加 Radar 条目"}
       description="手动记录本地 AI 信息条目"
       onClose={onClose}
-      footer={<><Button onClick={onClose}>取消</Button><Button variant="primary">添加条目</Button></>}
+      footer={<><Button onClick={onClose}>取消</Button><Button form="radar-form" type="submit" variant="primary">{item ? "保存" : "添加条目"}</Button></>}
     >
-      <div className="dialog-form">
-        <label>名称<input placeholder="条目名称" /></label>
-        <label>分类<select defaultValue="项目"><option>项目</option><option>资讯</option><option>论文</option><option>其他</option></select></label>
-        <label>链接<input placeholder="https://" /></label>
-        <label>标签<input placeholder="使用逗号分隔" /></label>
-        <label>备注<textarea rows={4} /></label>
+      <form id="radar-form" className="dialog-form" onSubmit={handleSubmit}>
+        <label>名称<input value={name} onChange={(event) => setName(event.target.value)} placeholder="条目名称" autoFocus /></label>
+        <label>分类<select value={category} onChange={(event) => setCategory(event.target.value as RadarCategory)}><option>项目</option><option>资讯</option><option>论文</option><option>其他</option></select></label>
+        <label>链接<input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://" /></label>
+        <label>标签<input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="使用逗号分隔" /></label>
+        <label>备注<textarea rows={4} value={note} onChange={(event) => setNote(event.target.value)} /></label>
+      </form>
+    </Modal>
+  );
+}
+
+function DeleteRadarDialog({
+  item,
+  onClose,
+  onConfirm
+}: {
+  item: RadarItem;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Modal
+      title="删除 Radar 条目"
+      description={`确认删除 ${item.name}`}
+      onClose={onClose}
+      footer={<><Button onClick={onClose}>取消</Button><Button className="danger" onClick={onConfirm}>删除条目</Button></>}
+    >
+      <div className="delete-summary">
+        <p>删除后，该条目将从本地 Workbench 数据库中移除。</p>
+        {item.url && <div className="file-block"><span>链接</span><code>{item.url}</code></div>}
       </div>
     </Modal>
   );
+}
+
+function createRadarId(name: string) {
+  const base = name.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]+/gi, "-").replace(/^-+|-+$/g, "") || "radar";
+  return `${base}-${Date.now().toString(36)}`;
 }

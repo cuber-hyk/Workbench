@@ -17,6 +17,8 @@ Do not read `docs/plans/`, `docs/audits/`, or archived directories by default.
 - `src/lib/types/domain.ts`：前端领域类型。
 - `src/lib/api/workbenchApi.ts`：前端到 Tauri commands 的 API 边界。
 - `src-tauri/src/lib.rs`：Tauri command 注册入口。
+- `src-tauri/src/projects.rs`：项目持久化、目录选择和启动逻辑。
+- `src-tauri/src/radar.rs`：AI Radar 持久化、校验和链接打开逻辑。
 - `src-tauri/src/skills.rs`：Skills 扫描、导入、启用、冲突、删除和 SQLite 逻辑。
 
 ## 设计
