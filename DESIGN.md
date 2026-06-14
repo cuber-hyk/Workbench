@@ -123,6 +123,7 @@ Row Card 用于项目和 Radar 列表项。
 - 全局工具标识使用紧凑工具图标，图标形态参考 cc-switch 的 Codex、Claude、OpenCode 工具入口。
 - Skills 列表中的分类标签支持双击编辑，空值保存为“未分类”。
 - Skills 列表中的操作列承载打开 `SKILL.md` 和删除图标按钮；删除点击后必须弹出确认弹窗。
+- Radar 使用 Row Card 列表；收藏、打开链接和编辑集中在详情底部操作栏左侧，删除位于右侧且删除前必须弹出确认弹窗。
 - Skills 操作列宽度使用 `skillsActionColumnWidth` token，避免按钮换行。
 
 ### 5.4 详情面板

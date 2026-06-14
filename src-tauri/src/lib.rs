@@ -1,4 +1,5 @@
 mod projects;
+mod radar;
 mod skills;
 
 #[tauri::command]
@@ -15,6 +16,10 @@ pub fn run() {
             projects::launch_project,
             projects::select_directory,
             projects::save_project,
+            radar::delete_radar_item,
+            radar::list_radar_items,
+            radar::open_radar_link,
+            radar::save_radar_item,
             skills::get_skills_state,
             skills::set_skills_root,
             skills::set_skill_category,

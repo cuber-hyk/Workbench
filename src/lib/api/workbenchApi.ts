@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { projects, radarItems, settings, skillCategories, skills } from "./mockData";
-import type { ImportResult, Project, SkillVersionSource, SkillsState, ToolTarget } from "../types/domain";
+import type { ImportResult, Project, RadarItem, SkillVersionSource, SkillsState, ToolTarget } from "../types/domain";
 
 const delay = async () => new Promise((resolve) => window.setTimeout(resolve, 80));
 const isTauri = "__TAURI_INTERNALS__" in window;
@@ -59,8 +59,40 @@ export const workbenchApi = {
     return skillCategories;
   },
   async listRadarItems() {
+    if (isTauri) {
+      return invoke<RadarItem[]>("list_radar_items");
+    }
     await delay();
     return radarItems;
+  },
+  async saveRadarItem(item: RadarItem) {
+    if (!isTauri) {
+      await delay();
+      const index = radarItems.findIndex((candidate) => candidate.id === item.id);
+      if (index >= 0) {
+        radarItems[index] = item;
+      } else {
+        radarItems.push(item);
+      }
+      return radarItems;
+    }
+    return invoke<RadarItem[]>("save_radar_item", { item });
+  },
+  async deleteRadarItem(id: string) {
+    if (!isTauri) {
+      await delay();
+      const index = radarItems.findIndex((candidate) => candidate.id === id);
+      if (index >= 0) radarItems.splice(index, 1);
+      return radarItems;
+    }
+    return invoke<RadarItem[]>("delete_radar_item", { id });
+  },
+  async openRadarLink(url: string) {
+    if (!isTauri) {
+      window.open(url, "_blank", "noopener,noreferrer");
+      return;
+    }
+    return invoke<void>("open_radar_link", { url });
   },
   async getSettings() {
     return (await skillsState()).settings;
