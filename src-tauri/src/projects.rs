@@ -384,6 +384,50 @@ mod tests {
     }
 
     #[test]
+    fn selects_all_enabled_launch_configs_with_commands() {
+        let configs = vec![
+            ProjectLaunchConfig {
+                id: "frontend".to_string(),
+                name: "Frontend".to_string(),
+                command: "pnpm dev".to_string(),
+                workdir: "E:\\Demo".to_string(),
+                enabled: true,
+            },
+            ProjectLaunchConfig {
+                id: "backend".to_string(),
+                name: "Backend".to_string(),
+                command: "uv run app.py".to_string(),
+                workdir: "E:\\Demo".to_string(),
+                enabled: true,
+            },
+            ProjectLaunchConfig {
+                id: "disabled".to_string(),
+                name: "Disabled".to_string(),
+                command: "ignored".to_string(),
+                workdir: "E:\\Demo".to_string(),
+                enabled: false,
+            },
+            ProjectLaunchConfig {
+                id: "empty".to_string(),
+                name: "Empty".to_string(),
+                command: String::new(),
+                workdir: "E:\\Demo".to_string(),
+                enabled: true,
+            },
+        ];
+
+        let selected = enabled_launch_configs(&configs);
+
+        assert_eq!(
+            selected
+                .iter()
+                .map(|config| config.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["frontend", "backend"]
+        );
+    }
+
+    #[test]
     fn persists_and_loads_project() {
         let dir = tempdir().unwrap();
         let connection = open_database(dir.path()).unwrap();

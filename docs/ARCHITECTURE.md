@@ -535,6 +535,17 @@ MVP 必须手动验证：
 - Windows 下 Auto 同步优先创建目录符号链接，权限不足时复制。
 - 目标路径存在时不会覆盖用户文件。
 
+### 9.4 统一验证入口
+
+提交前运行：
+
+```bash
+pnpm verify
+pnpm tauri:verify-build
+```
+
+`pnpm verify` 依次执行前端生产构建、Rust 格式检查、Rust 测试和 Clippy。`pnpm tauri:verify-build` 验证 Release 桌面应用构建。
+
 ## 10. 后续扩展边界
 
 以下内容不进入 MVP，但架构保留自然扩展空间：

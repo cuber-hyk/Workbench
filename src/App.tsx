@@ -439,10 +439,10 @@ function ProjectsView({
       <PageHeader title="项目" description="管理本地开发项目并快速启动" actions={<Button variant="primary" onClick={onAdd}><Plus size={15} />添加项目</Button>} />
       <div className="toolbar">
         <SearchInput placeholder="搜索项目名称或路径" value={query} onChange={(event) => setQuery(event.target.value)} />
-        <select value={tagFilter} onChange={(event) => setTagFilter(event.target.value)}>
+        <select aria-label="按标签筛选项目" value={tagFilter} onChange={(event) => setTagFilter(event.target.value)}>
           {tagOptions.map((tag) => <option key={tag}>{tag}</option>)}
         </select>
-        <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+        <select aria-label="按启动状态筛选项目" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
           <option>全部状态</option>
           <option>可启动</option>
           <option>未配置</option>
@@ -458,7 +458,9 @@ function ProjectsView({
               <div
                 key={project.id}
                 className={`table-row projects-grid ${selectedProject?.id === project.id ? "selected" : ""}`}
-                role="button"
+                role="group"
+                aria-label={`${project.name} 项目`}
+                aria-current={selectedProject?.id === project.id ? "true" : undefined}
                 tabIndex={0}
                 onClick={() => onSelect(project.id)}
                 onKeyDown={(event) => {
@@ -650,10 +652,10 @@ function SkillsView({
       </div>
       <div className="toolbar">
         <SearchInput placeholder="搜索名称或描述" value={query} onChange={(event) => setQuery(event.target.value)} />
-        <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
+        <select aria-label="按分类筛选 Skills" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
           {categories.map((category) => <option key={category}>{category}</option>)}
         </select>
-        <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+        <select aria-label="按状态筛选 Skills" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
           <option>全部状态</option>
           <option>已启用</option>
           <option>内容冲突</option>
@@ -667,7 +669,9 @@ function SkillsView({
             <div
               key={skill.id}
               className={`table-row skills-grid ${selectedSkill.id === skill.id ? "selected" : ""}`}
-              role="button"
+              role="group"
+              aria-label={`${skill.name} Skill`}
+              aria-current={selectedSkill.id === skill.id ? "true" : undefined}
               tabIndex={0}
               onClick={() => onSelect(skill.id)}
               onKeyDown={(event) => {

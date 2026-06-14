@@ -1229,6 +1229,27 @@ mod tests {
     }
 
     #[test]
+    fn auto_sync_does_not_overwrite_existing_target() {
+        let root = tempdir().unwrap();
+        let source = root.path().join("source");
+        let target = root.path().join("target");
+        fs::create_dir_all(&source).unwrap();
+        fs::create_dir_all(&target).unwrap();
+        fs::write(source.join("SKILL.md"), "source").unwrap();
+        fs::write(target.join("SKILL.md"), "existing").unwrap();
+
+        let result = sync_directory_auto_with(&source, &target, |_, _| {
+            Err(io::Error::new(io::ErrorKind::PermissionDenied, "denied"))
+        });
+
+        assert!(result.is_err());
+        assert_eq!(
+            fs::read_to_string(target.join("SKILL.md")).unwrap(),
+            "existing"
+        );
+    }
+
+    #[test]
     fn disabling_managed_copy_removes_target_without_removing_source() {
         let root = tempdir().unwrap();
         let source = root.path().join("source");
