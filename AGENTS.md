@@ -30,10 +30,8 @@ Workbench App 是一个本地优先的 AI 开发工作台。当前 MVP 聚焦项
 常用验证：
 
 ```bash
-npm run build
-cd src-tauri && cargo fmt --check
-cd src-tauri && cargo test --no-fail-fast
-cd src-tauri && cargo clippy --all-targets -- -D warnings
+pnpm verify
+pnpm tauri:verify-build
 ```
 
 Dev Flow 文档检查：

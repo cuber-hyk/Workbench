@@ -23,7 +23,7 @@
       },
       "muted": {
         "$type": "color",
-        "$value": "#697480"
+        "$value": "#56636f"
       },
       "border": {
         "$type": "color",
@@ -31,7 +31,11 @@
       },
       "accent": {
         "$type": "color",
-        "$value": "#0d9184"
+        "$value": "#08796f"
+      },
+      "accentContrast": {
+        "$type": "color",
+        "$value": "#ffffff"
       },
       "accentSoft": {
         "$type": "color",
@@ -43,7 +47,7 @@
       },
       "success": {
         "$type": "color",
-        "$value": "#31bb75"
+        "$value": "#187a4a"
       },
       "dangerBackground": {
         "$type": "color",
@@ -94,6 +98,10 @@
       "accent": {
         "$type": "color",
         "$value": "#15a99a"
+      },
+      "accentContrast": {
+        "$type": "color",
+        "$value": "#0c1014"
       },
       "accentSoft": {
         "$type": "color",

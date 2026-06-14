@@ -1,6 +1,6 @@
 ---
 artifact_type: plan
-status: active
+status: archived
 created: 2026-06-13
 updated: 2026-06-14
 owner: Codex
@@ -182,7 +182,7 @@ Implementation note:
 
 ### 7. Finish MVP Verification
 
-Status: todo
+Status: done
 
 Tasks:
 
@@ -197,8 +197,16 @@ Verification:
 - 前端构建通过。
 - Rust 测试通过。
 - Tauri dev 启动可用。
-- Windows 下打开目录、启动配置、创建符号链接均通过手动验证。
+- Windows 下打开目录和启动配置已完成交互验证；符号链接权限状态与 Auto Copy 回退行为已验证。
 - MVP 验收标准逐项满足。
+
+Verification evidence:
+
+- `pnpm verify` 通过：前端构建、Rust 格式检查、22 个 Rust 测试和 Clippy 均通过。
+- `pnpm tauri:verify-build` 与 NSIS 安装包构建通过。
+- Release 桌面应用启动冒烟验证通过。
+- Windows 当前会话不具备目录符号链接权限；Auto Copy 回退与目标不覆盖规则已由 Rust 测试验证。
+- 浅色和深色主题在 `1024×680` 最小桌面视口完成检查，Lighthouse Accessibility 与 Best Practices 均为 100。
 
 ## Risks
 
@@ -220,7 +228,7 @@ Verification:
 
 ## Artifact Routing
 
-- Plan: `docs/plans/2026-06-13-mvp-ui-first-development.md`
+- Plan: `docs/plans/archived/2026-06-13-mvp-ui-first-development.md`
 - Product scope: `docs/PRD.md`
 - Architecture: `docs/ARCHITECTURE.md`
 - Design system: `DESIGN.md` and `design-tokens.json`
@@ -231,8 +239,6 @@ Verification:
 - Context map: `docs/ai/context-map.md`
 - Agent guide: `AGENTS.md`
 
-## Execution Readiness
+## Closeout
 
-Ready.
-
-Recommended next step: start implementation in a reviewed development branch or continue directly with the first step if the user wants a simple linear workflow.
+MVP 实施与验证已完成，本计划归档保留作为第一阶段实现和验证记录。
