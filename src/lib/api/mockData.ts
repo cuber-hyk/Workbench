@@ -7,6 +7,7 @@ export const projects: Project[] = [
     path: "E:\\Development\\12-工具-Utility\\Workbench",
     note: "统一管理项目、Skills 与 AI Radar。",
     tags: ["Tauri", "本地工具"],
+    archived: false,
     launchConfigs: [
       {
         id: "workbench-dev",
@@ -23,6 +24,7 @@ export const projects: Project[] = [
     path: "E:\\Development\\01-Web-全栈\\ai-radar",
     note: "AI 信息聚合与趋势面板参考项目。",
     tags: ["信息库", "参考"],
+    archived: false,
     launchConfigs: [
       {
         id: "ai-radar-api",
@@ -39,6 +41,7 @@ export const projects: Project[] = [
     path: "E:\\Development\\12-工具-Utility\\Agent\\cc-switch",
     note: "Agent skills 管理方式参考项目。",
     tags: ["Skills", "参考"],
+    archived: true,
     launchConfigs: [
       {
         id: "cc-switch-dev",

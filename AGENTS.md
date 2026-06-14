@@ -31,6 +31,7 @@ Workbench App 是一个本地优先的 AI 开发工作台。当前 MVP 聚焦项
 
 ```bash
 pnpm verify
+pnpm test
 pnpm tauri:verify-build
 ```
 

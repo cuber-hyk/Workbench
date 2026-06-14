@@ -256,7 +256,7 @@
     },
     "projectsActionColumnWidth": {
       "$type": "dimension",
-      "$value": "112px"
+      "$value": "142px"
     },
     "detailPanelWidth": {
       "$type": "dimension",

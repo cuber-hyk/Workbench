@@ -17,6 +17,7 @@ pub struct ProjectRecord {
     pub note: String,
     pub tags: Vec<String>,
     pub launch_configs: Vec<ProjectLaunchConfig>,
+    pub archived: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -113,6 +114,12 @@ fn open_database(workbench_root: &Path) -> ProjectResult<Connection> {
             ",
         )
         .map_err(error_message)?;
+    ensure_column(
+        &connection,
+        "projects",
+        "archived",
+        "ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
+    )?;
     migrate_legacy_launch_configs(&connection)?;
     Ok(connection)
 }
@@ -121,7 +128,7 @@ fn load_projects(connection: &Connection) -> ProjectResult<Vec<ProjectRecord>> {
     let mut statement = connection
         .prepare(
             "
-            SELECT id, name, path, note, tags_json
+            SELECT id, name, path, note, tags_json, archived
             FROM projects
             ORDER BY lower(name)
             ",
@@ -138,6 +145,7 @@ fn load_projects(connection: &Connection) -> ProjectResult<Vec<ProjectRecord>> {
                 path: row.get(2)?,
                 note: row.get(3)?,
                 tags: serde_json::from_str(&tags_json).unwrap_or_default(),
+                archived: row.get::<_, i64>(5)? != 0,
             })
         })
         .map_err(error_message)?;
@@ -155,13 +163,14 @@ fn upsert_project(connection: &Connection, project: &ProjectRecord) -> ProjectRe
     transaction
         .execute(
             "
-            INSERT INTO projects(id, name, path, note, tags_json)
-            VALUES(?1, ?2, ?3, ?4, ?5)
+            INSERT INTO projects(id, name, path, note, tags_json, archived)
+            VALUES(?1, ?2, ?3, ?4, ?5, ?6)
             ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 path = excluded.path,
                 note = excluded.note,
                 tags_json = excluded.tags_json,
+                archived = excluded.archived,
                 updated_at = strftime('%s','now')
             ",
             params![
@@ -169,7 +178,8 @@ fn upsert_project(connection: &Connection, project: &ProjectRecord) -> ProjectRe
                 project.name,
                 project.path,
                 project.note,
-                tags_json
+                tags_json,
+                if project.archived { 1_i64 } else { 0_i64 }
             ],
         )
         .map_err(error_message)?;
@@ -242,6 +252,29 @@ fn validate_launch_request(command: &str, workdir: &str) -> ProjectResult<()> {
 
 fn error_message(error: impl std::fmt::Display) -> String {
     error.to_string()
+}
+
+fn ensure_column(
+    connection: &Connection,
+    table: &str,
+    column: &str,
+    alter_statement: &str,
+) -> ProjectResult<()> {
+    let mut statement = connection
+        .prepare(&format!("PRAGMA table_info({table})"))
+        .map_err(error_message)?;
+    let columns = statement
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(error_message)?;
+    for existing_column in columns {
+        if existing_column.map_err(error_message)? == column {
+            return Ok(());
+        }
+    }
+    connection
+        .execute(alter_statement, [])
+        .map_err(error_message)?;
+    Ok(())
 }
 
 fn load_launch_configs(
@@ -437,6 +470,7 @@ mod tests {
             path: "E:\\Demo".to_string(),
             note: "note".to_string(),
             tags: vec!["Tauri".to_string(), "本地工具".to_string()],
+            archived: false,
             launch_configs: vec![ProjectLaunchConfig {
                 id: "demo-dev".to_string(),
                 name: "Dev".to_string(),
@@ -462,6 +496,7 @@ mod tests {
             path: "E:\\Demo".to_string(),
             note: String::new(),
             tags: Vec::new(),
+            archived: false,
             launch_configs: Vec::new(),
         };
 
@@ -502,5 +537,60 @@ mod tests {
         assert_eq!(projects[0].launch_configs[0].command, "pnpm dev");
         assert_eq!(projects[0].launch_configs[0].workdir, "E:\\Legacy");
         assert!(projects[0].launch_configs[0].enabled);
+        assert!(!projects[0].archived);
+    }
+
+    #[test]
+    fn persists_project_archive_state() {
+        let dir = tempdir().unwrap();
+        let connection = open_database(dir.path()).unwrap();
+        let project = ProjectRecord {
+            id: "demo".to_string(),
+            name: "Demo".to_string(),
+            path: "E:\\Demo".to_string(),
+            note: String::new(),
+            tags: Vec::new(),
+            launch_configs: Vec::new(),
+            archived: true,
+        };
+
+        upsert_project(&connection, &project).unwrap();
+        let projects = load_projects(&connection).unwrap();
+
+        assert_eq!(projects, vec![project]);
+    }
+
+    #[test]
+    fn migrates_project_archive_state_default_to_false() {
+        let dir = tempdir().unwrap();
+        let database_path = dir.path().join("workbench.sqlite");
+        let connection = Connection::open(&database_path).unwrap();
+        connection
+            .execute_batch(
+                "
+                CREATE TABLE projects (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    path TEXT NOT NULL UNIQUE,
+                    note TEXT NOT NULL DEFAULT '',
+                    tags_json TEXT NOT NULL DEFAULT '[]',
+                    launch_command TEXT NOT NULL DEFAULT '',
+                    launch_workdir TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT 'missing-command',
+                    created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+                    updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+                );
+                INSERT INTO projects(id, name, path, note, tags_json, launch_command, launch_workdir, status)
+                VALUES('legacy', 'Legacy', 'E:\\Legacy', '', '[]', '', '', 'missing-command');
+                ",
+            )
+            .unwrap();
+        drop(connection);
+
+        let connection = open_database(dir.path()).unwrap();
+        let projects = load_projects(&connection).unwrap();
+
+        assert_eq!(projects.len(), 1);
+        assert!(!projects[0].archived);
     }
 }

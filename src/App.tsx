@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import {
+  Archive,
+  ArchiveRestore,
   Box,
   ChevronDown,
   CircleDot,
@@ -40,7 +42,9 @@ export function App() {
   const [selectedProjectId, setSelectedProjectId] = useState("workbench");
   const [selectedSkillId, setSelectedSkillId] = useState("security-review");
   const [selectedRadarId, setSelectedRadarId] = useState("mcp");
-  const [launchedProjectIds, setLaunchedProjectIds] = useState<string[]>([]);
+  const [projectLaunchTimes, setProjectLaunchTimes] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [toast, setToast] = useState("");
   const [activeDialog, setActiveDialog] = useState<"project" | "skills-import" | "skill-delete" | "radar" | "radar-delete" | null>(null);
   const [editingProjectId, setEditingProjectId] = useState("");
@@ -54,15 +58,23 @@ export function App() {
   }, [theme]);
 
   useEffect(() => {
+    setLoading(true);
     void Promise.all([
       workbenchApi.listProjects().then(setProjects),
       workbenchApi.listSkills().then(setSkills),
       workbenchApi.listRadarItems().then(setRadarItems),
       workbenchApi.getSettings().then(setSettings)
-    ]);
+    ])
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        setLoadError(message);
+        showToast(message);
+      })
+      .finally(() => setLoading(false));
   }, []);
 
-  const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? projects[0];
+  const activeProjects = projects.filter((project) => !project.archived);
+  const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? activeProjects[0] ?? projects[0];
   const selectedSkill = skills.find((skill) => skill.id === selectedSkillId) ?? skills[0];
   const deleteSkill = skills.find((skill) => skill.id === deleteSkillId) ?? selectedSkill;
   const selectedRadar = radarItems.find((item) => item.id === selectedRadarId) ?? radarItems[0];
@@ -200,19 +212,22 @@ export function App() {
           <ProjectsView
             projects={projects}
             selectedProject={selectedProject}
-            launchedProjectIds={launchedProjectIds}
+            projectLaunchTimes={projectLaunchTimes}
+            loading={loading}
+            loadError={loadError}
             onSelect={setSelectedProjectId}
             onLaunch={async (project) => {
               try {
                 await workbenchApi.launchProject(project);
-                setLaunchedProjectIds((ids) => ids.includes(project.id) ? ids : [...ids, project.id]);
-                  const count = enabledLaunchConfigs(project).length;
-                  showToast(`已启动 ${project.name} 的 ${count} 个启动项`);
+                setProjectLaunchTimes((times) => ({ ...times, [project.id]: formatLaunchTime(new Date()) }));
+                const count = enabledLaunchConfigs(project).length;
+                showToast(`已请求启动 ${project.name} 的 ${count} 个启动项`);
               } catch (error) {
                 showToast(error instanceof Error ? error.message : String(error));
               }
             }}
             onEdit={(project) => openProjectDialog(project.id)}
+            onArchive={(project, archived) => void saveProject({ ...project, archived })}
             onAdd={() => openProjectDialog()}
           />
         )}
@@ -221,7 +236,7 @@ export function App() {
             skills={skills}
             selectedSkill={selectedSkill}
             settings={settings}
-            projects={projects}
+            projects={activeProjects}
             onSelect={setSelectedSkillId}
             onImport={async (kind) => {
               try {
@@ -312,10 +327,22 @@ export function App() {
             }}
           />
         )}
+        {activeView === "skills" && (!selectedSkill || !settings) && (
+          <ModuleStateView
+            title="Skills"
+            description="管理统一根目录中的 Skills"
+            loading={loading}
+            error={loadError}
+            emptyTitle="暂无 Skills"
+            emptyDescription="配置统一根目录并扫描后，可以在这里管理 Skills。"
+          />
+        )}
         {activeView === "radar" && (
           <RadarView
             items={radarItems}
             selectedItem={selectedRadar}
+            loading={loading}
+            loadError={loadError}
             onSelect={setSelectedRadarId}
             onAdd={() => {
               setEditingRadarId("");
@@ -336,6 +363,17 @@ export function App() {
             theme={theme}
             onThemeToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
             onRootChange={(path) => void runSkillAction(() => workbenchApi.setSkillsRoot(path), "Skills 根目录已更新")}
+            onOpenPath={(path) => void workbenchApi.openLocalPath(path).catch((error) => showToast(String(error)))}
+          />
+        )}
+        {activeView === "settings" && !settings && (
+          <ModuleStateView
+            title="设置"
+            description="管理本地路径、工具目录与主题"
+            loading={loading}
+            error={loadError}
+            emptyTitle="设置暂不可用"
+            emptyDescription="等待本地设置读取完成后再试。"
           />
         )}
       </main>
@@ -399,26 +437,61 @@ export function App() {
   );
 }
 
-function ProjectsView({
+export function ModuleStateView({
+  title,
+  description,
+  loading,
+  error,
+  emptyTitle,
+  emptyDescription
+}: {
+  title: string;
+  description: string;
+  loading: boolean;
+  error: string;
+  emptyTitle: string;
+  emptyDescription: string;
+}) {
+  return (
+    <section className="view">
+      <PageHeader title={title} description={description} />
+      <Panel className="state-panel">
+        <div className="empty-state detail-empty">
+          <strong>{loading ? "正在加载" : error ? "加载失败" : emptyTitle}</strong>
+          <small>{loading ? "正在读取 Workbench 本地数据。" : error || emptyDescription}</small>
+        </div>
+      </Panel>
+    </section>
+  );
+}
+
+export function ProjectsView({
   projects,
   selectedProject,
-  launchedProjectIds,
+  projectLaunchTimes,
+  loading,
+  loadError,
   onSelect,
   onLaunch,
   onEdit,
+  onArchive,
   onAdd
 }: {
   projects: Project[];
   selectedProject?: Project;
-  launchedProjectIds: string[];
+  projectLaunchTimes: Record<string, string>;
+  loading: boolean;
+  loadError: string;
   onSelect: (id: string) => void;
   onLaunch: (project: Project) => void;
   onEdit: (project: Project) => void;
+  onArchive: (project: Project, archived: boolean) => void;
   onAdd: () => void;
 }) {
   const [query, setQuery] = useState("");
   const [tagFilter, setTagFilter] = useState("全部标签");
   const [statusFilter, setStatusFilter] = useState("全部状态");
+  const [archiveFilter, setArchiveFilter] = useState("活跃项目");
   const tagOptions = useMemo(
     () => ["全部标签", ...Array.from(new Set(projects.flatMap((project) => project.tags)))],
     [projects]
@@ -429,9 +502,13 @@ function ProjectsView({
       || project.name.toLowerCase().includes(normalizedQuery)
       || project.path.toLowerCase().includes(normalizedQuery);
     const matchesTag = tagFilter === "全部标签" || project.tags.includes(tagFilter);
-    const status = getProjectLaunchStatus(project, launchedProjectIds);
+    const status = getProjectLaunchStatus(project, projectLaunchTimes);
     const matchesStatus = statusFilter === "全部状态" || status === statusFilter;
-    return matchesQuery && matchesTag && matchesStatus;
+    const matchesArchive =
+      archiveFilter === "全部项目" ||
+      (archiveFilter === "活跃项目" && !project.archived) ||
+      (archiveFilter === "已归档" && project.archived);
+    return matchesQuery && matchesTag && matchesStatus && matchesArchive;
   });
 
   return (
@@ -448,12 +525,29 @@ function ProjectsView({
           <option>未配置</option>
           <option>已启动请求</option>
         </select>
+        <select aria-label="按归档状态筛选项目" value={archiveFilter} onChange={(event) => setArchiveFilter(event.target.value)}>
+          <option>活跃项目</option>
+          <option>已归档</option>
+          <option>全部项目</option>
+        </select>
       </div>
       <div className="split-layout">
         <Panel className="list-panel">
           <div className="table-head projects-grid"><span>项目</span><span>标签</span><span>启动项</span><span>状态</span><span>操作</span></div>
-          {visibleProjects.map((project) => {
-            const launchStatus = getProjectLaunchStatus(project, launchedProjectIds);
+          {loading && (
+            <div className="empty-state">
+              <strong>正在加载项目</strong>
+              <small>正在读取 Workbench 本地数据库。</small>
+            </div>
+          )}
+          {!loading && loadError && (
+            <div className="empty-state">
+              <strong>项目加载失败</strong>
+              <small>{loadError}</small>
+            </div>
+          )}
+          {!loading && !loadError && visibleProjects.map((project) => {
+            const launchStatus = getProjectLaunchStatus(project, projectLaunchTimes);
             return (
               <div
                 key={project.id}
@@ -467,7 +561,10 @@ function ProjectsView({
                   if (event.key === "Enter" || event.key === " ") onSelect(project.id);
                 }}
               >
-                <span className="title-cell"><strong>{project.name}</strong><small>{project.path}</small></span>
+                <span className="title-cell">
+                  <strong>{project.name}{project.archived && <i className="archived-inline">已归档</i>}</strong>
+                  <small>{project.path}</small>
+                </span>
                 <TagList tags={project.tags} />
                 <span className="command-cell">{formatLaunchConfigSummary(project)}</span>
                 <span><i className={`project-status-pill ${launchStatus === "未配置" ? "muted-status" : launchStatus === "已启动请求" ? "launched" : ""}`}>{launchStatus}</i></span>
@@ -500,14 +597,23 @@ function ProjectsView({
                   >
                     <Edit3 size={14} />
                   </IconButton>
+                  <IconButton
+                    title={project.archived ? "恢复项目" : "归档项目"}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onArchive(project, !project.archived);
+                    }}
+                  >
+                    {project.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+                  </IconButton>
                 </span>
               </div>
             );
           })}
-          {visibleProjects.length === 0 && (
+          {!loading && !loadError && visibleProjects.length === 0 && (
             <div className="empty-state">
-              <strong>暂无项目</strong>
-              <small>点击右上角“添加项目”记录本地项目路径和启动配置。</small>
+              <strong>{projects.length === 0 ? "暂无项目" : "没有匹配的项目"}</strong>
+              <small>{projects.length === 0 ? "点击右上角“添加项目”记录本地项目路径和启动配置。" : "调整搜索、标签、启动状态或归档筛选后重试。"}</small>
             </div>
           )}
         </Panel>
@@ -520,7 +626,12 @@ function ProjectsView({
                   <h2>{selectedProject.name}</h2>
                   <p>{selectedProject.note}</p>
                 </div>
-                <IconButton title="编辑" onClick={() => onEdit(selectedProject)}><Edit3 size={15} /></IconButton>
+                <div className="detail-actions compact">
+                  <IconButton title="编辑" onClick={() => onEdit(selectedProject)}><Edit3 size={15} /></IconButton>
+                  <IconButton title={selectedProject.archived ? "恢复项目" : "归档项目"} onClick={() => onArchive(selectedProject, !selectedProject.archived)}>
+                    {selectedProject.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />}
+                  </IconButton>
+                </div>
               </div>
               <div className="form-grid">
                 <label>项目路径<input value={selectedProject.path} readOnly /></label>
@@ -541,7 +652,9 @@ function ProjectsView({
                 )) : <p className="muted">暂无启动配置。</p>}
               </div>
               <div className="detail-meta-grid">
-                <div><small>启动状态</small><strong>{getProjectLaunchStatus(selectedProject, launchedProjectIds)}</strong></div>
+                <div><small>启动状态</small><strong>{getProjectLaunchStatus(selectedProject, projectLaunchTimes)}</strong></div>
+                <div><small>最近启动请求</small><strong>{projectLaunchTimes[selectedProject.id] ?? "暂无"}</strong></div>
+                <div><small>项目状态</small><strong>{selectedProject.archived ? "已归档" : "活跃"}</strong></div>
                 <div><small>启动方式</small><strong>系统终端窗口</strong></div>
               </div>
               <div className="boundary-note">
@@ -561,12 +674,12 @@ function ProjectsView({
   );
 }
 
-function getProjectLaunchStatus(project: Project, launchedProjectIds: string[]) {
-  if (launchedProjectIds.includes(project.id)) return "已启动请求";
+export function getProjectLaunchStatus(project: Project, projectLaunchTimes: Record<string, string>) {
+  if (projectLaunchTimes[project.id]) return "已启动请求";
   return enabledLaunchConfigs(project).length ? "可启动" : "未配置";
 }
 
-function enabledLaunchConfigs(project: Project) {
+export function enabledLaunchConfigs(project: Project) {
   return project.launchConfigs.filter((config) => config.enabled && config.command.trim());
 }
 
@@ -575,6 +688,15 @@ function formatLaunchConfigSummary(project: Project) {
   const enabled = enabledLaunchConfigs(project).length;
   if (total === 0) return <small>未配置</small>;
   return <span>{enabled}/{total} 启动项</span>;
+}
+
+function formatLaunchTime(date: Date) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(date);
 }
 
 function SkillsView({
@@ -963,9 +1085,11 @@ function SkillConflictPanel({
   );
 }
 
-function RadarView({
+export function RadarView({
   items,
   selectedItem,
+  loading,
+  loadError,
   onSelect,
   onAdd,
   onEdit,
@@ -975,6 +1099,8 @@ function RadarView({
 }: {
   items: RadarItem[];
   selectedItem?: RadarItem;
+  loading: boolean;
+  loadError: string;
   onSelect: (id: string) => void;
   onAdd: () => void;
   onEdit: (item: RadarItem) => void;
@@ -1021,13 +1147,25 @@ function RadarView({
       </div>
       <div className="split-layout">
         <Panel className="list-panel card-list">
-          {filteredItems.length === 0 && (
+          {loading && (
+            <div className="empty-state">
+              <strong>正在加载 Radar</strong>
+              <small>正在读取 Workbench 本地数据库。</small>
+            </div>
+          )}
+          {!loading && loadError && (
+            <div className="empty-state">
+              <strong>Radar 加载失败</strong>
+              <small>{loadError}</small>
+            </div>
+          )}
+          {!loading && !loadError && filteredItems.length === 0 && (
             <div className="empty-state">
               <strong>{items.length === 0 ? "暂无 Radar 条目" : "没有匹配的条目"}</strong>
               <small>{items.length === 0 ? "点击“添加条目”记录第一条本地 AI 信息。" : "调整搜索词或筛选条件后重试。"}</small>
             </div>
           )}
-          {filteredItems.map((item) => (
+          {!loading && !loadError && filteredItems.map((item) => (
             <button key={item.id} className={`row-card ${selectedItem?.id === item.id ? "selected" : ""}`} onClick={() => onSelect(item.id)}>
               <span className="row-main"><strong>{item.name}</strong><i>{item.favorite ? "★ 已收藏" : "☆"}</i></span>
               <span className="meta-line">{item.category} · {item.tags.join(" · ")} · {item.updatedAt}</span>
@@ -1077,12 +1215,14 @@ function SettingsView({
   settings,
   theme,
   onThemeToggle,
-  onRootChange
+  onRootChange,
+  onOpenPath
 }: {
   settings: AppSettings;
   theme: "light" | "dark";
   onThemeToggle: () => void;
   onRootChange: (path: string) => void;
+  onOpenPath: (path: string) => void;
 }) {
   return (
     <section className="view">
@@ -1091,18 +1231,22 @@ function SettingsView({
         <section className="settings-panel">
           <h2>Skills 存储</h2>
           <p>Workbench Skills 根目录是所有 Skill 的唯一真实来源。</p>
-          <div className="settings-row">
-            <label className="settings-path-field">
-              <small>统一 Skills 根目录</small>
-              <input
-                key={settings.skillsRoot}
-                defaultValue={settings.skillsRoot}
-                onBlur={(event) => {
-                  const path = event.target.value.trim();
-                  if (path && path !== settings.skillsRoot) onRootChange(path);
-                }}
-              />
-            </label>
+          <div className="settings-row path-setting-row">
+            <div className="settings-path-field">
+              <label htmlFor="settings-skills-root">统一 Skills 根目录</label>
+              <span className="settings-path-control">
+                <input
+                  id="settings-skills-root"
+                  key={settings.skillsRoot}
+                  defaultValue={settings.skillsRoot}
+                  onBlur={(event) => {
+                    const path = event.target.value.trim();
+                    if (path && path !== settings.skillsRoot) onRootChange(path);
+                  }}
+                />
+                <IconButton title="打开 Skills 根目录" onClick={() => onOpenPath(settings.skillsRoot)}><FolderOpen size={15} /></IconButton>
+              </span>
+            </div>
           </div>
         </section>
         <section className="settings-panel">
@@ -1111,7 +1255,10 @@ function SettingsView({
           {settings.toolTargets.map((tool) => (
             <div className="settings-row" key={tool.key}>
               <span><strong>{tool.name}</strong><small>{tool.globalSkillsDir}</small></span>
-              <i className="available">{tool.available ? "可用" : "不可用"}</i>
+              <span className="settings-row-actions">
+                <IconButton title={`打开 ${tool.name} Skills 目录`} onClick={() => onOpenPath(tool.globalSkillsDir)}><FolderOpen size={15} /></IconButton>
+                <i className="available">{tool.available ? "可用" : "不可用"}</i>
+              </span>
             </div>
           ))}
         </section>
@@ -1127,7 +1274,14 @@ function SettingsView({
         <section className="settings-panel">
           <h2>本地数据</h2>
           <p>项目、分类和 AI Radar 数据保存在系统应用数据目录。</p>
-          <div className="settings-row"><span><small>数据存储位置</small>{settings.workbenchRoot}</span></div>
+          <div className="settings-row">
+            <span><small>Workbench 根目录</small>{settings.workbenchRoot}</span>
+            <IconButton title="打开 Workbench 根目录" onClick={() => onOpenPath(settings.workbenchRoot)}><FolderOpen size={15} /></IconButton>
+          </div>
+          <div className="settings-row">
+            <span><small>SQLite 数据库</small>{settings.workbenchRoot}\\workbench.sqlite</span>
+            <IconButton title="打开数据库所在目录" onClick={() => onOpenPath(settings.workbenchRoot)}><FolderOpen size={15} /></IconButton>
+          </div>
         </section>
         <section className="settings-panel">
           <h2>主题背景</h2>
@@ -1163,7 +1317,7 @@ function ToolIcon({ tool }: { tool: ToolTarget["key"] }) {
   );
 }
 
-function ProjectDialog({
+export function ProjectDialog({
   project,
   onSelectDirectory,
   onError,
@@ -1185,6 +1339,7 @@ function ProjectDialog({
       : [createLaunchConfig("默认", project?.path ?? "")]
   );
   const [note, setNote] = useState(project?.note ?? "");
+  const [formError, setFormError] = useState("");
   const isEditing = Boolean(project);
 
   function handlePathChange(value: string) {
@@ -1239,14 +1394,22 @@ function ProjectDialog({
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmedPath = path.trim();
-    if (!trimmedPath) return;
+    if (!trimmedPath) {
+      setFormError("项目路径不能为空");
+      return;
+    }
     const trimmedName = name.trim() || getProjectNameFromPath(trimmedPath);
+    if (!trimmedName) {
+      setFormError("项目名称不能为空");
+      return;
+    }
     onSubmit({
       id: project?.id ?? createProjectId(trimmedName, trimmedPath),
       name: trimmedName,
       path: trimmedPath,
       note: note.trim(),
       tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean),
+      archived: project?.archived ?? false,
       launchConfigs: launchConfigs
         .map((config) => ({
           ...config,
@@ -1266,6 +1429,7 @@ function ProjectDialog({
       footer={<><Button onClick={onClose}>取消</Button><Button form="project-form" type="submit" variant="primary">{isEditing ? "保存" : "添加项目"}</Button></>}
     >
       <form id="project-form" className="dialog-form" onSubmit={handleSubmit}>
+        {formError && <p className="field-error">{formError}</p>}
         <label>项目路径
           <span className="field-with-action">
             <input value={path} onChange={(event) => handlePathChange(event.target.value)} placeholder="E:\\Development\\NewProject" autoFocus />
@@ -1446,16 +1610,25 @@ function RadarDialog({
   const [url, setUrl] = useState(item?.url ?? "");
   const [tags, setTags] = useState(item?.tags.join(", ") ?? "");
   const [note, setNote] = useState(item?.note ?? "");
+  const [formError, setFormError] = useState("");
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmedName = name.trim();
-    if (!trimmedName) return;
+    const trimmedUrl = url.trim();
+    if (!trimmedName) {
+      setFormError("条目名称不能为空");
+      return;
+    }
+    if (trimmedUrl && !/^https?:\/\//i.test(trimmedUrl)) {
+      setFormError("链接必须使用 http:// 或 https://");
+      return;
+    }
     onSubmit({
       id: item?.id ?? createRadarId(trimmedName),
       name: trimmedName,
       category,
-      url: url.trim(),
+      url: trimmedUrl,
       tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean),
       note: note.trim(),
       favorite: item?.favorite ?? false,
@@ -1471,6 +1644,7 @@ function RadarDialog({
       footer={<><Button onClick={onClose}>取消</Button><Button form="radar-form" type="submit" variant="primary">{item ? "保存" : "添加条目"}</Button></>}
     >
       <form id="radar-form" className="dialog-form" onSubmit={handleSubmit}>
+        {formError && <p className="field-error">{formError}</p>}
         <label>名称<input value={name} onChange={(event) => setName(event.target.value)} placeholder="条目名称" autoFocus /></label>
         <label>分类<select value={category} onChange={(event) => setCategory(event.target.value as RadarCategory)}><option>项目</option><option>资讯</option><option>论文</option><option>其他</option></select></label>
         <label>链接<input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://" /></label>
