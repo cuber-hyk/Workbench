@@ -7,6 +7,7 @@ export interface Project {
   note: string;
   tags: string[];
   launchConfigs: ProjectLaunchConfig[];
+  archived: boolean;
 }
 
 export interface ProjectLaunchConfig {
