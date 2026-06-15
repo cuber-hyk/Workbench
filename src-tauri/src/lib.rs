@@ -18,6 +18,7 @@ pub fn run() {
             projects::restart_launch_session,
             projects::stop_launch_session,
             projects::stop_launch_run,
+            projects::get_launch_run_snapshot,
             projects::select_directory,
             projects::save_project,
             radar::delete_radar_item,

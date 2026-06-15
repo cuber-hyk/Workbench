@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { projects, radarItems, settings, skillCategories, skills } from "./mockData";
-import type { ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, Project, RadarItem, SkillVersionSource, SkillsState, ToolTarget } from "../types/domain";
+import type { ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, Project, RadarItem, SkillVersionSource, SkillsState, ToolTarget } from "../types/domain";
 
 const delay = async () => new Promise((resolve) => window.setTimeout(resolve, 80));
 const isTauri = "__TAURI_INTERNALS__" in window;
@@ -78,6 +78,13 @@ export const workbenchApi = {
       };
     }
     return invoke<LaunchSession>("restart_launch_session", { session });
+  },
+  async getLaunchRunSnapshot(launchRunId: string) {
+    if (!isTauri) {
+      await delay();
+      return [] as LaunchSessionSnapshot[];
+    }
+    return invoke<LaunchSessionSnapshot[]>("get_launch_run_snapshot", { launchRunId });
   },
   async subscribeLaunchEvents(handler: (event: LaunchSessionEvent) => void) {
     if (!isTauri) return () => {};

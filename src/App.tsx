@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import {
   Archive,
   ArchiveRestore,
+  ArrowLeft,
   Box,
   ChevronDown,
   CircleDot,
@@ -24,7 +25,7 @@ import {
 } from "lucide-react";
 import { Button, IconButton, Modal, PageHeader, Panel, SearchInput, TagList } from "./components/ui";
 import { workbenchApi } from "./lib/api/workbenchApi";
-import type { AppSettings, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, Project, ProjectLaunchConfig, RadarCategory, RadarItem, Skill, SkillVersionSource, ToolTarget, ViewKey } from "./lib/types/domain";
+import type { AppSettings, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, Project, ProjectLaunchConfig, RadarCategory, RadarItem, Skill, SkillVersionSource, ToolTarget, ViewKey } from "./lib/types/domain";
 
 const views: Array<{ key: ViewKey; label: string; icon: JSX.Element }> = [
   { key: "projects", label: "项目", icon: <Box size={16} /> },
@@ -80,7 +81,8 @@ export function App() {
 
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
-    void workbenchApi.subscribeLaunchEvents((event) => {
+    void workbenchApi.subscribeLaunchEvents((rawEvent) => {
+      const event = normalizeLaunchSessionEvent(rawEvent);
       setLaunchRuns((current) => {
         const entry = Object.entries(current).find(([, launchRun]) => launchRun.id === event.launchRunId);
         if (!entry) {
@@ -300,6 +302,21 @@ export function App() {
                 showToast(error instanceof Error ? error.message : String(error));
               }
             }}
+            onSyncLaunchRun={async (launchRunId) => {
+              try {
+                const snapshots = await workbenchApi.getLaunchRunSnapshot(launchRunId);
+                setLaunchRuns((current) => mergeLaunchRunSnapshotsInRuns(current, launchRunId, snapshots));
+              } catch (error) {
+                showToast(error instanceof Error ? error.message : String(error));
+              }
+            }}
+            onOpenLogUrl={async (url) => {
+              try {
+                await workbenchApi.openRadarLink(url);
+              } catch (error) {
+                showToast(error instanceof Error ? error.message : String(error));
+              }
+            }}
             onClearLaunchRun={(projectId) => {
               setLaunchRuns((current) => {
                 const { [projectId]: _removed, ...remaining } = current;
@@ -307,7 +324,13 @@ export function App() {
               });
             }}
             onEdit={(project) => openProjectDialog(project.id)}
-            onArchive={(project, archived) => void saveProject({ ...project, archived })}
+            onArchive={(project, archived) => {
+              if (archived && isProjectRunning(project.id, launchRuns)) {
+                showToast("运行中的项目不能归档，请先停止启动会话");
+                return;
+              }
+              void saveProject({ ...project, archived });
+            }}
             onAdd={() => openProjectDialog()}
           />
         )}
@@ -558,6 +581,8 @@ export function ProjectsView({
   onStopLaunchSession = () => undefined,
   onStopLaunchRun = () => undefined,
   onRestartLaunchSession = () => undefined,
+  onSyncLaunchRun = () => undefined,
+  onOpenLogUrl = () => undefined,
   onClearLaunchRun = () => undefined,
   onEdit,
   onArchive,
@@ -575,6 +600,8 @@ export function ProjectsView({
   onStopLaunchSession?: (sessionId: string) => void;
   onStopLaunchRun?: (launchRunId: string) => void;
   onRestartLaunchSession?: (session: LaunchSession) => void;
+  onSyncLaunchRun?: (launchRunId: string) => void;
+  onOpenLogUrl?: (url: string) => void;
   onClearLaunchRun?: (projectId: string) => void;
   onEdit: (project: Project) => void;
   onArchive: (project: Project, archived: boolean) => void;
@@ -584,11 +611,15 @@ export function ProjectsView({
   const [tagFilter, setTagFilter] = useState("全部标签");
   const [statusFilter, setStatusFilter] = useState("全部状态");
   const [archiveFilter, setArchiveFilter] = useState("活跃项目");
+  const [launchLogProjectId, setLaunchLogProjectId] = useState("");
   const tagOptions = useMemo(
     () => ["全部标签", ...Array.from(new Set(projects.flatMap((project) => project.tags)))],
     [projects]
   );
   const currentLaunchRuns = launchRuns ?? (launchRun ? { [launchRun.projectId]: launchRun } : {});
+  const launchLogProject = projects.find((project) => project.id === launchLogProjectId);
+  const launchLogRun = launchLogProject ? currentLaunchRuns[launchLogProject.id] ?? null : null;
+  const selectedProjectRunning = selectedProject ? isProjectRunning(selectedProject.id, currentLaunchRuns) : false;
   const visibleProjects = projects.filter((project) => {
     const normalizedQuery = query.trim().toLowerCase();
     const matchesQuery = !normalizedQuery
@@ -604,6 +635,26 @@ export function ProjectsView({
     return matchesQuery && matchesTag && matchesStatus && matchesArchive;
   });
   const selectedLaunchRun = selectedProject ? currentLaunchRuns[selectedProject.id] ?? null : null;
+
+  if (launchLogProject && launchLogRun) {
+    return (
+      <LaunchLogDetailPage
+        project={launchLogProject}
+        launchRun={launchLogRun}
+        onBack={() => setLaunchLogProjectId("")}
+        onLaunch={onLaunch}
+        onStopLaunchSession={onStopLaunchSession}
+        onStopLaunchRun={onStopLaunchRun}
+        onRestartLaunchSession={onRestartLaunchSession}
+        onSyncLaunchRun={onSyncLaunchRun}
+        onOpenLogUrl={onOpenLogUrl}
+        onClearLaunchRun={() => {
+          onClearLaunchRun(launchLogProject.id);
+          setLaunchLogProjectId("");
+        }}
+      />
+    );
+  }
 
   return (
     <section className="view">
@@ -702,9 +753,11 @@ export function ProjectsView({
                     <Edit3 size={14} />
                   </IconButton>
                   <IconButton
-                    title={project.archived ? "恢复项目" : "归档项目"}
+                    title={!project.archived && isRunningProject ? "运行中不可归档" : project.archived ? "恢复项目" : "归档项目"}
+                    disabled={!project.archived && isRunningProject}
                     onClick={(event) => {
                       event.stopPropagation();
+                      if (!project.archived && isRunningProject) return;
                       onArchive(project, !project.archived);
                     }}
                   >
@@ -732,7 +785,14 @@ export function ProjectsView({
                 </div>
                 <div className="detail-actions compact">
                   <IconButton title="编辑" onClick={() => onEdit(selectedProject)}><Edit3 size={15} /></IconButton>
-                  <IconButton title={selectedProject.archived ? "恢复项目" : "归档项目"} onClick={() => onArchive(selectedProject, !selectedProject.archived)}>
+                  <IconButton
+                    title={!selectedProject.archived && selectedProjectRunning ? "运行中不可归档" : selectedProject.archived ? "恢复项目" : "归档项目"}
+                    disabled={!selectedProject.archived && selectedProjectRunning}
+                    onClick={() => {
+                      if (!selectedProject.archived && selectedProjectRunning) return;
+                      onArchive(selectedProject, !selectedProject.archived);
+                    }}
+                  >
                     {selectedProject.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />}
                   </IconButton>
                 </div>
@@ -770,6 +830,7 @@ export function ProjectsView({
                   onStopLaunchRun={onStopLaunchRun}
                   onRestartLaunchSession={onRestartLaunchSession}
                   onClearLaunchRun={() => onClearLaunchRun(selectedProject.id)}
+                  onOpenLaunchLogs={() => setLaunchLogProjectId(selectedProject.id)}
                 />
               )}
               <div className="boundary-note">
@@ -816,7 +877,8 @@ function LaunchRunPanel({
   onStopLaunchSession,
   onStopLaunchRun,
   onRestartLaunchSession,
-  onClearLaunchRun
+  onClearLaunchRun,
+  onOpenLaunchLogs
 }: {
   launchRun: LaunchRun;
   project: Project;
@@ -825,6 +887,7 @@ function LaunchRunPanel({
   onStopLaunchRun: (launchRunId: string) => void;
   onRestartLaunchSession: (session: LaunchSession) => void;
   onClearLaunchRun: () => void;
+  onOpenLaunchLogs: () => void;
 }) {
   const hasRunningSession = launchRun.sessions.some((session) => isActiveLaunchStatus(session.status));
 
@@ -836,6 +899,7 @@ function LaunchRunPanel({
           <small>{launchRun.startedAt} · {launchRun.sessions.length} 个启动项</small>
         </span>
         <span className="launch-run-actions">
+          <Button onClick={onOpenLaunchLogs}><FileText size={14} />查看日志</Button>
           {hasRunningSession ? (
             <IconButton
               title="停止全部会话"
@@ -884,17 +948,199 @@ function LaunchRunPanel({
               </span>
             </div>
             <code>{session.command}</code>
-            <pre className="launch-output">
-              {session.output.length
-                ? session.output.map((chunk, index) => (
-                  <span className={chunk.stream} key={`${session.id}-${index}`}>{chunk.content}</span>
-                ))
-                : <span className="muted-output">等待输出...</span>}
-            </pre>
           </article>
         ))}
       </div>
     </section>
+  );
+}
+
+function LaunchLogDetailPage({
+  project,
+  launchRun,
+  onBack,
+  onLaunch,
+  onStopLaunchSession,
+  onStopLaunchRun,
+  onRestartLaunchSession,
+  onSyncLaunchRun,
+  onOpenLogUrl,
+  onClearLaunchRun
+}: {
+  project: Project;
+  launchRun: LaunchRun;
+  onBack: () => void;
+  onLaunch: (project: Project) => void;
+  onStopLaunchSession: (sessionId: string) => void;
+  onStopLaunchRun: (launchRunId: string) => void;
+  onRestartLaunchSession: (session: LaunchSession) => void;
+  onSyncLaunchRun: (launchRunId: string) => void;
+  onOpenLogUrl: (url: string) => void;
+  onClearLaunchRun: () => void;
+}) {
+  const [activeSessionId, setActiveSessionId] = useState("all");
+  const hasRunningSession = launchRun.sessions.some((session) => isActiveLaunchStatus(session.status));
+  const activeSession = launchRun.sessions.find((session) => session.id === activeSessionId);
+  const visibleLogs = activeSessionId === "all"
+    ? combinedLaunchLogs(launchRun.sessions)
+    : sessionLaunchLogs(activeSession);
+
+  useEffect(() => {
+    onSyncLaunchRun(launchRun.id);
+    const timer = window.setInterval(() => onSyncLaunchRun(launchRun.id), 1000);
+    return () => window.clearInterval(timer);
+  }, [launchRun.id]);
+
+  return (
+    <section className="view launch-log-view">
+      <div className="launch-log-page-header">
+        <div>
+          <div className="breadcrumb">项目 / {project.name} / 本次启动日志</div>
+          <h1>{project.name} 启动日志</h1>
+          <p>{project.path}</p>
+        </div>
+        <div className="launch-log-actions">
+          <Button onClick={onBack}><ArrowLeft size={15} />返回项目列表</Button>
+          {hasRunningSession ? (
+            <IconButton title="停止全部会话" onClick={() => onStopLaunchRun(launchRun.id)}>
+              <Square size={15} />
+            </IconButton>
+          ) : (
+            <>
+              <IconButton title="重新启动全部" onClick={() => onLaunch(project)}>
+                <RefreshCcw size={15} />
+              </IconButton>
+              <IconButton title="关闭本次记录" onClick={onClearLaunchRun}>
+                <X size={15} />
+              </IconButton>
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="launch-log-meta">
+        <span><i className={`launch-status ${hasRunningSession ? "running" : "stopped"}`}>{getProjectLaunchStatus(project, {}, launchRun)}</i></span>
+        <span>{launchRun.startedAt}</span>
+        <span>{launchRun.sessions.length} 个启动项</span>
+      </div>
+
+      <section className="launch-log-surface" aria-label="启动日志详情">
+        <div className="launch-log-tabs">
+          <div className="launch-log-tab-list" role="tablist" aria-label="启动项日志">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeSessionId === "all"}
+              className={activeSessionId === "all" ? "active" : ""}
+              onClick={() => setActiveSessionId("all")}
+            >
+              全部
+            </button>
+            {launchRun.sessions.map((session) => (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeSessionId === session.id}
+                className={activeSessionId === session.id ? "active" : ""}
+                key={session.id}
+                onClick={() => setActiveSessionId(session.id)}
+              >
+                {session.configName}
+              </button>
+            ))}
+          </div>
+          <div className="launch-log-tab-actions">
+            {activeSession ? (
+              <>
+              <i className={`launch-status ${activeSession.status}`}>{formatLaunchSessionStatus(activeSession)}</i>
+              {isActiveLaunchStatus(activeSession.status) ? (
+                <IconButton title="停止会话" onClick={() => onStopLaunchSession(activeSession.id)}>
+                  <Square size={14} />
+                </IconButton>
+              ) : (
+                <IconButton title="重新启动此项" onClick={() => onRestartLaunchSession(activeSession)}>
+                  <RefreshCcw size={14} />
+                </IconButton>
+              )}
+              </>
+            ) : (
+              <i className={`launch-status ${hasRunningSession ? "running" : "stopped"}`}>{getProjectLaunchStatus(project, {}, launchRun)}</i>
+            )}
+          </div>
+        </div>
+
+        <div className="launch-log-output" role="log" aria-label="启动日志输出">
+          {visibleLogs.length
+            ? visibleLogs.map((line, index) => (
+              <span className={`log-line ${line.stream}`} key={`${line.sessionId}-${index}`}>
+                {renderLogLine(line.content, onOpenLogUrl)}
+              </span>
+            ))
+            : <span className="muted-output">等待输出...</span>}
+        </div>
+      </section>
+    </section>
+  );
+}
+
+function renderLogLine(content: string, onOpenLogUrl: (url: string) => void) {
+  const segments = splitLogLineByUrl(content);
+  return segments.map((segment, index) => {
+    if (segment.kind === "url") {
+      return (
+        <button
+          className="log-link"
+          key={`${segment.text}-${index}`}
+          type="button"
+          aria-label={`打开链接 ${segment.text}`}
+          onClick={() => onOpenLogUrl(segment.text)}
+        >
+          {segment.text}
+        </button>
+      );
+    }
+    return <span key={`${segment.text}-${index}`}>{segment.text}</span>;
+  });
+}
+
+function splitLogLineByUrl(content: string) {
+  const urlPattern = /https?:\/\/[^\s)]+[^\s).,;:!?]/g;
+  const segments: Array<{ kind: "text" | "url"; text: string }> = [];
+  let cursor = 0;
+  for (const match of content.matchAll(urlPattern)) {
+    const index = match.index ?? 0;
+    if (index > cursor) {
+      segments.push({ kind: "text", text: content.slice(cursor, index) });
+    }
+    segments.push({ kind: "url", text: match[0] });
+    cursor = index + match[0].length;
+  }
+  if (cursor < content.length) {
+    segments.push({ kind: "text", text: content.slice(cursor) });
+  }
+  return segments;
+}
+
+function combinedLaunchLogs(sessions: LaunchSession[]) {
+  return sessions.flatMap((session) =>
+    sessionLaunchLogs(session).map((line) => ({
+      ...line,
+      content: `[${session.configName}] ${line.content}`
+    }))
+  );
+}
+
+function sessionLaunchLogs(session: LaunchSession | undefined) {
+  if (!session) return [];
+  return session.output.flatMap((chunk) =>
+    chunk.content
+      .split(/\r?\n/)
+      .filter((line) => line.length > 0)
+      .map((line) => ({
+        sessionId: session.id,
+        stream: chunk.stream,
+        content: line
+      }))
   );
 }
 
@@ -908,6 +1154,36 @@ function formatLaunchSessionStatus(session: LaunchSession) {
 
 function isActiveLaunchStatus(status: LaunchSession["status"]) {
   return status === "starting" || status === "running";
+}
+
+function isProjectRunning(projectId: string, launchRuns: Record<string, LaunchRun>) {
+  return Boolean(launchRuns[projectId]?.sessions.some((session) => isActiveLaunchStatus(session.status)));
+}
+
+function normalizeLaunchSessionEvent(event: LaunchSessionEvent): LaunchSessionEvent {
+  const rawEvent = event as LaunchSessionEvent & {
+    event_type?: LaunchSessionEvent["eventType"];
+    launch_run_id?: string;
+    session_id?: string;
+    exit_code?: number;
+  };
+  const eventType = String(rawEvent.eventType ?? rawEvent.event_type).toLowerCase();
+  const stream = rawEvent.stream ? String(rawEvent.stream).toLowerCase() : undefined;
+  const status = rawEvent.status ? String(rawEvent.status).toLowerCase() : undefined;
+
+  return {
+    launchRunId: rawEvent.launchRunId ?? rawEvent.launch_run_id ?? "",
+    sessionId: rawEvent.sessionId ?? rawEvent.session_id ?? "",
+    eventType: eventType === "status" ? "status" : "output",
+    stream: stream === "stderr" ? "stderr" : stream === "stdout" ? "stdout" : undefined,
+    content: rawEvent.content,
+    status: isLaunchSessionStatus(status) ? status : undefined,
+    exitCode: rawEvent.exitCode ?? rawEvent.exit_code
+  };
+}
+
+function isLaunchSessionStatus(status: string | undefined): status is LaunchSession["status"] {
+  return status === "starting" || status === "running" || status === "exited" || status === "failed" || status === "stopped";
 }
 
 function applyLaunchSessionEvent(current: LaunchRun | null, event: LaunchSessionEvent) {
@@ -937,7 +1213,7 @@ function applyLaunchSessionEvent(current: LaunchRun | null, event: LaunchSession
 export function applyPendingLaunchEvents(launchRun: LaunchRun, pendingEvents: Record<string, LaunchSessionEvent[]>) {
   const events = pendingEvents[launchRun.id] ?? [];
   delete pendingEvents[launchRun.id];
-  return events.reduce((current, event) => applyLaunchSessionEvent(current, event) ?? current, launchRun);
+  return events.reduce((current, event) => applyLaunchSessionEvent(current, normalizeLaunchSessionEvent(event)) ?? current, launchRun);
 }
 
 export function markLaunchRunStopped(launchRun: LaunchRun, sessionId?: string) {
@@ -989,6 +1265,33 @@ function replaceLaunchSessionInRuns(launchRuns: Record<string, LaunchRun>, nextS
   return {
     ...launchRuns,
     [projectId]: replaceLaunchSession(launchRun, nextSession)
+  };
+}
+
+function mergeLaunchRunSnapshotsInRuns(launchRuns: Record<string, LaunchRun>, launchRunId: string, snapshots: LaunchSessionSnapshot[]) {
+  const entry = Object.entries(launchRuns).find(([, launchRun]) => launchRun.id === launchRunId);
+  if (!entry || snapshots.length === 0) return launchRuns;
+  const [projectId, launchRun] = entry;
+  return {
+    ...launchRuns,
+    [projectId]: mergeLaunchRunSnapshots(launchRun, snapshots)
+  };
+}
+
+export function mergeLaunchRunSnapshots(launchRun: LaunchRun, snapshots: LaunchSessionSnapshot[]) {
+  const snapshotsBySessionId = new Map(snapshots.map((snapshot) => [snapshot.sessionId, snapshot]));
+  return {
+    ...launchRun,
+    sessions: launchRun.sessions.map((session) => {
+      const snapshot = snapshotsBySessionId.get(session.id);
+      if (!snapshot) return session;
+      return {
+        ...session,
+        status: snapshot.status,
+        exitCode: snapshot.exitCode,
+        output: snapshot.output
+      };
+    })
   };
 }
 
