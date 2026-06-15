@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { App, ModuleStateView, ProjectDialog, ProjectsView, RadarView, applyPendingLaunchEvents, markLaunchRunStopped } from "./App";
+import { App, ModuleStateView, ProjectDialog, ProjectsView, RadarView, applyPendingLaunchEvents, markLaunchRunStopped, mergeLaunchRunSnapshots } from "./App";
 import type { LaunchSessionEvent, Project, RadarItem } from "./lib/types/domain";
 
 const activeProject: Project = {
@@ -100,7 +100,7 @@ describe("Workbench UI interactions", () => {
     expect(screen.queryByRole("group", { name: "Active Project 项目" })).not.toBeInTheDocument();
   });
 
-  it("shows the latest launch run as separate sessions per launch config", () => {
+  it("shows the latest launch run summary without inline output", () => {
     render(
       <ProjectsView
         projects={[activeProject]}
@@ -150,12 +150,127 @@ describe("Workbench UI interactions", () => {
     expect(screen.getByText("本次启动")).toBeInTheDocument();
     expect(screen.getByText("Frontend")).toBeInTheDocument();
     expect(screen.getByText("Worker")).toBeInTheDocument();
-    expect(screen.getByText("ready in 812ms")).toBeInTheDocument();
-    expect(screen.getByText("missing env DATABASE_URL")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查看日志" })).toBeInTheDocument();
+    expect(screen.queryByText("ready in 812ms")).not.toBeInTheDocument();
+    expect(screen.queryByText("missing env DATABASE_URL")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "停止全部会话" })).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "停止会话" }).filter((button) => !button.hasAttribute("disabled"))).toHaveLength(1);
     expect(screen.getAllByText("运行中").length).toBeGreaterThan(0);
     expect(screen.getByText("失败 1")).toBeInTheDocument();
+  });
+
+  it("opens launch log details with all and per-session output tabs", async () => {
+    const user = userEvent.setup();
+    render(
+      <ProjectsView
+        projects={[activeProject]}
+        selectedProject={activeProject}
+        projectLaunchTimes={{ active: "06/14 10:30" }}
+        launchRun={{
+          id: "run-1",
+          projectId: "active",
+          projectName: "Active Project",
+          startedAt: "06/14 10:30",
+          sessions: [
+            {
+              id: "session-frontend",
+              launchRunId: "run-1",
+              configId: "active-dev",
+              configName: "Frontend",
+              command: "pnpm dev",
+              workdir: "E:\\Active",
+              status: "running",
+              output: [{ stream: "stdout", content: "ready in 812ms\n" }]
+            },
+            {
+              id: "session-worker",
+              launchRunId: "run-1",
+              configId: "active-worker",
+              configName: "Worker",
+              command: "pnpm worker",
+              workdir: "E:\\Active",
+              status: "failed",
+              exitCode: 1,
+              output: [{ stream: "stderr", content: "missing env DATABASE_URL\n" }]
+            }
+          ]
+        }}
+        loading={false}
+        loadError=""
+        onSelect={vi.fn()}
+        onLaunch={vi.fn()}
+        onStopLaunchSession={vi.fn()}
+        onStopLaunchRun={vi.fn()}
+        onEdit={vi.fn()}
+        onArchive={vi.fn()}
+        onAdd={vi.fn()}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: "查看日志" }));
+
+    expect(screen.getByRole("heading", { name: "Active Project 启动日志" })).toBeInTheDocument();
+    expect(screen.getByText("项目 / Active Project / 本次启动日志")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "返回项目列表" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "全部" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("[Frontend] ready in 812ms")).toBeInTheDocument();
+    expect(screen.getByText("[Worker] missing env DATABASE_URL")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "Frontend" }));
+
+    expect(screen.getByRole("tab", { name: "Frontend" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("ready in 812ms")).toBeInTheDocument();
+    expect(screen.queryByText("[Worker] missing env DATABASE_URL")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "返回项目列表" }));
+
+    expect(screen.getByRole("group", { name: "Active Project 项目" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查看日志" })).toBeInTheDocument();
+  });
+
+  it("renders launch log urls as clickable actions", async () => {
+    const user = userEvent.setup();
+    const onOpenLogUrl = vi.fn();
+    render(
+      <ProjectsView
+        projects={[activeProject]}
+        selectedProject={activeProject}
+        projectLaunchTimes={{ active: "06/14 10:30" }}
+        launchRun={{
+          id: "run-1",
+          projectId: "active",
+          projectName: "Active Project",
+          startedAt: "06/14 10:30",
+          sessions: [
+            {
+              id: "session-frontend",
+              launchRunId: "run-1",
+              configId: "active-dev",
+              configName: "Frontend",
+              command: "uv run uvicorn app.main:app",
+              workdir: "E:\\Active",
+              status: "running",
+              output: [{ stream: "stderr", content: "Uvicorn running on http://127.0.0.1:8001 (Press CTRL+C to quit)\n" }]
+            }
+          ]
+        }}
+        loading={false}
+        loadError=""
+        onSelect={vi.fn()}
+        onLaunch={vi.fn()}
+        onStopLaunchSession={vi.fn()}
+        onStopLaunchRun={vi.fn()}
+        onOpenLogUrl={onOpenLogUrl}
+        onEdit={vi.fn()}
+        onArchive={vi.fn()}
+        onAdd={vi.fn()}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: "查看日志" }));
+    await user.click(screen.getByRole("button", { name: "打开链接 http://127.0.0.1:8001" }));
+
+    expect(onOpenLogUrl).toHaveBeenCalledWith("http://127.0.0.1:8001");
   });
 
   it("uses active launch sessions to show project status and stop action", () => {
@@ -197,6 +312,49 @@ describe("Workbench UI interactions", () => {
     expect(screen.getAllByText("运行中").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "停止项目" })).toBeInTheDocument();
     expect(screen.queryByText("已启动请求")).not.toBeInTheDocument();
+  });
+
+  it("does not allow archiving a project while launch sessions are running", () => {
+    const onArchive = vi.fn();
+    render(
+      <ProjectsView
+        projects={[activeProject]}
+        selectedProject={activeProject}
+        projectLaunchTimes={{ active: "06/14 10:30" }}
+        launchRun={{
+          id: "run-1",
+          projectId: "active",
+          projectName: "Active Project",
+          startedAt: "06/14 10:30",
+          sessions: [
+            {
+              id: "session-frontend",
+              launchRunId: "run-1",
+              configId: "active-dev",
+              configName: "Frontend",
+              command: "pnpm dev",
+              workdir: "E:\\Active",
+              status: "running",
+              output: []
+            }
+          ]
+        }}
+        loading={false}
+        loadError=""
+        onSelect={vi.fn()}
+        onLaunch={vi.fn()}
+        onStopLaunchSession={vi.fn()}
+        onStopLaunchRun={vi.fn()}
+        onEdit={vi.fn()}
+        onArchive={onArchive}
+        onAdd={vi.fn()}
+      />
+    );
+
+    expect(within(screen.getByRole("group", { name: "Active Project 项目" })).getByRole("button", { name: "运行中不可归档" })).toBeDisabled();
+    expect(screen.getAllByRole("button", { name: "运行中不可归档" })).toHaveLength(2);
+    screen.getAllByRole("button", { name: "运行中不可归档" }).forEach((button) => expect(button).toBeDisabled());
+    expect(onArchive).not.toHaveBeenCalled();
   });
 
   it("tracks active launch sessions for multiple projects at the same time", () => {
@@ -425,6 +583,81 @@ describe("Workbench UI interactions", () => {
       { stream: "stdout", content: "Uvicorn running on http://127.0.0.1:8001\n" }
     ]);
     expect(pendingEvents["run-1"]).toBeUndefined();
+  });
+
+  it("keeps Tauri launch output events when payload fields use backend casing", () => {
+    const pendingEvents: Record<string, LaunchSessionEvent[]> = {
+      "run-1": [
+        {
+          launch_run_id: "run-1",
+          session_id: "session-frontend",
+          event_type: "Output",
+          stream: "Stdout",
+          content: "Uvicorn running on http://127.0.0.1:8001\n"
+        } as unknown as LaunchSessionEvent
+      ]
+    };
+
+    const launchRun = applyPendingLaunchEvents(
+      {
+        id: "run-1",
+        projectId: "active",
+        projectName: "Active Project",
+        startedAt: "06/14 10:30",
+        sessions: [
+          {
+            id: "session-frontend",
+            launchRunId: "run-1",
+            configId: "active-dev",
+            configName: "Frontend",
+            command: "pnpm dev",
+            workdir: "E:\\Active",
+            status: "running",
+            output: []
+          }
+        ]
+      },
+      pendingEvents
+    );
+
+    expect(launchRun.sessions[0].output).toEqual([
+      { stream: "stdout", content: "Uvicorn running on http://127.0.0.1:8001\n" }
+    ]);
+  });
+
+  it("merges backend launch snapshots into the visible launch run", () => {
+    const launchRun = mergeLaunchRunSnapshots(
+      {
+        id: "run-1",
+        projectId: "active",
+        projectName: "Active Project",
+        startedAt: "06/14 10:30",
+        sessions: [
+          {
+            id: "session-frontend",
+            launchRunId: "run-1",
+            configId: "active-dev",
+            configName: "Frontend",
+            command: "pnpm dev",
+            workdir: "E:\\Active",
+            status: "running",
+            output: []
+          }
+        ]
+      },
+      [
+        {
+          launchRunId: "run-1",
+          sessionId: "session-frontend",
+          status: "running",
+          output: [{ stream: "stderr", content: "Uvicorn running on http://127.0.0.1:8001\n" }]
+        }
+      ]
+    );
+
+    expect(launchRun.sessions[0].output).toEqual([
+      { stream: "stderr", content: "Uvicorn running on http://127.0.0.1:8001\n" }
+    ]);
   });
 
   it("marks the visible launch session stopped when the stop request already ended on the backend", () => {

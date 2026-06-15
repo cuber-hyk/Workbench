@@ -55,6 +55,14 @@ export interface LaunchSessionEvent {
   exitCode?: number;
 }
 
+export interface LaunchSessionSnapshot {
+  launchRunId: string;
+  sessionId: string;
+  status: LaunchSessionStatus;
+  exitCode?: number;
+  output: LaunchOutputChunk[];
+}
+
 export interface SkillCategory {
   id: string;
   name: string;

@@ -84,6 +84,16 @@ pub struct LaunchSessionEvent {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct LaunchSessionSnapshot {
+    pub launch_run_id: String,
+    pub session_id: String,
+    pub status: LaunchSessionStatus,
+    pub exit_code: Option<i32>,
+    pub output: Vec<LaunchOutputChunk>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub enum LaunchOutputStream {
     Stdout,
     Stderr,
@@ -111,6 +121,7 @@ type SharedChild = Arc<Mutex<Option<Child>>>;
 #[derive(Clone, Default)]
 pub struct LaunchSessionRegistry {
     sessions: Arc<Mutex<HashMap<String, RunningLaunchSession>>>,
+    snapshots: Arc<Mutex<HashMap<String, LaunchSessionSnapshot>>>,
 }
 
 #[derive(Clone)]
@@ -219,6 +230,14 @@ pub fn stop_launch_run<R: tauri::Runtime>(
         emit_stopped_status(&app, &stopped_launch_run_id, &session_id);
     }
     Ok(())
+}
+
+#[tauri::command]
+pub fn get_launch_run_snapshot(
+    registry: tauri::State<LaunchSessionRegistry>,
+    launch_run_id: String,
+) -> ProjectResult<Vec<LaunchSessionSnapshot>> {
+    registry.snapshots_for_run(&launch_run_id)
 }
 
 #[tauri::command]
@@ -583,12 +602,14 @@ fn start_launch_session<R: tauri::Runtime>(
         *child_guard = None;
         return Err(error);
     }
+    registry.upsert_snapshot(session)?;
 
     emit_launch_status(&app, session, LaunchSessionStatus::Running, None);
 
     if let Some(stdout) = stdout {
         spawn_output_reader(
             app.clone(),
+            registry.clone(),
             session.launch_run_id.clone(),
             session.id.clone(),
             LaunchOutputStream::Stdout,
@@ -598,6 +619,7 @@ fn start_launch_session<R: tauri::Runtime>(
     if let Some(stderr) = stderr {
         spawn_output_reader(
             app.clone(),
+            registry.clone(),
             session.launch_run_id.clone(),
             session.id.clone(),
             LaunchOutputStream::Stderr,
@@ -616,6 +638,7 @@ fn start_launch_session<R: tauri::Runtime>(
 
 fn spawn_output_reader<R: tauri::Runtime, T: Read + Send + 'static>(
     app: tauri::AppHandle<R>,
+    registry: LaunchSessionRegistry,
     launch_run_id: String,
     session_id: String,
     stream: LaunchOutputStream,
@@ -629,6 +652,13 @@ fn spawn_output_reader<R: tauri::Runtime, T: Read + Send + 'static>(
                 Ok(0) => break,
                 Ok(byte_count) => {
                     let content = String::from_utf8_lossy(&buffer[..byte_count]).to_string();
+                    let _ = registry.append_output(
+                        &session_id,
+                        LaunchOutputChunk {
+                            stream: stream.clone(),
+                            content: content.clone(),
+                        },
+                    );
                     let _ = app.emit(
                         "launch-session-event",
                         LaunchSessionEvent {
@@ -668,6 +698,7 @@ fn spawn_exit_watcher<R: tauri::Runtime>(
                 Ok(Some(status)) => Some(status),
                 Ok(None) => None,
                 Err(_) => {
+                    let _ = registry.update_status(&session_id, LaunchSessionStatus::Failed, None);
                     let _ = app.emit(
                         "launch-session-event",
                         LaunchSessionEvent {
@@ -692,6 +723,7 @@ fn spawn_exit_watcher<R: tauri::Runtime>(
             } else {
                 LaunchSessionStatus::Failed
             };
+            let _ = registry.update_status(&session_id, next_status.clone(), exit_code);
             let _ = app.emit(
                 "launch-session-event",
                 LaunchSessionEvent {
@@ -724,6 +756,7 @@ fn stop_registered_session(
         terminate_child(child)?;
     }
     *child_guard = None;
+    registry.update_status(session_id, LaunchSessionStatus::Stopped, None)?;
     Ok(launch_run_id)
 }
 
@@ -743,6 +776,61 @@ impl LaunchSessionRegistry {
             .lock()
             .map_err(error_message)?
             .remove(session_id))
+    }
+
+    fn upsert_snapshot(&self, session: &LaunchSession) -> ProjectResult<()> {
+        self.snapshots.lock().map_err(error_message)?.insert(
+            session.id.clone(),
+            LaunchSessionSnapshot {
+                launch_run_id: session.launch_run_id.clone(),
+                session_id: session.id.clone(),
+                status: session.status.clone(),
+                exit_code: session.exit_code,
+                output: session.output.clone(),
+            },
+        );
+        Ok(())
+    }
+
+    fn append_output(&self, session_id: &str, chunk: LaunchOutputChunk) -> ProjectResult<()> {
+        if let Some(snapshot) = self
+            .snapshots
+            .lock()
+            .map_err(error_message)?
+            .get_mut(session_id)
+        {
+            snapshot.output.push(chunk);
+        }
+        Ok(())
+    }
+
+    fn update_status(
+        &self,
+        session_id: &str,
+        status: LaunchSessionStatus,
+        exit_code: Option<i32>,
+    ) -> ProjectResult<()> {
+        if let Some(snapshot) = self
+            .snapshots
+            .lock()
+            .map_err(error_message)?
+            .get_mut(session_id)
+        {
+            snapshot.status = status;
+            snapshot.exit_code = exit_code.or(snapshot.exit_code);
+        }
+        Ok(())
+    }
+
+    fn snapshots_for_run(&self, launch_run_id: &str) -> ProjectResult<Vec<LaunchSessionSnapshot>> {
+        Ok(self
+            .snapshots
+            .lock()
+            .map_err(error_message)?
+            .values()
+            .filter(|snapshot| snapshot.launch_run_id == launch_run_id)
+            .cloned()
+            .collect())
     }
 }
 
@@ -973,6 +1061,42 @@ mod tests {
         );
 
         assert!(result.unwrap_err().contains("启动会话仍在运行"));
+    }
+
+    #[test]
+    fn keeps_launch_output_in_memory_snapshot() {
+        let registry = LaunchSessionRegistry::default();
+        let session = LaunchSession {
+            id: "session-1".to_string(),
+            launch_run_id: "run-1".to_string(),
+            config_id: "dev".to_string(),
+            config_name: "Dev".to_string(),
+            command: "pnpm dev".to_string(),
+            workdir: "E:\\Demo".to_string(),
+            status: LaunchSessionStatus::Running,
+            exit_code: None,
+            output: Vec::new(),
+        };
+
+        registry.upsert_snapshot(&session).unwrap();
+        registry
+            .append_output(
+                "session-1",
+                LaunchOutputChunk {
+                    stream: LaunchOutputStream::Stderr,
+                    content: "Uvicorn running on http://127.0.0.1:8001\n".to_string(),
+                },
+            )
+            .unwrap();
+
+        let snapshots = registry.snapshots_for_run("run-1").unwrap();
+
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(snapshots[0].output.len(), 1);
+        assert_eq!(
+            snapshots[0].output[0].content,
+            "Uvicorn running on http://127.0.0.1:8001\n"
+        );
     }
 
     #[test]
