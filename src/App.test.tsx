@@ -1,8 +1,8 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { App, ModuleStateView, ProjectDialog, ProjectsView, RadarView } from "./App";
-import type { Project, RadarItem } from "./lib/types/domain";
+import { App, ModuleStateView, ProjectDialog, ProjectsView, RadarView, applyPendingLaunchEvents, markLaunchRunStopped } from "./App";
+import type { LaunchSessionEvent, Project, RadarItem } from "./lib/types/domain";
 
 const activeProject: Project = {
   id: "active",
@@ -30,6 +30,24 @@ const archivedProject: Project = {
   tags: ["参考"],
   archived: true,
   launchConfigs: []
+};
+
+const secondActiveProject: Project = {
+  id: "second",
+  name: "Second Project",
+  path: "E:\\Second",
+  note: "second note",
+  tags: ["Node"],
+  archived: false,
+  launchConfigs: [
+    {
+      id: "second-dev",
+      name: "Dev",
+      command: "pnpm dev",
+      workdir: "E:\\Second",
+      enabled: true
+    }
+  ]
 };
 
 const radarItems: RadarItem[] = [
@@ -80,6 +98,359 @@ describe("Workbench UI interactions", () => {
 
     expect(screen.getByRole("group", { name: "Archived Project 项目" })).toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "Active Project 项目" })).not.toBeInTheDocument();
+  });
+
+  it("shows the latest launch run as separate sessions per launch config", () => {
+    render(
+      <ProjectsView
+        projects={[activeProject]}
+        selectedProject={activeProject}
+        projectLaunchTimes={{ active: "06/14 10:30" }}
+        launchRun={{
+          id: "run-1",
+          projectId: "active",
+          projectName: "Active Project",
+          startedAt: "06/14 10:30",
+          sessions: [
+            {
+              id: "session-frontend",
+              launchRunId: "run-1",
+              configId: "active-dev",
+              configName: "Frontend",
+              command: "pnpm dev",
+              workdir: "E:\\Active",
+              status: "running",
+              output: [{ stream: "stdout", content: "ready in 812ms" }]
+            },
+            {
+              id: "session-worker",
+              launchRunId: "run-1",
+              configId: "active-worker",
+              configName: "Worker",
+              command: "pnpm worker",
+              workdir: "E:\\Active",
+              status: "failed",
+              exitCode: 1,
+              output: [{ stream: "stderr", content: "missing env DATABASE_URL" }]
+            }
+          ]
+        }}
+        loading={false}
+        loadError=""
+        onSelect={vi.fn()}
+        onLaunch={vi.fn()}
+        onStopLaunchSession={vi.fn()}
+        onStopLaunchRun={vi.fn()}
+        onEdit={vi.fn()}
+        onArchive={vi.fn()}
+        onAdd={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("本次启动")).toBeInTheDocument();
+    expect(screen.getByText("Frontend")).toBeInTheDocument();
+    expect(screen.getByText("Worker")).toBeInTheDocument();
+    expect(screen.getByText("ready in 812ms")).toBeInTheDocument();
+    expect(screen.getByText("missing env DATABASE_URL")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "停止全部会话" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "停止会话" }).filter((button) => !button.hasAttribute("disabled"))).toHaveLength(1);
+    expect(screen.getAllByText("运行中").length).toBeGreaterThan(0);
+    expect(screen.getByText("失败 1")).toBeInTheDocument();
+  });
+
+  it("uses active launch sessions to show project status and stop action", () => {
+    render(
+      <ProjectsView
+        projects={[activeProject]}
+        selectedProject={activeProject}
+        projectLaunchTimes={{ active: "06/14 10:30" }}
+        launchRun={{
+          id: "run-1",
+          projectId: "active",
+          projectName: "Active Project",
+          startedAt: "06/14 10:30",
+          sessions: [
+            {
+              id: "session-frontend",
+              launchRunId: "run-1",
+              configId: "active-dev",
+              configName: "Frontend",
+              command: "pnpm dev",
+              workdir: "E:\\Active",
+              status: "running",
+              output: []
+            }
+          ]
+        }}
+        loading={false}
+        loadError=""
+        onSelect={vi.fn()}
+        onLaunch={vi.fn()}
+        onStopLaunchSession={vi.fn()}
+        onStopLaunchRun={vi.fn()}
+        onEdit={vi.fn()}
+        onArchive={vi.fn()}
+        onAdd={vi.fn()}
+      />
+    );
+
+    expect(screen.getAllByText("运行中").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "停止项目" })).toBeInTheDocument();
+    expect(screen.queryByText("已启动请求")).not.toBeInTheDocument();
+  });
+
+  it("tracks active launch sessions for multiple projects at the same time", () => {
+    render(
+      <ProjectsView
+        projects={[activeProject, secondActiveProject]}
+        selectedProject={activeProject}
+        projectLaunchTimes={{ active: "06/14 10:30", second: "06/14 10:31" }}
+        launchRuns={{
+          active: {
+            id: "run-active",
+            projectId: "active",
+            projectName: "Active Project",
+            startedAt: "06/14 10:30",
+            sessions: [
+              {
+                id: "session-active",
+                launchRunId: "run-active",
+                configId: "active-dev",
+                configName: "Dev",
+                command: "pnpm dev",
+                workdir: "E:\\Active",
+                status: "running",
+                output: []
+              }
+            ]
+          },
+          second: {
+            id: "run-second",
+            projectId: "second",
+            projectName: "Second Project",
+            startedAt: "06/14 10:31",
+            sessions: [
+              {
+                id: "session-second",
+                launchRunId: "run-second",
+                configId: "second-dev",
+                configName: "Dev",
+                command: "pnpm dev",
+                workdir: "E:\\Second",
+                status: "running",
+                output: []
+              }
+            ]
+          }
+        }}
+        loading={false}
+        loadError=""
+        onSelect={vi.fn()}
+        onLaunch={vi.fn()}
+        onStopLaunchSession={vi.fn()}
+        onStopLaunchRun={vi.fn()}
+        onEdit={vi.fn()}
+        onArchive={vi.fn()}
+        onAdd={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("group", { name: "Active Project 项目" })).toHaveTextContent("运行中");
+    expect(screen.getByRole("group", { name: "Second Project 项目" })).toHaveTextContent("运行中");
+    expect(screen.getAllByRole("button", { name: "停止项目" })).toHaveLength(2);
+  });
+
+  it("shows partial running when only some launch sessions were stopped", () => {
+    const onRestartLaunchSession = vi.fn();
+    render(
+      <ProjectsView
+        projects={[activeProject]}
+        selectedProject={activeProject}
+        projectLaunchTimes={{ active: "06/14 10:30" }}
+        launchRun={{
+          id: "run-1",
+          projectId: "active",
+          projectName: "Active Project",
+          startedAt: "06/14 10:30",
+          sessions: [
+            {
+              id: "session-frontend",
+              launchRunId: "run-1",
+              configId: "active-dev",
+              configName: "Frontend",
+              command: "pnpm dev",
+              workdir: "E:\\Active",
+              status: "running",
+              output: []
+            },
+            {
+              id: "session-worker",
+              launchRunId: "run-1",
+              configId: "active-worker",
+              configName: "Worker",
+              command: "pnpm worker",
+              workdir: "E:\\Active",
+              status: "stopped",
+              output: []
+            }
+          ]
+        }}
+        loading={false}
+        loadError=""
+        onSelect={vi.fn()}
+        onLaunch={vi.fn()}
+        onStopLaunchSession={vi.fn()}
+        onStopLaunchRun={vi.fn()}
+        onRestartLaunchSession={onRestartLaunchSession}
+        onClearLaunchRun={vi.fn()}
+        onEdit={vi.fn()}
+        onArchive={vi.fn()}
+        onAdd={vi.fn()}
+      />
+    );
+
+    expect(screen.getAllByText("部分运行").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "停止项目" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "停止全部会话" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "停止会话" })).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "重新启动此项" })).toBeInTheDocument();
+  });
+
+  it("offers restart and close actions after all launch sessions ended", async () => {
+    const user = userEvent.setup();
+    const onLaunch = vi.fn();
+    const onClearLaunchRun = vi.fn();
+    render(
+      <ProjectsView
+        projects={[activeProject]}
+        selectedProject={activeProject}
+        projectLaunchTimes={{ active: "06/14 10:30" }}
+        launchRun={{
+          id: "run-1",
+          projectId: "active",
+          projectName: "Active Project",
+          startedAt: "06/14 10:30",
+          sessions: [
+            {
+              id: "session-frontend",
+              launchRunId: "run-1",
+              configId: "active-dev",
+              configName: "Frontend",
+              command: "pnpm dev",
+              workdir: "E:\\Active",
+              status: "stopped",
+              output: []
+            }
+          ]
+        }}
+        loading={false}
+        loadError=""
+        onSelect={vi.fn()}
+        onLaunch={onLaunch}
+        onStopLaunchSession={vi.fn()}
+        onStopLaunchRun={vi.fn()}
+        onClearLaunchRun={onClearLaunchRun}
+        onEdit={vi.fn()}
+        onArchive={vi.fn()}
+        onAdd={vi.fn()}
+      />
+    );
+
+    expect(screen.getAllByText("已停止").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "停止全部会话" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "重新启动全部" }));
+    await user.click(screen.getByRole("button", { name: "关闭本次记录" }));
+
+    expect(onLaunch).toHaveBeenCalledWith(activeProject);
+    expect(onClearLaunchRun).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns to launchable status after the latest launch run is closed", () => {
+    render(
+      <ProjectsView
+        projects={[activeProject]}
+        selectedProject={activeProject}
+        projectLaunchTimes={{ active: "06/14 10:30" }}
+        launchRun={null}
+        loading={false}
+        loadError=""
+        onSelect={vi.fn()}
+        onLaunch={vi.fn()}
+        onEdit={vi.fn()}
+        onArchive={vi.fn()}
+        onAdd={vi.fn()}
+      />
+    );
+
+    expect(screen.getAllByText("可启动").length).toBeGreaterThan(0);
+    expect(screen.queryByText("已启动")).not.toBeInTheDocument();
+  });
+
+  it("keeps launch output events that arrive before the launch run is rendered", () => {
+    const pendingEvents: Record<string, LaunchSessionEvent[]> = {
+      "run-1": [
+        {
+          launchRunId: "run-1",
+          sessionId: "session-frontend",
+          eventType: "output",
+          stream: "stdout",
+          content: "Uvicorn running on http://127.0.0.1:8001\n"
+        }
+      ]
+    };
+
+    const launchRun = applyPendingLaunchEvents(
+      {
+        id: "run-1",
+        projectId: "active",
+        projectName: "Active Project",
+        startedAt: "06/14 10:30",
+        sessions: [
+          {
+            id: "session-frontend",
+            launchRunId: "run-1",
+            configId: "active-dev",
+            configName: "Frontend",
+            command: "pnpm dev",
+            workdir: "E:\\Active",
+            status: "running",
+            output: []
+          }
+        ]
+      },
+      pendingEvents
+    );
+
+    expect(launchRun.sessions[0].output).toEqual([
+      { stream: "stdout", content: "Uvicorn running on http://127.0.0.1:8001\n" }
+    ]);
+    expect(pendingEvents["run-1"]).toBeUndefined();
+  });
+
+  it("marks the visible launch session stopped when the stop request already ended on the backend", () => {
+    const launchRun = markLaunchRunStopped(
+      {
+        id: "run-1",
+        projectId: "active",
+        projectName: "Active Project",
+        startedAt: "06/14 10:30",
+        sessions: [
+          {
+            id: "session-frontend",
+            launchRunId: "run-1",
+            configId: "active-dev",
+            configName: "Frontend",
+            command: "pnpm dev",
+            workdir: "E:\\Active",
+            status: "running",
+            output: []
+          }
+        ]
+      },
+      "session-frontend"
+    );
+
+    expect(launchRun.sessions[0].status).toBe("stopped");
   });
 
   it("shows validation when project path is missing", async () => {

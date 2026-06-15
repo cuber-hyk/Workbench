@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { projects, radarItems, settings, skillCategories, skills } from "./mockData";
-import type { ImportResult, Project, RadarItem, SkillVersionSource, SkillsState, ToolTarget } from "../types/domain";
+import type { ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, Project, RadarItem, SkillVersionSource, SkillsState, ToolTarget } from "../types/domain";
 
 const delay = async () => new Promise((resolve) => window.setTimeout(resolve, 80));
 const isTauri = "__TAURI_INTERNALS__" in window;
@@ -44,12 +45,43 @@ export const workbenchApi = {
   async launchProject(project: Project) {
     if (!isTauri) {
       await delay();
-      return;
+      return createPreviewLaunchRun(project);
     }
-    return invoke<void>("launch_project", {
+    return invoke<LaunchRun>("launch_project", {
+      projectId: project.id,
       name: project.name,
       launchConfigs: project.launchConfigs
     });
+  },
+  async stopLaunchSession(sessionId: string) {
+    if (!isTauri) {
+      await delay();
+      return;
+    }
+    return invoke<void>("stop_launch_session", { sessionId });
+  },
+  async stopLaunchRun(launchRunId: string) {
+    if (!isTauri) {
+      await delay();
+      return;
+    }
+    return invoke<void>("stop_launch_run", { launchRunId });
+  },
+  async restartLaunchSession(session: LaunchSession) {
+    if (!isTauri) {
+      await delay();
+      return {
+        ...session,
+        status: "running" as const,
+        exitCode: undefined,
+        output: [{ stream: "stdout" as const, content: `预览重新启动中：${session.command}\n` }]
+      };
+    }
+    return invoke<LaunchSession>("restart_launch_session", { session });
+  },
+  async subscribeLaunchEvents(handler: (event: LaunchSessionEvent) => void) {
+    if (!isTauri) return () => {};
+    return listen<LaunchSessionEvent>("launch-session-event", (event) => handler(event.payload));
   },
   async listSkills() {
     return (await skillsState()).skills;
@@ -158,3 +190,34 @@ export const workbenchApi = {
     return invoke<void>("open_skill_source_directory", { directoryName });
   }
 };
+
+function createPreviewLaunchRun(project: Project): LaunchRun {
+  const id = `preview-${Date.now()}`;
+  return {
+    id,
+    projectId: project.id,
+    projectName: project.name,
+    startedAt: formatPreviewLaunchTime(new Date()),
+    sessions: project.launchConfigs
+      .filter((config) => config.enabled && config.command.trim())
+      .map((config) => ({
+        id: `${id}-${config.id}`,
+        launchRunId: id,
+        configId: config.id,
+        configName: config.name,
+        command: config.command,
+        workdir: config.workdir,
+        status: "running",
+        output: [{ stream: "stdout", content: `预览启动中：${config.command}\n` }]
+      }))
+  };
+}
+
+function formatPreviewLaunchTime(date: Date) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(date);
+}

@@ -115,6 +115,7 @@ code { font-family: Consolas, monospace; }
 .project-status-pill { display: inline-flex; align-items: center; max-width: 100%; min-height: 22px; padding: 3px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 10px; font-style: normal; font-weight: 700; white-space: nowrap; }
 .project-status-pill.muted-status { background: color-mix(in srgb, var(--panel), var(--bg) 35%); color: var(--muted); }
 .project-status-pill.launched { background: color-mix(in srgb, #187a4a, transparent 82%); color: #187a4a; }
+.project-status-pill.failed { background: var(--danger-bg); color: var(--danger-text); }
 .tool-icons button { display: grid; place-items: center; min-width: 24px; height: 24px; padding: 0 5px; border: 1px solid var(--border); border-radius: 50%; background: color-mix(in srgb, var(--panel), var(--bg) 35%); color: var(--muted); font-size: 9px; font-weight: 700; }
 .tool-icons svg { width: 14px; height: 14px; fill: currentColor; }
 .tool-icons button.managed { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
@@ -157,6 +158,25 @@ code { font-family: Consolas, monospace; }
 .command-box span { min-width: 0; overflow-wrap: anywhere; }
 .boundary-note { display: flex; gap: 10px; margin-top: 12px; padding: 12px; border-radius: 7px; background: var(--danger-bg); color: var(--danger-text); line-height: 1.55; }
 .boundary-note .status-dot { flex: 0 0 auto; margin-top: 6px; }
+.launch-run-panel { display: grid; gap: 10px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.launch-run-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.launch-run-panel > header span { display: grid; gap: 3px; min-width: 0; }
+.launch-run-actions { display: flex !important; align-items: center; justify-content: flex-end; gap: 8px !important; flex: 0 0 auto; }
+.launch-run-panel h3 { color: var(--muted); font-size: 11px; }
+.launch-run-panel small { color: var(--muted); font-size: 10px; }
+.launch-session-list { display: grid; gap: 10px; }
+.launch-session-item { display: grid; gap: 8px; min-width: 0; padding: 10px; border: 1px solid var(--border); border-radius: 6px; background: color-mix(in srgb, var(--panel), var(--bg) 45%); }
+.launch-session-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.launch-session-head > span:first-child { display: grid; gap: 3px; min-width: 0; }
+.launch-session-head small, .launch-session-item code { color: var(--muted); overflow-wrap: anywhere; }
+.launch-session-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.launch-session-actions .icon-button { width: 30px; height: 30px; }
+.launch-status { display: inline-flex; align-items: center; min-height: 22px; padding: 3px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 10px; font-style: normal; font-weight: 700; white-space: nowrap; }
+.launch-status.failed { background: var(--danger-bg); color: var(--danger-text); }
+.launch-status.stopped, .launch-status.exited { background: color-mix(in srgb, var(--panel), var(--bg) 35%); color: var(--muted); }
+.launch-output { display: grid; gap: 2px; max-height: 150px; margin: 0; overflow: auto; padding: 10px; border-radius: 5px; background: #0f1418; color: #d6ede9; font-family: Consolas, monospace; font-size: 11px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.launch-output .stderr { color: #ffc9c9; }
+.launch-output .muted-output { color: #7f8b92; }
 .setting-group { display: grid; gap: 2px; padding: 14px 0; border-bottom: 1px solid var(--border); }
 .setting-group h3 { margin-bottom: 6px; color: var(--muted); }
 .setting-group-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
