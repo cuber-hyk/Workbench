@@ -18,6 +18,43 @@ export interface ProjectLaunchConfig {
   enabled: boolean;
 }
 
+export type LaunchSessionStatus = "starting" | "running" | "exited" | "failed" | "stopped";
+
+export interface LaunchOutputChunk {
+  stream: "stdout" | "stderr";
+  content: string;
+}
+
+export interface LaunchSession {
+  id: string;
+  launchRunId: string;
+  configId: string;
+  configName: string;
+  command: string;
+  workdir: string;
+  status: LaunchSessionStatus;
+  exitCode?: number;
+  output: LaunchOutputChunk[];
+}
+
+export interface LaunchRun {
+  id: string;
+  projectId: string;
+  projectName: string;
+  startedAt: string;
+  sessions: LaunchSession[];
+}
+
+export interface LaunchSessionEvent {
+  launchRunId: string;
+  sessionId: string;
+  eventType: "output" | "status";
+  stream?: "stdout" | "stderr";
+  content?: string;
+  status?: LaunchSessionStatus;
+  exitCode?: number;
+}
+
 export interface SkillCategory {
   id: string;
   name: string;

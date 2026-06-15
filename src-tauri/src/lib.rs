@@ -9,11 +9,15 @@ fn app_health() -> &'static str {
 
 pub fn run() {
     tauri::Builder::default()
+        .manage(projects::LaunchSessionRegistry::default())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             app_health,
             projects::list_projects,
             projects::launch_project,
+            projects::restart_launch_session,
+            projects::stop_launch_session,
+            projects::stop_launch_run,
             projects::select_directory,
             projects::save_project,
             radar::delete_radar_item,

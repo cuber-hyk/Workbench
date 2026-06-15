@@ -1,10 +1,19 @@
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
+use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Child, Command, Stdio};
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use tauri::Emitter;
 use tauri_plugin_dialog::DialogExt;
+
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 
 type ProjectResult<T> = Result<T, String>;
 
@@ -30,6 +39,86 @@ pub struct ProjectLaunchConfig {
     pub enabled: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct LaunchRun {
+    pub id: String,
+    pub project_id: String,
+    pub project_name: String,
+    pub started_at: String,
+    pub sessions: Vec<LaunchSession>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct LaunchSession {
+    pub id: String,
+    pub launch_run_id: String,
+    pub config_id: String,
+    pub config_name: String,
+    pub command: String,
+    pub workdir: String,
+    pub status: LaunchSessionStatus,
+    pub exit_code: Option<i32>,
+    pub output: Vec<LaunchOutputChunk>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct LaunchOutputChunk {
+    pub stream: LaunchOutputStream,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct LaunchSessionEvent {
+    pub launch_run_id: String,
+    pub session_id: String,
+    pub event_type: LaunchSessionEventType,
+    pub stream: Option<LaunchOutputStream>,
+    pub content: Option<String>,
+    pub status: Option<LaunchSessionStatus>,
+    pub exit_code: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum LaunchOutputStream {
+    Stdout,
+    Stderr,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum LaunchSessionEventType {
+    Output,
+    Status,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum LaunchSessionStatus {
+    Starting,
+    Running,
+    Exited,
+    Failed,
+    Stopped,
+}
+
+type SharedChild = Arc<Mutex<Option<Child>>>;
+
+#[derive(Clone, Default)]
+pub struct LaunchSessionRegistry {
+    sessions: Arc<Mutex<HashMap<String, RunningLaunchSession>>>,
+}
+
+#[derive(Clone)]
+struct RunningLaunchSession {
+    launch_run_id: String,
+    child: SharedChild,
+}
+
 #[tauri::command]
 pub fn list_projects() -> ProjectResult<Vec<ProjectRecord>> {
     let workbench_root = default_workbench_root()?;
@@ -47,7 +136,13 @@ pub fn save_project(project: ProjectRecord) -> ProjectResult<Vec<ProjectRecord>>
 }
 
 #[tauri::command]
-pub fn launch_project(name: String, launch_configs: Vec<ProjectLaunchConfig>) -> ProjectResult<()> {
+pub fn launch_project<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    registry: tauri::State<LaunchSessionRegistry>,
+    project_id: String,
+    name: String,
+    launch_configs: Vec<ProjectLaunchConfig>,
+) -> ProjectResult<LaunchRun> {
     let enabled_configs = enabled_launch_configs(&launch_configs);
     if enabled_configs.is_empty() {
         return Err("没有可启动的启用项".to_string());
@@ -55,12 +150,73 @@ pub fn launch_project(name: String, launch_configs: Vec<ProjectLaunchConfig>) ->
     for config in &enabled_configs {
         validate_launch_request(&config.command, &config.workdir)?;
     }
-    for config in enabled_configs {
-        launch_in_terminal(
-            &format!("{name} - {}", config.name),
-            &config.command,
-            &config.workdir,
-        )?;
+    let launch_run = create_launch_run(&project_id, &name, &enabled_configs);
+    let mut started_session_ids: Vec<String> = Vec::new();
+    for session in &launch_run.sessions {
+        if let Err(error) = start_launch_session(app.clone(), registry.inner().clone(), session) {
+            for session_id in started_session_ids {
+                let _ = stop_registered_session(registry.inner(), &session_id);
+            }
+            return Err(error);
+        }
+        started_session_ids.push(session.id.clone());
+    }
+    Ok(launch_run)
+}
+
+#[tauri::command]
+pub fn stop_launch_session<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    registry: tauri::State<LaunchSessionRegistry>,
+    session_id: String,
+) -> ProjectResult<()> {
+    let launch_run_id = stop_registered_session(registry.inner(), &session_id)?;
+    emit_stopped_status(&app, &launch_run_id, &session_id);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn restart_launch_session<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    registry: tauri::State<LaunchSessionRegistry>,
+    session: LaunchSession,
+) -> ProjectResult<LaunchSession> {
+    validate_launch_request(&session.command, &session.workdir)?;
+    let next_session = LaunchSession {
+        status: LaunchSessionStatus::Running,
+        exit_code: None,
+        output: Vec::new(),
+        ..session
+    };
+    start_launch_session(app, registry.inner().clone(), &next_session)?;
+    Ok(next_session)
+}
+
+#[tauri::command]
+pub fn stop_launch_run<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    registry: tauri::State<LaunchSessionRegistry>,
+    launch_run_id: String,
+) -> ProjectResult<()> {
+    let session_ids = {
+        let sessions = registry.sessions.lock().map_err(error_message)?;
+        sessions
+            .iter()
+            .filter_map(|(session_id, session)| {
+                if session.launch_run_id == launch_run_id {
+                    Some(session_id.clone())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+    };
+    if session_ids.is_empty() {
+        return Err("没有可停止的启动会话".to_string());
+    }
+    for session_id in session_ids {
+        let stopped_launch_run_id = stop_registered_session(registry.inner(), &session_id)?;
+        emit_stopped_status(&app, &stopped_launch_run_id, &session_id);
     }
     Ok(())
 }
@@ -366,29 +522,325 @@ fn migrate_legacy_launch_configs(connection: &Connection) -> ProjectResult<()> {
     Ok(())
 }
 
-#[cfg(windows)]
-fn launch_in_terminal(name: &str, command: &str, workdir: &str) -> ProjectResult<()> {
-    let title = format!("Workbench - {}", sanitize_title(name));
-    Command::new("cmd")
-        .args(["/C", "start", &title, "/D", workdir, "cmd", "/K", command])
+fn create_launch_run(
+    project_id: &str,
+    project_name: &str,
+    configs: &[ProjectLaunchConfig],
+) -> LaunchRun {
+    let id = format!("launch-{}", unix_millis());
+    LaunchRun {
+        id: id.clone(),
+        project_id: project_id.to_string(),
+        project_name: project_name.to_string(),
+        started_at: format_launch_time(),
+        sessions: configs
+            .iter()
+            .enumerate()
+            .map(|(index, config)| LaunchSession {
+                id: format!("{id}-{}-{index}", sanitize_id(&config.id)),
+                launch_run_id: id.clone(),
+                config_id: config.id.clone(),
+                config_name: config.name.clone(),
+                command: config.command.clone(),
+                workdir: config.workdir.clone(),
+                status: LaunchSessionStatus::Running,
+                exit_code: None,
+                output: Vec::new(),
+            })
+            .collect(),
+    }
+}
+
+fn start_launch_session<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    registry: LaunchSessionRegistry,
+    session: &LaunchSession,
+) -> ProjectResult<()> {
+    let mut command = shell_command(&session.command, &session.workdir);
+    command
+        .env("PYTHONUNBUFFERED", "1")
+        .env("NO_COLOR", "1")
+        .env("UV_NO_PROGRESS", "1");
+    let mut child = command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
         .map_err(|error| format!("启动项目失败: {error}"))?;
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+    let shared_child = Arc::new(Mutex::new(Some(child)));
+    if let Err(error) = registry.insert(
+        session.id.clone(),
+        RunningLaunchSession {
+            launch_run_id: session.launch_run_id.clone(),
+            child: shared_child.clone(),
+        },
+    ) {
+        let mut child_guard = shared_child.lock().map_err(error_message)?;
+        if let Some(child) = child_guard.as_mut() {
+            let _ = terminate_child(child);
+        }
+        *child_guard = None;
+        return Err(error);
+    }
+
+    emit_launch_status(&app, session, LaunchSessionStatus::Running, None);
+
+    if let Some(stdout) = stdout {
+        spawn_output_reader(
+            app.clone(),
+            session.launch_run_id.clone(),
+            session.id.clone(),
+            LaunchOutputStream::Stdout,
+            stdout,
+        );
+    }
+    if let Some(stderr) = stderr {
+        spawn_output_reader(
+            app.clone(),
+            session.launch_run_id.clone(),
+            session.id.clone(),
+            LaunchOutputStream::Stderr,
+            stderr,
+        );
+    }
+    spawn_exit_watcher(
+        app,
+        registry,
+        session.launch_run_id.clone(),
+        session.id.clone(),
+        shared_child,
+    );
+    Ok(())
+}
+
+fn spawn_output_reader<R: tauri::Runtime, T: Read + Send + 'static>(
+    app: tauri::AppHandle<R>,
+    launch_run_id: String,
+    session_id: String,
+    stream: LaunchOutputStream,
+    reader: T,
+) {
+    thread::spawn(move || {
+        let mut reader = reader;
+        let mut buffer = [0_u8; 4096];
+        loop {
+            match reader.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(byte_count) => {
+                    let content = String::from_utf8_lossy(&buffer[..byte_count]).to_string();
+                    let _ = app.emit(
+                        "launch-session-event",
+                        LaunchSessionEvent {
+                            launch_run_id: launch_run_id.clone(),
+                            session_id: session_id.clone(),
+                            event_type: LaunchSessionEventType::Output,
+                            stream: Some(stream.clone()),
+                            content: Some(content),
+                            status: None,
+                            exit_code: None,
+                        },
+                    );
+                }
+                Err(_) => break,
+            }
+        }
+    });
+}
+
+fn spawn_exit_watcher<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    registry: LaunchSessionRegistry,
+    launch_run_id: String,
+    session_id: String,
+    child: SharedChild,
+) {
+    thread::spawn(move || loop {
+        let status = {
+            let mut child_guard = match child.lock() {
+                Ok(guard) => guard,
+                Err(_) => return,
+            };
+            let Some(child) = child_guard.as_mut() else {
+                return;
+            };
+            match child.try_wait() {
+                Ok(Some(status)) => Some(status),
+                Ok(None) => None,
+                Err(_) => {
+                    let _ = app.emit(
+                        "launch-session-event",
+                        LaunchSessionEvent {
+                            launch_run_id: launch_run_id.clone(),
+                            session_id: session_id.clone(),
+                            event_type: LaunchSessionEventType::Status,
+                            stream: None,
+                            content: None,
+                            status: Some(LaunchSessionStatus::Failed),
+                            exit_code: None,
+                        },
+                    );
+                    let _ = registry.remove(&session_id);
+                    return;
+                }
+            }
+        };
+        if let Some(status) = status {
+            let exit_code = status.code();
+            let next_status = if status.success() {
+                LaunchSessionStatus::Exited
+            } else {
+                LaunchSessionStatus::Failed
+            };
+            let _ = app.emit(
+                "launch-session-event",
+                LaunchSessionEvent {
+                    launch_run_id: launch_run_id.clone(),
+                    session_id: session_id.clone(),
+                    event_type: LaunchSessionEventType::Status,
+                    stream: None,
+                    content: None,
+                    status: Some(next_status),
+                    exit_code,
+                },
+            );
+            let _ = registry.remove(&session_id);
+            return;
+        }
+        thread::sleep(Duration::from_millis(120));
+    });
+}
+
+fn stop_registered_session(
+    registry: &LaunchSessionRegistry,
+    session_id: &str,
+) -> ProjectResult<String> {
+    let session = registry
+        .remove(session_id)?
+        .ok_or_else(|| format!("启动会话不存在或已结束: {session_id}"))?;
+    let launch_run_id = session.launch_run_id.clone();
+    let mut child_guard = session.child.lock().map_err(error_message)?;
+    if let Some(child) = child_guard.as_mut() {
+        terminate_child(child)?;
+    }
+    *child_guard = None;
+    Ok(launch_run_id)
+}
+
+impl LaunchSessionRegistry {
+    fn insert(&self, session_id: String, session: RunningLaunchSession) -> ProjectResult<()> {
+        let mut sessions = self.sessions.lock().map_err(error_message)?;
+        if sessions.contains_key(&session_id) {
+            return Err(format!("启动会话仍在运行: {session_id}"));
+        }
+        sessions.insert(session_id, session);
+        Ok(())
+    }
+
+    fn remove(&self, session_id: &str) -> ProjectResult<Option<RunningLaunchSession>> {
+        Ok(self
+            .sessions
+            .lock()
+            .map_err(error_message)?
+            .remove(session_id))
+    }
+}
+
+fn emit_launch_status<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    session: &LaunchSession,
+    status: LaunchSessionStatus,
+    exit_code: Option<i32>,
+) {
+    let _ = app.emit(
+        "launch-session-event",
+        LaunchSessionEvent {
+            launch_run_id: session.launch_run_id.clone(),
+            session_id: session.id.clone(),
+            event_type: LaunchSessionEventType::Status,
+            stream: None,
+            content: None,
+            status: Some(status),
+            exit_code,
+        },
+    );
+}
+
+fn emit_stopped_status<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    launch_run_id: &str,
+    session_id: &str,
+) {
+    let _ = app.emit(
+        "launch-session-event",
+        LaunchSessionEvent {
+            launch_run_id: launch_run_id.to_string(),
+            session_id: session_id.to_string(),
+            event_type: LaunchSessionEventType::Status,
+            stream: None,
+            content: None,
+            status: Some(LaunchSessionStatus::Stopped),
+            exit_code: None,
+        },
+    );
+}
+
+#[cfg(windows)]
+fn shell_command(command: &str, workdir: &str) -> Command {
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    let mut shell = Command::new("cmd");
+    shell
+        .args(["/C", command])
+        .current_dir(workdir)
+        .creation_flags(CREATE_NO_WINDOW);
+    shell
+}
+
+#[cfg(not(windows))]
+fn shell_command(command: &str, workdir: &str) -> Command {
+    let mut shell = Command::new("sh");
+    shell.args(["-c", command]).current_dir(workdir);
+    shell
+}
+
+#[cfg(windows)]
+fn terminate_child(child: &mut Child) -> ProjectResult<()> {
+    let pid = child.id().to_string();
+    let _ = Command::new("taskkill")
+        .args(["/PID", &pid, "/T", "/F"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    let _ = child.kill();
     Ok(())
 }
 
 #[cfg(not(windows))]
-fn launch_in_terminal(_name: &str, _command: &str, _workdir: &str) -> ProjectResult<()> {
-    Err("当前系统暂不支持项目启动".to_string())
+fn terminate_child(child: &mut Child) -> ProjectResult<()> {
+    child.kill().map_err(error_message)
 }
 
-#[cfg(windows)]
-fn sanitize_title(name: &str) -> String {
-    let title = name.trim();
-    if title.is_empty() {
-        "Project".to_string()
-    } else {
-        title.replace('"', "'")
-    }
+fn unix_millis() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+}
+
+fn format_launch_time() -> String {
+    "刚刚".to_string()
+}
+
+fn sanitize_id(id: &str) -> String {
+    id.chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || character == '-' || character == '_' {
+                character
+            } else {
+                '-'
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -458,6 +910,69 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["frontend", "backend"]
         );
+    }
+
+    #[test]
+    fn creates_separate_launch_sessions_for_enabled_configs() {
+        let configs = vec![
+            ProjectLaunchConfig {
+                id: "frontend".to_string(),
+                name: "Frontend".to_string(),
+                command: "pnpm dev".to_string(),
+                workdir: "E:\\Demo".to_string(),
+                enabled: true,
+            },
+            ProjectLaunchConfig {
+                id: "worker".to_string(),
+                name: "Worker".to_string(),
+                command: "pnpm worker".to_string(),
+                workdir: "E:\\Demo".to_string(),
+                enabled: true,
+            },
+        ];
+
+        let launch_run = create_launch_run("demo", "Demo", &configs);
+
+        assert_eq!(launch_run.project_id, "demo");
+        assert_eq!(launch_run.sessions.len(), 2);
+        assert_eq!(launch_run.sessions[0].config_name, "Frontend");
+        assert_eq!(launch_run.sessions[1].config_name, "Worker");
+        assert_ne!(launch_run.sessions[0].id, launch_run.sessions[1].id);
+        assert_eq!(launch_run.sessions[0].status, LaunchSessionStatus::Running);
+        assert!(launch_run.sessions[0].output.is_empty());
+    }
+
+    #[test]
+    fn stopping_unknown_launch_session_fails_loudly() {
+        let registry = LaunchSessionRegistry::default();
+        let result = stop_registered_session(&registry, "missing-session");
+
+        assert!(result.unwrap_err().contains("启动会话不存在或已结束"));
+    }
+
+    #[test]
+    fn inserting_existing_launch_session_fails_loudly() {
+        let registry = LaunchSessionRegistry::default();
+        let child = Arc::new(Mutex::new(None));
+        registry
+            .insert(
+                "session-1".to_string(),
+                RunningLaunchSession {
+                    launch_run_id: "run-1".to_string(),
+                    child: child.clone(),
+                },
+            )
+            .unwrap();
+
+        let result = registry.insert(
+            "session-1".to_string(),
+            RunningLaunchSession {
+                launch_run_id: "run-1".to_string(),
+                child,
+            },
+        );
+
+        assert!(result.unwrap_err().contains("启动会话仍在运行"));
     }
 
     #[test]

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import {
   Archive,
@@ -11,17 +11,20 @@ import {
   FileText,
   FolderOpen,
   Moon,
+  Pause,
   Play,
   Plus,
   RefreshCcw,
   Settings,
   Sparkles,
+  Square,
   Sun,
-  Trash2
+  Trash2,
+  X
 } from "lucide-react";
 import { Button, IconButton, Modal, PageHeader, Panel, SearchInput, TagList } from "./components/ui";
 import { workbenchApi } from "./lib/api/workbenchApi";
-import type { AppSettings, ImportResult, Project, ProjectLaunchConfig, RadarCategory, RadarItem, Skill, SkillVersionSource, ToolTarget, ViewKey } from "./lib/types/domain";
+import type { AppSettings, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, Project, ProjectLaunchConfig, RadarCategory, RadarItem, Skill, SkillVersionSource, ToolTarget, ViewKey } from "./lib/types/domain";
 
 const views: Array<{ key: ViewKey; label: string; icon: JSX.Element }> = [
   { key: "projects", label: "项目", icon: <Box size={16} /> },
@@ -43,6 +46,8 @@ export function App() {
   const [selectedSkillId, setSelectedSkillId] = useState("security-review");
   const [selectedRadarId, setSelectedRadarId] = useState("mcp");
   const [projectLaunchTimes, setProjectLaunchTimes] = useState<Record<string, string>>({});
+  const [launchRuns, setLaunchRuns] = useState<Record<string, LaunchRun>>({});
+  const pendingLaunchEventsRef = useRef<Record<string, LaunchSessionEvent[]>>({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [toast, setToast] = useState("");
@@ -71,6 +76,32 @@ export function App() {
         showToast(message);
       })
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
+    void workbenchApi.subscribeLaunchEvents((event) => {
+      setLaunchRuns((current) => {
+        const entry = Object.entries(current).find(([, launchRun]) => launchRun.id === event.launchRunId);
+        if (!entry) {
+          pendingLaunchEventsRef.current[event.launchRunId] = [
+            ...(pendingLaunchEventsRef.current[event.launchRunId] ?? []),
+            event
+          ];
+          return current;
+        }
+        const [projectId, launchRun] = entry;
+        return {
+          ...current,
+          [projectId]: applyLaunchSessionEvent(launchRun, event) ?? launchRun
+        };
+      });
+    }).then((listener) => {
+      unsubscribe = listener;
+    });
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, []);
 
   const activeProjects = projects.filter((project) => !project.archived);
@@ -213,18 +244,67 @@ export function App() {
             projects={projects}
             selectedProject={selectedProject}
             projectLaunchTimes={projectLaunchTimes}
+            launchRuns={launchRuns}
             loading={loading}
             loadError={loadError}
             onSelect={setSelectedProjectId}
             onLaunch={async (project) => {
               try {
-                await workbenchApi.launchProject(project);
-                setProjectLaunchTimes((times) => ({ ...times, [project.id]: formatLaunchTime(new Date()) }));
+                const nextLaunchRun = await workbenchApi.launchProject(project);
+                const startedAt = formatLaunchTime(new Date());
+                const visibleLaunchRun = { ...nextLaunchRun, startedAt };
+                setLaunchRuns((current) => ({
+                  ...current,
+                  [project.id]: applyPendingLaunchEvents(visibleLaunchRun, pendingLaunchEventsRef.current)
+                }));
+                setProjectLaunchTimes((times) => ({ ...times, [project.id]: startedAt }));
                 const count = enabledLaunchConfigs(project).length;
-                showToast(`已请求启动 ${project.name} 的 ${count} 个启动项`);
+                showToast(`已启动 ${project.name} 的 ${count} 个会话`);
               } catch (error) {
                 showToast(error instanceof Error ? error.message : String(error));
               }
+            }}
+            onStopLaunchSession={async (sessionId) => {
+              try {
+                await workbenchApi.stopLaunchSession(sessionId);
+                setLaunchRuns((current) => markLaunchSessionStoppedInRuns(current, sessionId));
+              } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                if (isAlreadyEndedLaunchMessage(message)) {
+                  setLaunchRuns((current) => markLaunchSessionStoppedInRuns(current, sessionId));
+                  showToast("启动会话已结束");
+                } else {
+                  showToast(message);
+                }
+              }
+            }}
+            onStopLaunchRun={async (launchRunId) => {
+              try {
+                await workbenchApi.stopLaunchRun(launchRunId);
+                setLaunchRuns((current) => markLaunchRunStoppedInRuns(current, launchRunId));
+              } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                if (isAlreadyEndedLaunchMessage(message)) {
+                  setLaunchRuns((current) => markLaunchRunStoppedInRuns(current, launchRunId));
+                  showToast("启动会话已结束");
+                } else {
+                  showToast(message);
+                }
+              }
+            }}
+            onRestartLaunchSession={async (session) => {
+              try {
+                const nextSession = await workbenchApi.restartLaunchSession(session);
+                setLaunchRuns((current) => replaceLaunchSessionInRuns(current, nextSession));
+              } catch (error) {
+                showToast(error instanceof Error ? error.message : String(error));
+              }
+            }}
+            onClearLaunchRun={(projectId) => {
+              setLaunchRuns((current) => {
+                const { [projectId]: _removed, ...remaining } = current;
+                return remaining;
+              });
             }}
             onEdit={(project) => openProjectDialog(project.id)}
             onArchive={(project, archived) => void saveProject({ ...project, archived })}
@@ -469,10 +549,16 @@ export function ProjectsView({
   projects,
   selectedProject,
   projectLaunchTimes,
+  launchRuns,
+  launchRun,
   loading,
   loadError,
   onSelect,
   onLaunch,
+  onStopLaunchSession = () => undefined,
+  onStopLaunchRun = () => undefined,
+  onRestartLaunchSession = () => undefined,
+  onClearLaunchRun = () => undefined,
   onEdit,
   onArchive,
   onAdd
@@ -480,10 +566,16 @@ export function ProjectsView({
   projects: Project[];
   selectedProject?: Project;
   projectLaunchTimes: Record<string, string>;
+  launchRuns?: Record<string, LaunchRun>;
+  launchRun?: LaunchRun | null;
   loading: boolean;
   loadError: string;
   onSelect: (id: string) => void;
   onLaunch: (project: Project) => void;
+  onStopLaunchSession?: (sessionId: string) => void;
+  onStopLaunchRun?: (launchRunId: string) => void;
+  onRestartLaunchSession?: (session: LaunchSession) => void;
+  onClearLaunchRun?: (projectId: string) => void;
   onEdit: (project: Project) => void;
   onArchive: (project: Project, archived: boolean) => void;
   onAdd: () => void;
@@ -496,13 +588,14 @@ export function ProjectsView({
     () => ["全部标签", ...Array.from(new Set(projects.flatMap((project) => project.tags)))],
     [projects]
   );
+  const currentLaunchRuns = launchRuns ?? (launchRun ? { [launchRun.projectId]: launchRun } : {});
   const visibleProjects = projects.filter((project) => {
     const normalizedQuery = query.trim().toLowerCase();
     const matchesQuery = !normalizedQuery
       || project.name.toLowerCase().includes(normalizedQuery)
       || project.path.toLowerCase().includes(normalizedQuery);
     const matchesTag = tagFilter === "全部标签" || project.tags.includes(tagFilter);
-    const status = getProjectLaunchStatus(project, projectLaunchTimes);
+    const status = getProjectLaunchStatus(project, projectLaunchTimes, currentLaunchRuns[project.id]);
     const matchesStatus = statusFilter === "全部状态" || status === statusFilter;
     const matchesArchive =
       archiveFilter === "全部项目" ||
@@ -510,6 +603,7 @@ export function ProjectsView({
       (archiveFilter === "已归档" && project.archived);
     return matchesQuery && matchesTag && matchesStatus && matchesArchive;
   });
+  const selectedLaunchRun = selectedProject ? currentLaunchRuns[selectedProject.id] ?? null : null;
 
   return (
     <section className="view">
@@ -523,7 +617,11 @@ export function ProjectsView({
           <option>全部状态</option>
           <option>可启动</option>
           <option>未配置</option>
-          <option>已启动请求</option>
+          <option>运行中</option>
+          <option>部分运行</option>
+          <option>已结束</option>
+          <option>失败</option>
+          <option>已停止</option>
         </select>
         <select aria-label="按归档状态筛选项目" value={archiveFilter} onChange={(event) => setArchiveFilter(event.target.value)}>
           <option>活跃项目</option>
@@ -547,7 +645,9 @@ export function ProjectsView({
             </div>
           )}
           {!loading && !loadError && visibleProjects.map((project) => {
-            const launchStatus = getProjectLaunchStatus(project, projectLaunchTimes);
+            const projectLaunchRun = currentLaunchRuns[project.id] ?? null;
+            const launchStatus = getProjectLaunchStatus(project, projectLaunchTimes, projectLaunchRun);
+            const isRunningProject = Boolean(projectLaunchRun?.sessions.some((session) => isActiveLaunchStatus(session.status)));
             return (
               <div
                 key={project.id}
@@ -567,7 +667,7 @@ export function ProjectsView({
                 </span>
                 <TagList tags={project.tags} />
                 <span className="command-cell">{formatLaunchConfigSummary(project)}</span>
-                <span><i className={`project-status-pill ${launchStatus === "未配置" ? "muted-status" : launchStatus === "已启动请求" ? "launched" : ""}`}>{launchStatus}</i></span>
+                <span><i className={`project-status-pill ${statusClassName(launchStatus)}`}>{launchStatus}</i></span>
                 <span className="row-actions">
                   <IconButton
                     title="打开目录"
@@ -579,14 +679,18 @@ export function ProjectsView({
                     <FolderOpen size={14} />
                   </IconButton>
                   <IconButton
-                    title="启动项目"
+                    title={isRunningProject ? "停止项目" : "启动项目"}
                     disabled={enabledLaunchConfigs(project).length === 0}
                     onClick={(event) => {
                       event.stopPropagation();
-                      onLaunch(project);
+                      if (isRunningProject && projectLaunchRun) {
+                        onStopLaunchRun(projectLaunchRun.id);
+                      } else {
+                        onLaunch(project);
+                      }
                     }}
                   >
-                    <Play size={14} />
+                    {isRunningProject ? <Pause size={14} /> : <Play size={14} />}
                   </IconButton>
                   <IconButton
                     title="编辑项目"
@@ -652,20 +756,31 @@ export function ProjectsView({
                 )) : <p className="muted">暂无启动配置。</p>}
               </div>
               <div className="detail-meta-grid">
-                <div><small>启动状态</small><strong>{getProjectLaunchStatus(selectedProject, projectLaunchTimes)}</strong></div>
-                <div><small>最近启动请求</small><strong>{projectLaunchTimes[selectedProject.id] ?? "暂无"}</strong></div>
+                <div><small>启动状态</small><strong>{getProjectLaunchStatus(selectedProject, projectLaunchTimes, selectedLaunchRun)}</strong></div>
+                <div><small>最近启动</small><strong>{projectLaunchTimes[selectedProject.id] ?? "暂无"}</strong></div>
                 <div><small>项目状态</small><strong>{selectedProject.archived ? "已归档" : "活跃"}</strong></div>
-                <div><small>启动方式</small><strong>系统终端窗口</strong></div>
+                <div><small>启动方式</small><strong>内嵌启动会话</strong></div>
               </div>
+              {selectedLaunchRun && (
+                <LaunchRunPanel
+                  launchRun={selectedLaunchRun}
+                  project={selectedProject}
+                  onLaunch={onLaunch}
+                  onStopLaunchSession={onStopLaunchSession}
+                  onStopLaunchRun={onStopLaunchRun}
+                  onRestartLaunchSession={onRestartLaunchSession}
+                  onClearLaunchRun={() => onClearLaunchRun(selectedProject.id)}
+                />
+              )}
               <div className="boundary-note">
                 <span className="status-dot" />
-                <p>Workbench 不捕获日志，也不停止或重启进程；重复启动由用户在系统终端中自行处理。</p>
+                <p>Workbench 只展示本次启动的内存日志；不保存历史日志，再次启动会创建全新的会话组。</p>
               </div>
             </>
           ) : (
             <div className="empty-state detail-empty">
               <strong>还没有项目</strong>
-              <small>添加项目后，可以配置启动项并在新的系统终端窗口中执行。</small>
+              <small>添加项目后，可以配置启动项并在 Workbench 内查看本次启动输出。</small>
             </div>
           )}
         </Panel>
@@ -674,9 +789,211 @@ export function ProjectsView({
   );
 }
 
-export function getProjectLaunchStatus(project: Project, projectLaunchTimes: Record<string, string>) {
-  if (projectLaunchTimes[project.id]) return "已启动请求";
+export function getProjectLaunchStatus(project: Project, _projectLaunchTimes: Record<string, string>, launchRun?: LaunchRun | null) {
+  if (launchRun?.projectId === project.id && launchRun.sessions.length) {
+    const statuses = launchRun.sessions.map((session) => session.status);
+    const activeCount = statuses.filter(isActiveLaunchStatus).length;
+    if (activeCount > 0) return activeCount === statuses.length ? "运行中" : "部分运行";
+    if (statuses.some((status) => status === "failed")) return "失败";
+    if (statuses.every((status) => status === "stopped")) return "已停止";
+    if (statuses.every((status) => status === "exited")) return "已结束";
+  }
   return enabledLaunchConfigs(project).length ? "可启动" : "未配置";
+}
+
+function statusClassName(status: string) {
+  if (status === "未配置") return "muted-status";
+  if (status === "失败") return "failed";
+  if (status === "已停止" || status === "已结束") return "muted-status";
+  if (status === "运行中" || status === "部分运行" || status === "启动中") return "launched";
+  return "";
+}
+
+function LaunchRunPanel({
+  launchRun,
+  project,
+  onLaunch,
+  onStopLaunchSession,
+  onStopLaunchRun,
+  onRestartLaunchSession,
+  onClearLaunchRun
+}: {
+  launchRun: LaunchRun;
+  project: Project;
+  onLaunch: (project: Project) => void;
+  onStopLaunchSession: (sessionId: string) => void;
+  onStopLaunchRun: (launchRunId: string) => void;
+  onRestartLaunchSession: (session: LaunchSession) => void;
+  onClearLaunchRun: () => void;
+}) {
+  const hasRunningSession = launchRun.sessions.some((session) => isActiveLaunchStatus(session.status));
+
+  return (
+    <section className="launch-run-panel" aria-label="本次启动会话">
+      <header>
+        <span>
+          <h3>本次启动</h3>
+          <small>{launchRun.startedAt} · {launchRun.sessions.length} 个启动项</small>
+        </span>
+        <span className="launch-run-actions">
+          {hasRunningSession ? (
+            <IconButton
+              title="停止全部会话"
+              onClick={() => onStopLaunchRun(launchRun.id)}
+            >
+              <Square size={14} />
+            </IconButton>
+          ) : (
+            <>
+              <IconButton title="重新启动全部" onClick={() => onLaunch(project)}>
+                <RefreshCcw size={14} />
+              </IconButton>
+              <IconButton title="关闭本次记录" onClick={onClearLaunchRun}>
+                <X size={14} />
+              </IconButton>
+            </>
+          )}
+        </span>
+      </header>
+      <div className="launch-session-list">
+        {launchRun.sessions.map((session) => (
+          <article className="launch-session-item" key={session.id}>
+            <div className="launch-session-head">
+              <span>
+                <strong>{session.configName}</strong>
+                <small>{session.workdir}</small>
+              </span>
+              <span className="launch-session-actions">
+                <i className={`launch-status ${session.status}`}>{formatLaunchSessionStatus(session)}</i>
+                {isActiveLaunchStatus(session.status) && (
+                  <IconButton
+                    title="停止会话"
+                    onClick={() => onStopLaunchSession(session.id)}
+                  >
+                    <Square size={14} />
+                  </IconButton>
+                )}
+                {!isActiveLaunchStatus(session.status) && (
+                  <IconButton
+                    title="重新启动此项"
+                    onClick={() => onRestartLaunchSession(session)}
+                  >
+                    <RefreshCcw size={14} />
+                  </IconButton>
+                )}
+              </span>
+            </div>
+            <code>{session.command}</code>
+            <pre className="launch-output">
+              {session.output.length
+                ? session.output.map((chunk, index) => (
+                  <span className={chunk.stream} key={`${session.id}-${index}`}>{chunk.content}</span>
+                ))
+                : <span className="muted-output">等待输出...</span>}
+            </pre>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function formatLaunchSessionStatus(session: LaunchSession) {
+  if (session.status === "exited") return `已退出 ${session.exitCode ?? 0}`;
+  if (session.status === "failed") return `失败 ${session.exitCode ?? ""}`.trim();
+  if (session.status === "stopped") return "已停止";
+  if (session.status === "running") return "运行中";
+  return "启动中";
+}
+
+function isActiveLaunchStatus(status: LaunchSession["status"]) {
+  return status === "starting" || status === "running";
+}
+
+function applyLaunchSessionEvent(current: LaunchRun | null, event: LaunchSessionEvent) {
+  if (!current || current.id !== event.launchRunId) return current;
+  return {
+    ...current,
+    sessions: current.sessions.map((session) => {
+      if (session.id !== event.sessionId) return session;
+      if (event.eventType === "output" && event.stream && typeof event.content === "string") {
+        return {
+          ...session,
+          output: [...session.output, { stream: event.stream, content: event.content }]
+        };
+      }
+      if (event.eventType === "status" && event.status) {
+        return {
+          ...session,
+          status: event.status,
+          exitCode: event.exitCode ?? session.exitCode
+        };
+      }
+      return session;
+    })
+  };
+}
+
+export function applyPendingLaunchEvents(launchRun: LaunchRun, pendingEvents: Record<string, LaunchSessionEvent[]>) {
+  const events = pendingEvents[launchRun.id] ?? [];
+  delete pendingEvents[launchRun.id];
+  return events.reduce((current, event) => applyLaunchSessionEvent(current, event) ?? current, launchRun);
+}
+
+export function markLaunchRunStopped(launchRun: LaunchRun, sessionId?: string) {
+  return {
+    ...launchRun,
+    sessions: launchRun.sessions.map((session) => {
+      if (sessionId && session.id !== sessionId) return session;
+      if (!isActiveLaunchStatus(session.status)) return session;
+      return { ...session, status: "stopped" as const };
+    })
+  };
+}
+
+function replaceLaunchSession(launchRun: LaunchRun, nextSession: LaunchSession) {
+  return {
+    ...launchRun,
+    sessions: launchRun.sessions.map((session) => session.id === nextSession.id ? nextSession : session)
+  };
+}
+
+function markLaunchSessionStoppedInRuns(launchRuns: Record<string, LaunchRun>, sessionId: string) {
+  const entry = Object.entries(launchRuns).find(([, launchRun]) =>
+    launchRun.sessions.some((session) => session.id === sessionId)
+  );
+  if (!entry) return launchRuns;
+  const [projectId, launchRun] = entry;
+  return {
+    ...launchRuns,
+    [projectId]: markLaunchRunStopped(launchRun, sessionId)
+  };
+}
+
+function markLaunchRunStoppedInRuns(launchRuns: Record<string, LaunchRun>, launchRunId: string) {
+  const entry = Object.entries(launchRuns).find(([, launchRun]) => launchRun.id === launchRunId);
+  if (!entry) return launchRuns;
+  const [projectId, launchRun] = entry;
+  return {
+    ...launchRuns,
+    [projectId]: markLaunchRunStopped(launchRun)
+  };
+}
+
+function replaceLaunchSessionInRuns(launchRuns: Record<string, LaunchRun>, nextSession: LaunchSession) {
+  const entry = Object.entries(launchRuns).find(([, launchRun]) =>
+    launchRun.sessions.some((session) => session.id === nextSession.id)
+  );
+  if (!entry) return launchRuns;
+  const [projectId, launchRun] = entry;
+  return {
+    ...launchRuns,
+    [projectId]: replaceLaunchSession(launchRun, nextSession)
+  };
+}
+
+function isAlreadyEndedLaunchMessage(message: string) {
+  return message.includes("启动会话不存在或已结束") || message.includes("没有可停止的启动会话");
 }
 
 export function enabledLaunchConfigs(project: Project) {
