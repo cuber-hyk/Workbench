@@ -9,6 +9,7 @@ import {
   CircleDot,
   Download,
   Edit3,
+  ExternalLink,
   FileText,
   FolderOpen,
   Moon,
@@ -24,7 +25,7 @@ import {
   Trash2,
   X
 } from "lucide-react";
-import { Button, IconButton, Modal, PageHeader, Panel, SearchInput, TagList } from "./components/ui";
+import { ActionGroup, Button, ConfirmDeleteModal, DetailHeader, FilterMore, IconButton, Modal, PageHeader, Panel, SearchInput, StatusBadge, TagList, Toolbar } from "./components/ui";
 import { workbenchApi } from "./lib/api/workbenchApi";
 import type { AppSettings, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, Project, ProjectLaunchConfig, RadarCategory, RadarDuplicateGroup, RadarItem, Skill, SkillVersionSource, ToolTarget, ViewKey } from "./lib/types/domain";
 
@@ -697,7 +698,7 @@ export function ProjectsView({
   return (
     <section className="view">
       <PageHeader title="项目" description="管理本地开发项目并快速启动" actions={<Button variant="primary" onClick={onAdd}><Plus size={15} />添加项目</Button>} />
-      <div className="toolbar">
+      <Toolbar>
         <SearchInput placeholder="搜索项目名称或路径" value={query} onChange={(event) => setQuery(event.target.value)} />
         <select aria-label="按标签筛选项目" value={tagFilter} onChange={(event) => setTagFilter(event.target.value)}>
           {tagOptions.map((tag) => <option key={tag}>{tag}</option>)}
@@ -717,7 +718,7 @@ export function ProjectsView({
           <option>已归档</option>
           <option>全部项目</option>
         </select>
-      </div>
+      </Toolbar>
       <div className="split-layout">
         <Panel className="list-panel">
           <div className="table-head projects-grid"><span>项目</span><span>标签</span><span>启动项</span><span>状态</span><span>操作</span></div>
@@ -756,8 +757,8 @@ export function ProjectsView({
                 </span>
                 <TagList tags={project.tags} />
                 <span className="command-cell">{formatLaunchConfigSummary(project)}</span>
-                <span><i className={`project-status-pill ${statusClassName(launchStatus)}`}>{launchStatus}</i></span>
-                <span className="row-actions">
+                <span><StatusBadge tone={projectStatusTone(launchStatus)}>{launchStatus}</StatusBadge></span>
+                <ActionGroup className="row-actions">
                   <IconButton
                     title="打开目录"
                     onClick={(event) => {
@@ -801,7 +802,7 @@ export function ProjectsView({
                   >
                     {project.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
                   </IconButton>
-                </span>
+                </ActionGroup>
               </div>
             );
           })}
@@ -816,12 +817,11 @@ export function ProjectsView({
         <Panel className="detail-panel">
           {selectedProject ? (
             <>
-              <div className="detail-title">
-                <div>
-                  <h2>{selectedProject.name}</h2>
-                  <p>{selectedProject.note}</p>
-                </div>
-                <div className="detail-actions compact">
+              <DetailHeader
+                title={selectedProject.name}
+                description={selectedProject.note}
+                actions={
+                  <>
                   <IconButton title="编辑" onClick={() => onEdit(selectedProject)}><Edit3 size={15} /></IconButton>
                   <IconButton
                     title={!selectedProject.archived && selectedProjectRunning ? "运行中不可归档" : selectedProject.archived ? "恢复项目" : "归档项目"}
@@ -833,8 +833,9 @@ export function ProjectsView({
                   >
                     {selectedProject.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />}
                   </IconButton>
-                </div>
-              </div>
+                  </>
+                }
+              />
               <div className="form-grid">
                 <label>项目路径<input value={selectedProject.path} readOnly /></label>
                 <label>标签<input value={selectedProject.tags.join(", ")} readOnly /></label>
@@ -849,7 +850,7 @@ export function ProjectsView({
                       <small>{config.workdir}</small>
                       <code>{config.command || "未配置命令"}</code>
                     </span>
-                    <i className={config.enabled ? "available" : "disabled-pill"}>{config.enabled ? "启用" : "停用"}</i>
+                    <StatusBadge tone={config.enabled ? "accent" : "neutral"}>{config.enabled ? "启用" : "停用"}</StatusBadge>
                   </div>
                 )) : <p className="muted">暂无启动配置。</p>}
               </div>
@@ -900,12 +901,18 @@ export function getProjectLaunchStatus(project: Project, _projectLaunchTimes: Re
   return enabledLaunchConfigs(project).length ? "可启动" : "未配置";
 }
 
-function statusClassName(status: string) {
-  if (status === "未配置") return "muted-status";
-  if (status === "失败") return "failed";
-  if (status === "已停止" || status === "已结束") return "muted-status";
-  if (status === "运行中" || status === "部分运行" || status === "启动中") return "launched";
-  return "";
+function projectStatusTone(status: string): "neutral" | "accent" | "success" | "danger" {
+  if (status === "未配置" || status === "已停止" || status === "已结束") return "neutral";
+  if (status === "失败") return "danger";
+  if (status === "运行中" || status === "部分运行" || status === "启动中") return "success";
+  return "accent";
+}
+
+function launchStatusTone(status: LaunchSession["status"]): "neutral" | "accent" | "success" | "danger" {
+  if (status === "running" || status === "starting") return "success";
+  if (status === "failed") return "danger";
+  if (status === "stopped" || status === "exited") return "neutral";
+  return "accent";
 }
 
 function LaunchRunPanel({
@@ -966,7 +973,7 @@ function LaunchRunPanel({
                 <small>{session.workdir}</small>
               </span>
               <span className="launch-session-actions">
-                <i className={`launch-status ${session.status}`}>{formatLaunchSessionStatus(session)}</i>
+                <StatusBadge tone={launchStatusTone(session.status)}>{formatLaunchSessionStatus(session)}</StatusBadge>
                 {isActiveLaunchStatus(session.status) && (
                   <IconButton
                     title="停止会话"
@@ -1057,7 +1064,7 @@ function LaunchLogDetailPage({
       </div>
 
       <div className="launch-log-meta">
-        <span><i className={`launch-status ${hasRunningSession ? "running" : "stopped"}`}>{getProjectLaunchStatus(project, {}, launchRun)}</i></span>
+        <span><StatusBadge tone={hasRunningSession ? "success" : "neutral"}>{getProjectLaunchStatus(project, {}, launchRun)}</StatusBadge></span>
         <span>{launchRun.startedAt}</span>
         <span>{launchRun.sessions.length} 个启动项</span>
       </div>
@@ -1090,7 +1097,7 @@ function LaunchLogDetailPage({
           <div className="launch-log-tab-actions">
             {activeSession ? (
               <>
-              <i className={`launch-status ${activeSession.status}`}>{formatLaunchSessionStatus(activeSession)}</i>
+              <StatusBadge tone={launchStatusTone(activeSession.status)}>{formatLaunchSessionStatus(activeSession)}</StatusBadge>
               {isActiveLaunchStatus(activeSession.status) ? (
                 <IconButton title="停止会话" onClick={() => onStopLaunchSession(activeSession.id)}>
                   <Square size={14} />
@@ -1102,7 +1109,7 @@ function LaunchLogDetailPage({
               )}
               </>
             ) : (
-              <i className={`launch-status ${hasRunningSession ? "running" : "stopped"}`}>{getProjectLaunchStatus(project, {}, launchRun)}</i>
+              <StatusBadge tone={hasRunningSession ? "success" : "neutral"}>{getProjectLaunchStatus(project, {}, launchRun)}</StatusBadge>
             )}
           </div>
         </div>
@@ -1430,7 +1437,7 @@ function SkillsView({
         <span><strong>统一根目录</strong>{settings.skillsRoot}</span>
         <Button onClick={() => void workbenchApi.openLocalPath(settings.skillsRoot)}><FolderOpen size={15} />打开目录</Button>
       </div>
-      <div className="toolbar">
+      <Toolbar>
         <SearchInput placeholder="搜索名称或描述" value={query} onChange={(event) => setQuery(event.target.value)} />
         <select aria-label="按分类筛选 Skills" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
           {categories.map((category) => <option key={category}>{category}</option>)}
@@ -1441,7 +1448,7 @@ function SkillsView({
           <option>内容冲突</option>
           <option>未启用</option>
         </select>
-      </div>
+      </Toolbar>
       <div className="split-layout skills-layout">
         <Panel className="list-panel">
           <div className="table-head skills-grid"><span>Skill</span><span>分类</span><span>全局启用</span><span>项目启用</span><span>操作</span></div>
@@ -1469,7 +1476,7 @@ function SkillsView({
                 onToggle={(tool, enabled) => onToggleSkillGlobal(skill.directoryName, tool, enabled)}
               />
               <span>{skill.enabledProjects.length ? `${skill.enabledProjects.length} 个项目` : "未启用"}</span>
-              <span className="row-actions">
+              <ActionGroup className="row-actions">
                 <IconButton
                   title="打开 SKILL.md"
                   onClick={(event) => {
@@ -1480,7 +1487,7 @@ function SkillsView({
                   <FileText size={14} />
                 </IconButton>
                 <IconButton
-                  className="danger-icon"
+                  variant="danger"
                   title="删除 Skill"
                   onClick={(event) => {
                     event.stopPropagation();
@@ -1489,18 +1496,13 @@ function SkillsView({
                 >
                   <Trash2 size={14} />
                 </IconButton>
-              </span>
+              </ActionGroup>
             </div>
           ))}
         </Panel>
 
         <Panel className="detail-panel">
-          <div className="detail-title">
-            <div>
-              <h2>{selectedSkill.name}</h2>
-              <p>分类：{selectedSkill.category}</p>
-            </div>
-          </div>
+          <DetailHeader title={selectedSkill.name} description={`分类：${selectedSkill.category}`} />
           <p className="description">{selectedSkill.description}</p>
           {selectedSkill.globalToolStates.some((state) => state.status === "conflict") && (
             <SkillConflictPanel skill={selectedSkill} settings={settings} onResolve={onResolve} />
@@ -1710,7 +1712,7 @@ function SkillConflictPanel({
           <strong>检测到多个版本不一致</strong>
           <small>选择一个版本作为唯一来源，应用后会统一同步到已存在的全局工具目录。</small>
         </span>
-        <b className="status-badge conflict">内容冲突</b>
+        <StatusBadge tone="danger">内容冲突</StatusBadge>
       </div>
       <div className="version-options">
         {candidates.map((candidate) => (
@@ -1824,7 +1826,7 @@ export function RadarView({
         description={`${items.length} 条本地记录`}
         actions={<div className="header-actions"><Button disabled={syncingGithubStars} onClick={onSyncGithubStars}><RefreshCcw size={15} />{syncingGithubStars ? "同步中" : "同步 GitHub Stars"}</Button><Button variant="primary" onClick={onAdd}><Plus size={15} />添加条目</Button></div>}
       />
-      <div className="toolbar">
+      <Toolbar>
         <SearchInput placeholder="搜索名称、标签或备注" value={query} onChange={(event) => setQuery(event.target.value)} />
         <select aria-label="按分类筛选" value={category} onChange={(event) => setCategory(event.target.value)}>
           {categories.map((option) => <option key={option}>{option}</option>)}
@@ -1837,10 +1839,7 @@ export function RadarView({
           <option value="manual">手动添加</option>
           <option value="github_star">GitHub Stars</option>
         </select>
-        <div className="filter-more">
-          <Button aria-expanded={showMoreFilters} onClick={() => setShowMoreFilters((value) => !value)}>更多筛选</Button>
-          {showMoreFilters && (
-            <div className="filter-popover">
+        <FilterMore expanded={showMoreFilters} onToggle={() => setShowMoreFilters((value) => !value)}>
               <select aria-label="按语言筛选" value={language} onChange={(event) => setLanguage(event.target.value)}>
                 {languages.map((option) => <option key={option}>{option}</option>)}
               </select>
@@ -1854,9 +1853,7 @@ export function RadarView({
                 <option>待合并</option>
                 <option>非重复项</option>
               </select>
-            </div>
-          )}
-        </div>
+        </FilterMore>
         <Button
           className={`favorite-filter ${favoritesOnly ? "active" : ""}`}
           aria-label={favoritesOnly ? "显示全部资源" : "仅显示收藏资源"}
@@ -1865,7 +1862,7 @@ export function RadarView({
         >
           <Star size={16} fill="currentColor" />
         </Button>
-      </div>
+      </Toolbar>
       {duplicateGroups.length > 0 && (
         <div className="radar-duplicate-stack" aria-label="待合并来源">
           {duplicateGroups.map((group) => (
@@ -1928,61 +1925,64 @@ export function RadarView({
             >
               <span className="row-main">
                 <strong>{item.name}</strong>
-                <button
-                  className={`favorite-star ${item.favorite ? "active" : ""}`}
-                  aria-label={item.favorite ? `取消收藏 ${item.name}` : `收藏 ${item.name}`}
-                  title={item.favorite ? "取消收藏" : "收藏"}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onToggleFavorite(item);
-                  }}
-                >
-                  <Star size={15} fill="currentColor" />
-                </button>
+                <ActionGroup className="row-actions">
+                  <button
+                    className={`favorite-star ${item.favorite ? "active" : ""}`}
+                    aria-label={item.favorite ? `取消收藏 ${item.name}` : `收藏 ${item.name}`}
+                    title={item.favorite ? "取消收藏" : "收藏"}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onToggleFavorite(item);
+                    }}
+                  >
+                    <Star size={15} fill="currentColor" />
+                  </button>
+                  <IconButton
+                    variant="danger"
+                    title="删除条目"
+                    aria-label={`删除 ${item.name}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onDelete(item);
+                    }}
+                  >
+                    <Trash2 size={14} />
+                  </IconButton>
+                </ActionGroup>
               </span>
               <span className="meta-line">{item.category} · {item.domain || "未分类"} · {radarSourceLabel(item)}{item.sourceMetadata.language ? ` · ${item.sourceMetadata.language}` : ""}{item.source === "github_star" ? ` · ★ ${item.sourceMetadata.stars}` : ""} · {item.updatedAt}</span>
               <p>{item.note || item.sourceDescription}</p>
-              {!item.sourceActive && <strong className="source-inactive">GitHub Stars 来源已失效</strong>}
-              {duplicateCandidateIds.has(item.id) && <strong className="source-inactive">待合并重复来源</strong>}
+              {!item.sourceActive && <StatusBadge tone="danger">GitHub Stars 来源已失效</StatusBadge>}
+              {duplicateCandidateIds.has(item.id) && <StatusBadge tone="warning">待合并重复来源</StatusBadge>}
             </div>
           ))}
         </Panel>
         <Panel className="detail-panel">
           {visibleSelectedItem ? (
             <>
-              <div className="detail-title">
-                <div>
-                  <h2>{visibleSelectedItem.name}</h2>
-                  <p>{visibleSelectedItem.category} · {visibleSelectedItem.domain || "未分类"} · {radarSourceLabel(visibleSelectedItem)}{visibleSelectedItem.sourceActive ? "" : " · 来源已失效"}</p>
-                </div>
-                <IconButton
-                  className={`favorite-star-button ${visibleSelectedItem.favorite ? "active" : ""}`}
-                  title={visibleSelectedItem.favorite ? "取消收藏" : "收藏"}
-                  aria-label={visibleSelectedItem.favorite ? "取消收藏" : "收藏"}
-                  onClick={() => onToggleFavorite(visibleSelectedItem)}
-                >
-                  <Star size={17} fill="currentColor" />
-                </IconButton>
-              </div>
+              <DetailHeader
+                title={visibleSelectedItem.name}
+                description={`${visibleSelectedItem.category} · ${visibleSelectedItem.domain || "未分类"} · ${radarSourceLabel(visibleSelectedItem)}${visibleSelectedItem.sourceActive ? "" : " · 来源已失效"}`}
+                actions={
+                  <IconButton
+                    title="编辑条目"
+                    aria-label="编辑条目"
+                    onClick={() => onEdit(visibleSelectedItem)}
+                  >
+                    <Edit3 size={15} />
+                  </IconButton>
+                }
+              />
               <div className="form-grid">
                 <label>名称<input value={visibleSelectedItem.name} readOnly /></label>
                 <label>分类<input value={visibleSelectedItem.category} readOnly /></label>
                 <label>领域<input value={visibleSelectedItem.domain || "未分类"} readOnly /></label>
                 <label>来源<input value={radarSourceLabel(visibleSelectedItem)} readOnly /></label>
-                <label className="full">链接<input value={visibleSelectedItem.url} readOnly /></label>
+                <label className="full">链接<span className="field-with-action"><input value={visibleSelectedItem.url} readOnly /><IconButton title="打开链接" aria-label="打开链接" onClick={() => onOpenLink(visibleSelectedItem.url)} disabled={!visibleSelectedItem.url}><ExternalLink size={15} /></IconButton></span></label>
                 <label>标签<input value={visibleSelectedItem.tags.join(", ")} readOnly /></label>
                 <label>更新时间<input value={visibleSelectedItem.updatedAt} readOnly /></label>
                 {visibleSelectedItem.source === "github_star" && <><label>语言<input value={visibleSelectedItem.sourceMetadata.language || "未知"} readOnly /></label><label>GitHub Stars<input value={visibleSelectedItem.sourceMetadata.stars} readOnly /></label><label className="full">GitHub Topics<input value={visibleSelectedItem.sourceMetadata.topics.join(", ")} readOnly /></label><label className="full">来源描述<textarea rows={3} value={visibleSelectedItem.sourceDescription} readOnly /></label></>}
                 <label className="full">备注<textarea rows={5} value={visibleSelectedItem.note} readOnly /></label>
-              </div>
-              <div className="detail-actions">
-                <div className="detail-primary-actions">
-                  <Button onClick={() => onOpenLink(visibleSelectedItem.url)} disabled={!visibleSelectedItem.url}>打开链接</Button>
-                  <Button onClick={() => onEdit(visibleSelectedItem)}>编辑条目</Button>
-                </div>
-                <div className="detail-danger-actions">
-                  <Button className="danger" onClick={() => onDelete(visibleSelectedItem)}>删除条目</Button>
-                </div>
               </div>
             </>
           ) : (
@@ -2043,7 +2043,7 @@ function SettingsView({
               <span><strong>{tool.name}</strong><small>{tool.globalSkillsDir}</small></span>
               <span className="settings-row-actions">
                 <IconButton title={`打开 ${tool.name} Skills 目录`} onClick={() => onOpenPath(tool.globalSkillsDir)}><FolderOpen size={15} /></IconButton>
-                <i className="available">{tool.available ? "可用" : "不可用"}</i>
+                <StatusBadge tone={tool.available ? "accent" : "neutral"}>{tool.available ? "可用" : "不可用"}</StatusBadge>
               </span>
             </div>
           ))}
@@ -2335,26 +2335,20 @@ function DeleteSkillDialog({
   onConfirm: () => void;
 }) {
   return (
-    <Modal
+    <ConfirmDeleteModal
       title="删除 Skill"
       description={`确认删除 ${skill.name}`}
       onClose={onClose}
-      footer={
-        <>
-          <Button onClick={onClose}>取消</Button>
-          <Button className="danger" onClick={onConfirm}>删除 Skill</Button>
-        </>
-      }
+      onConfirm={onConfirm}
+      confirmLabel="删除 Skill"
     >
-      <div className="delete-summary">
-        <p>将删除统一根目录中的 Skill，并清理 Workbench 管理的全局和项目启用记录。</p>
-        <div className="file-block">
-          <span>目录</span>
-          <code>{skill.skillPath.replace(/[\\/][^\\/]+$/, "")}</code>
-        </div>
-        <div className="warning">不会删除未被 Workbench 管理的外部工具目录内容。</div>
+      <p>将删除统一根目录中的 Skill，并清理 Workbench 管理的全局和项目启用记录。</p>
+      <div className="file-block">
+        <span>目录</span>
+        <code>{skill.skillPath.replace(/[\\/][^\\/]+$/, "")}</code>
       </div>
-    </Modal>
+      <div className="warning">不会删除未被 Workbench 管理的外部工具目录内容。</div>
+    </ConfirmDeleteModal>
   );
 }
 
@@ -2461,17 +2455,16 @@ function DeleteRadarDialog({
   onConfirm: () => void;
 }) {
   return (
-    <Modal
+    <ConfirmDeleteModal
       title="删除资源条目"
       description={`确认删除 ${item.name}`}
       onClose={onClose}
-      footer={<><Button onClick={onClose}>取消</Button><Button className="danger" onClick={onConfirm}>删除条目</Button></>}
+      onConfirm={onConfirm}
+      confirmLabel="删除条目"
     >
-      <div className="delete-summary">
-        <p>删除后，该条目将从本地 Workbench 数据库中移除。</p>
-        {item.url && <div className="file-block"><span>链接</span><code>{item.url}</code></div>}
-      </div>
-    </Modal>
+      <p>删除后，该条目将从本地 Workbench 数据库中移除。</p>
+      {item.url && <div className="file-block"><span>链接</span><code>{item.url}</code></div>}
+    </ConfirmDeleteModal>
   );
 }
 
