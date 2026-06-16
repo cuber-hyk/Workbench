@@ -33,6 +33,7 @@
 - 增加资源 Radar 的 GitHub Stars 手动同步、来源筛选和仓库元数据展示。
 - 增加资源 Radar 单选领域、领域筛选、语言筛选、来源状态筛选和重复状态筛选。
 - 增加 GitHub Stars 与手动资源的 URL 去重、来源合并和多候选重复组合并流程。
+- 增加项目打开方式 Profiles，可从项目列表用 VS Code、Trae、PowerShell、Claude Code 等外部工具打开项目，并在设置中配置 PATH 命令或可执行文件路径。
 
 ### Changed
 

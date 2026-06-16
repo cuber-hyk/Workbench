@@ -15,4 +15,4 @@ source_of_truth: docs/ARCHITECTURE.md
 - Skills 根目录、导入和扫描。
 - Skills 全局与项目级启用。
 - 资源 Radar 本地条目管理与 GitHub Stars 手动同步。
-- 项目启动配置。
+- 项目管理、启动配置和外部工具打开方式。

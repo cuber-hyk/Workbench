@@ -1,4 +1,4 @@
-import type { AppSettings, Project, RadarItem, Skill, SkillCategory } from "../types/domain";
+import type { AppSettings, Project, ProjectOpenProfile, RadarItem, Skill, SkillCategory } from "../types/domain";
 
 export const projects: Project[] = [
   {
@@ -201,9 +201,57 @@ export const radarItems: RadarItem[] = [
   }
 ];
 
+export const projectOpenProfiles: ProjectOpenProfile[] = [
+  {
+    id: "vscode",
+    name: "VS Code",
+    kind: "app",
+    command: "code",
+    executablePath: "",
+    args: ["{projectPath}"],
+    workdir: "{projectPath}",
+    enabled: true,
+    sortOrder: 0
+  },
+  {
+    id: "trae",
+    name: "Trae",
+    kind: "app",
+    command: "trae",
+    executablePath: "",
+    args: ["{projectPath}"],
+    workdir: "{projectPath}",
+    enabled: true,
+    sortOrder: 1
+  },
+  {
+    id: "powershell",
+    name: "PowerShell",
+    kind: "terminal",
+    command: "powershell",
+    executablePath: "",
+    args: [],
+    workdir: "{projectPath}",
+    enabled: true,
+    sortOrder: 2
+  },
+  {
+    id: "claude-code",
+    name: "Claude Code",
+    kind: "terminal",
+    command: "claude",
+    executablePath: "",
+    args: [],
+    workdir: "{projectPath}",
+    enabled: true,
+    sortOrder: 3
+  }
+];
+
 export const settings: AppSettings = {
   workbenchRoot: "C:\\Users\\dev\\.workbench",
   skillsRoot: "C:\\Users\\dev\\.workbench\\skills",
+  projectOpenProfiles,
   toolTargets: [
     {
       key: "codex",

@@ -2,7 +2,7 @@ use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
-use std::io::Read;
+use std::io::{ErrorKind, Read};
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
@@ -37,6 +37,27 @@ pub struct ProjectLaunchConfig {
     pub command: String,
     pub workdir: String,
     pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectOpenProfile {
+    pub id: String,
+    pub name: String,
+    pub kind: ProjectOpenProfileKind,
+    pub command: String,
+    pub executable_path: String,
+    pub args: Vec<String>,
+    pub workdir: String,
+    pub enabled: bool,
+    pub sort_order: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum ProjectOpenProfileKind {
+    App,
+    Terminal,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -251,6 +272,56 @@ pub async fn select_directory<R: tauri::Runtime>(
         .map(|path| path.to_string()))
 }
 
+#[tauri::command]
+pub fn list_project_open_profiles() -> ProjectResult<Vec<ProjectOpenProfile>> {
+    let workbench_root = default_workbench_root()?;
+    let connection = open_database(&workbench_root)?;
+    load_project_open_profiles(&connection)
+}
+
+#[tauri::command]
+pub fn save_project_open_profile(
+    profile: ProjectOpenProfile,
+) -> ProjectResult<Vec<ProjectOpenProfile>> {
+    validate_project_open_profile(&profile)?;
+    let workbench_root = default_workbench_root()?;
+    let connection = open_database(&workbench_root)?;
+    upsert_project_open_profile(&connection, &profile)?;
+    load_project_open_profiles(&connection)
+}
+
+#[tauri::command]
+pub fn delete_project_open_profile(id: String) -> ProjectResult<Vec<ProjectOpenProfile>> {
+    let workbench_root = default_workbench_root()?;
+    let connection = open_database(&workbench_root)?;
+    connection
+        .execute(
+            "DELETE FROM project_open_profiles WHERE id = ?1",
+            params![id],
+        )
+        .map_err(error_message)?;
+    load_project_open_profiles(&connection)
+}
+
+#[tauri::command]
+pub async fn select_project_open_executable<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+) -> ProjectResult<Option<String>> {
+    Ok(app
+        .dialog()
+        .file()
+        .blocking_pick_file()
+        .map(|path| path.to_string()))
+}
+
+#[tauri::command]
+pub fn open_project_with_profile(
+    project_path: String,
+    profile: ProjectOpenProfile,
+) -> ProjectResult<()> {
+    open_project_with_profile_impl(&project_path, &profile)
+}
+
 fn default_workbench_root() -> ProjectResult<PathBuf> {
     dirs::home_dir()
         .map(|home| home.join(".workbench"))
@@ -286,6 +357,21 @@ fn open_database(workbench_root: &Path) -> ProjectResult<Connection> {
                 sort_order INTEGER NOT NULL DEFAULT 0,
                 FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
             );
+            CREATE TABLE IF NOT EXISTS app_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS project_open_profiles (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                command TEXT NOT NULL,
+                executable_path TEXT NOT NULL DEFAULT '',
+                args_json TEXT NOT NULL DEFAULT '[]',
+                workdir TEXT NOT NULL DEFAULT '{projectPath}',
+                enabled INTEGER NOT NULL DEFAULT 1,
+                sort_order INTEGER NOT NULL DEFAULT 0
+            );
             ",
         )
         .map_err(error_message)?;
@@ -296,6 +382,7 @@ fn open_database(workbench_root: &Path) -> ProjectResult<Connection> {
         "ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
     )?;
     migrate_legacy_launch_configs(&connection)?;
+    seed_default_project_open_profiles(&connection)?;
     Ok(connection)
 }
 
@@ -387,6 +474,154 @@ fn upsert_project(connection: &Connection, project: &ProjectRecord) -> ProjectRe
     Ok(())
 }
 
+fn load_project_open_profiles(connection: &Connection) -> ProjectResult<Vec<ProjectOpenProfile>> {
+    let mut statement = connection
+        .prepare(
+            "
+            SELECT id, name, kind, command, executable_path, args_json, workdir, enabled, sort_order
+            FROM project_open_profiles
+            ORDER BY sort_order, lower(name)
+            ",
+        )
+        .map_err(error_message)?;
+    let rows = statement
+        .query_map([], |row| {
+            let kind: String = row.get(2)?;
+            let args_json: String = row.get(5)?;
+            let kind = match kind.as_str() {
+                "app" => ProjectOpenProfileKind::App,
+                "terminal" => ProjectOpenProfileKind::Terminal,
+                _ => ProjectOpenProfileKind::App,
+            };
+            Ok(ProjectOpenProfile {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                kind,
+                command: row.get(3)?,
+                executable_path: row.get(4)?,
+                args: serde_json::from_str(&args_json).unwrap_or_default(),
+                workdir: row.get(6)?,
+                enabled: row.get::<_, i64>(7)? != 0,
+                sort_order: row.get(8)?,
+            })
+        })
+        .map_err(error_message)?;
+    let mut profiles = Vec::new();
+    for row in rows {
+        profiles.push(row.map_err(error_message)?);
+    }
+    Ok(profiles)
+}
+
+fn upsert_project_open_profile(
+    connection: &Connection,
+    profile: &ProjectOpenProfile,
+) -> ProjectResult<()> {
+    let args_json = serde_json::to_string(&profile.args).map_err(error_message)?;
+    connection
+        .execute(
+            "
+            INSERT INTO project_open_profiles(id, name, kind, command, executable_path, args_json, workdir, enabled, sort_order)
+            VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+            ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                kind = excluded.kind,
+                command = excluded.command,
+                executable_path = excluded.executable_path,
+                args_json = excluded.args_json,
+                workdir = excluded.workdir,
+                enabled = excluded.enabled,
+                sort_order = excluded.sort_order
+            ",
+            params![
+                profile.id,
+                profile.name,
+                project_open_profile_kind_name(&profile.kind),
+                profile.command,
+                profile.executable_path,
+                args_json,
+                profile.workdir,
+                if profile.enabled { 1_i64 } else { 0_i64 },
+                profile.sort_order
+            ],
+        )
+        .map_err(error_message)?;
+    Ok(())
+}
+
+fn seed_default_project_open_profiles(connection: &Connection) -> ProjectResult<()> {
+    let seeded: Option<String> = connection
+        .query_row(
+            "SELECT value FROM app_settings WHERE key = 'project_open_profiles_seeded'",
+            [],
+            |row| row.get(0),
+        )
+        .ok();
+    if seeded.as_deref() == Some("true") {
+        return Ok(());
+    }
+    for profile in default_project_open_profiles() {
+        upsert_project_open_profile(connection, &profile)?;
+    }
+    connection
+        .execute(
+            "INSERT INTO app_settings(key, value) VALUES('project_open_profiles_seeded', 'true')
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            [],
+        )
+        .map_err(error_message)?;
+    Ok(())
+}
+
+fn default_project_open_profiles() -> Vec<ProjectOpenProfile> {
+    vec![
+        ProjectOpenProfile {
+            id: "vscode".to_string(),
+            name: "VS Code".to_string(),
+            kind: ProjectOpenProfileKind::App,
+            command: "code".to_string(),
+            executable_path: String::new(),
+            args: vec!["{projectPath}".to_string()],
+            workdir: "{projectPath}".to_string(),
+            enabled: true,
+            sort_order: 0,
+        },
+        ProjectOpenProfile {
+            id: "trae".to_string(),
+            name: "Trae".to_string(),
+            kind: ProjectOpenProfileKind::App,
+            command: "trae".to_string(),
+            executable_path: String::new(),
+            args: vec!["{projectPath}".to_string()],
+            workdir: "{projectPath}".to_string(),
+            enabled: true,
+            sort_order: 1,
+        },
+        ProjectOpenProfile {
+            id: "powershell".to_string(),
+            name: "PowerShell".to_string(),
+            kind: ProjectOpenProfileKind::Terminal,
+            command: "powershell".to_string(),
+            executable_path: String::new(),
+            args: Vec::new(),
+            workdir: "{projectPath}".to_string(),
+            enabled: true,
+            sort_order: 2,
+        },
+        ProjectOpenProfile {
+            id: "claude-code".to_string(),
+            name: "Claude Code".to_string(),
+            kind: ProjectOpenProfileKind::Terminal,
+            command: "claude".to_string(),
+            executable_path: String::new(),
+            args: Vec::new(),
+            workdir: "{projectPath}".to_string(),
+            enabled: true,
+            sort_order: 3,
+        },
+    ]
+}
+
 fn validate_project(project: &ProjectRecord) -> ProjectResult<()> {
     if project.id.trim().is_empty() {
         return Err("项目 ID 不能为空".to_string());
@@ -408,6 +643,28 @@ fn validate_project(project: &ProjectRecord) -> ProjectResult<()> {
     Ok(())
 }
 
+fn validate_project_open_profile(profile: &ProjectOpenProfile) -> ProjectResult<()> {
+    if profile.id.trim().is_empty() {
+        return Err("打开方式 ID 不能为空".to_string());
+    }
+    if profile.name.trim().is_empty() {
+        return Err("打开方式名称不能为空".to_string());
+    }
+    if profile.command.trim().is_empty() && profile.executable_path.trim().is_empty() {
+        return Err("打开方式未配置命令或可执行文件路径。".to_string());
+    }
+    if !profile.executable_path.trim().is_empty() {
+        let path = Path::new(&profile.executable_path);
+        if !path.exists() {
+            return Err("可执行文件不存在，请重新选择程序。".to_string());
+        }
+        if !path.is_file() {
+            return Err("可执行文件路径不是文件，请重新选择程序。".to_string());
+        }
+    }
+    Ok(())
+}
+
 fn validate_launch_request(command: &str, workdir: &str) -> ProjectResult<()> {
     if command.trim().is_empty() {
         return Err("启动命令不能为空".to_string());
@@ -423,6 +680,173 @@ fn validate_launch_request(command: &str, workdir: &str) -> ProjectResult<()> {
         return Err(format!("启动工作目录不是文件夹: {workdir}"));
     }
     Ok(())
+}
+
+fn open_project_with_profile_impl(
+    project_path: &str,
+    profile: &ProjectOpenProfile,
+) -> ProjectResult<()> {
+    if project_path.trim().is_empty() {
+        return Err("项目路径不能为空，无法用外部工具打开。".to_string());
+    }
+    let project_path = Path::new(project_path);
+    if !project_path.exists() {
+        return Err("项目路径不存在，请先检查项目记录。".to_string());
+    }
+    if !project_path.is_dir() {
+        return Err("项目路径不是文件夹，无法用外部工具打开。".to_string());
+    }
+    if !profile.enabled {
+        return Err("该打开方式已停用。".to_string());
+    }
+    validate_project_open_profile_for_run(profile)?;
+    match profile.kind {
+        ProjectOpenProfileKind::App => open_project_with_app(project_path, profile),
+        ProjectOpenProfileKind::Terminal => open_project_with_terminal(project_path, profile),
+    }
+}
+
+fn validate_project_open_profile_for_run(profile: &ProjectOpenProfile) -> ProjectResult<()> {
+    if profile.command.trim().is_empty() && profile.executable_path.trim().is_empty() {
+        return Err("打开方式未配置命令或可执行文件路径。".to_string());
+    }
+    if !profile.executable_path.trim().is_empty() {
+        let path = Path::new(&profile.executable_path);
+        if !path.exists() {
+            return Err("可执行文件不存在，请重新选择程序。".to_string());
+        }
+        if !path.is_file() {
+            return Err("可执行文件路径不是文件，请重新选择程序。".to_string());
+        }
+    }
+    Ok(())
+}
+
+fn open_project_with_app(project_path: &Path, profile: &ProjectOpenProfile) -> ProjectResult<()> {
+    let program = profile_program(profile);
+    let workdir = expanded_workdir(project_path, profile)?;
+    let args = expanded_args(project_path, &profile.args);
+    let mut command = Command::new(&program);
+    command.args(args).current_dir(workdir);
+    spawn_silent_external_command(command, &profile.name)
+}
+
+#[cfg(windows)]
+fn open_project_with_terminal(
+    project_path: &Path,
+    profile: &ProjectOpenProfile,
+) -> ProjectResult<()> {
+    let workdir = expanded_workdir(project_path, profile)?;
+    let command_line = terminal_command_line(project_path, profile);
+    let workdir_text = workdir.to_string_lossy().to_string();
+
+    let mut windows_terminal = Command::new("wt");
+    windows_terminal
+        .args([
+            "-d",
+            &workdir_text,
+            "powershell",
+            "-NoExit",
+            "-Command",
+            &command_line,
+        ])
+        .current_dir(&workdir);
+    match windows_terminal.spawn() {
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == ErrorKind::NotFound => {
+            let mut powershell = Command::new("powershell");
+            powershell
+                .args(["-NoExit", "-Command", &command_line])
+                .current_dir(workdir);
+            spawn_external_command(powershell, &profile.name)
+        }
+        Err(error) => Err(open_profile_spawn_error(&profile.name, error)),
+    }
+}
+
+#[cfg(not(windows))]
+fn open_project_with_terminal(
+    _project_path: &Path,
+    _profile: &ProjectOpenProfile,
+) -> ProjectResult<()> {
+    Err("当前系统暂不支持该打开方式。".to_string())
+}
+
+fn profile_program(profile: &ProjectOpenProfile) -> String {
+    if profile.executable_path.trim().is_empty() {
+        profile.command.trim().to_string()
+    } else {
+        profile.executable_path.trim().to_string()
+    }
+}
+
+fn expanded_args(project_path: &Path, args: &[String]) -> Vec<String> {
+    let project_path = project_path.to_string_lossy();
+    args.iter()
+        .map(|arg| arg.replace("{projectPath}", &project_path))
+        .collect()
+}
+
+fn expanded_workdir(project_path: &Path, profile: &ProjectOpenProfile) -> ProjectResult<PathBuf> {
+    let raw_workdir = if profile.workdir.trim().is_empty() {
+        "{projectPath}"
+    } else {
+        profile.workdir.trim()
+    };
+    let workdir = raw_workdir.replace("{projectPath}", &project_path.to_string_lossy());
+    let path = PathBuf::from(workdir);
+    if !path.exists() {
+        return Err("项目路径不存在，请先检查项目记录。".to_string());
+    }
+    if !path.is_dir() {
+        return Err("项目路径不是文件夹，无法用外部工具打开。".to_string());
+    }
+    Ok(path)
+}
+
+fn terminal_command_line(project_path: &Path, profile: &ProjectOpenProfile) -> String {
+    let program = profile_program(profile);
+    let mut parts = vec![quote_powershell_arg(&program)];
+    parts.extend(
+        expanded_args(project_path, &profile.args)
+            .iter()
+            .map(|arg| quote_powershell_arg(arg)),
+    );
+    format!("& {}", parts.join(" "))
+}
+
+fn quote_powershell_arg(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
+}
+
+fn spawn_external_command(mut command: Command, profile_name: &str) -> ProjectResult<()> {
+    command
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| open_profile_spawn_error(profile_name, error))
+}
+
+fn spawn_silent_external_command(mut command: Command, profile_name: &str) -> ProjectResult<()> {
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    spawn_external_command(command, profile_name)
+}
+
+fn open_profile_spawn_error(profile_name: &str, error: std::io::Error) -> String {
+    if error.kind() == ErrorKind::NotFound {
+        format!("无法启动 {profile_name}，请检查命令是否已加入 PATH，或在设置中选择可执行文件。")
+    } else {
+        format!("无法启动 {profile_name}: {error}")
+    }
+}
+
+fn project_open_profile_kind_name(kind: &ProjectOpenProfileKind) -> &'static str {
+    match kind {
+        ProjectOpenProfileKind::App => "app",
+        ProjectOpenProfileKind::Terminal => "terminal",
+    }
 }
 
 fn error_message(error: impl std::fmt::Display) -> String {
@@ -1200,6 +1624,78 @@ mod tests {
     }
 
     #[test]
+    fn seeds_default_project_open_profiles_once() {
+        let dir = tempdir().unwrap();
+        let connection = open_database(dir.path()).unwrap();
+        let profiles = load_project_open_profiles(&connection).unwrap();
+
+        assert_eq!(profiles.len(), 4);
+        assert_eq!(profiles[0].name, "VS Code");
+
+        delete_project_open_profile_from_connection(&connection, "vscode");
+        seed_default_project_open_profiles(&connection).unwrap();
+        let profiles = load_project_open_profiles(&connection).unwrap();
+
+        assert_eq!(profiles.len(), 3);
+        assert!(!profiles.iter().any(|profile| profile.id == "vscode"));
+    }
+
+    #[test]
+    fn persists_project_open_profile() {
+        let dir = tempdir().unwrap();
+        let connection = open_database(dir.path()).unwrap();
+        let profile = ProjectOpenProfile {
+            id: "cursor".to_string(),
+            name: "Cursor".to_string(),
+            kind: ProjectOpenProfileKind::App,
+            command: "cursor".to_string(),
+            executable_path: String::new(),
+            args: vec!["{projectPath}".to_string()],
+            workdir: "{projectPath}".to_string(),
+            enabled: true,
+            sort_order: 9,
+        };
+
+        upsert_project_open_profile(&connection, &profile).unwrap();
+        let profiles = load_project_open_profiles(&connection).unwrap();
+
+        assert!(profiles.iter().any(|item| item == &profile));
+    }
+
+    #[test]
+    fn expands_project_open_profile_arguments() {
+        let dir = tempdir().unwrap();
+        let args = expanded_args(
+            dir.path(),
+            &["--reuse-window".to_string(), "{projectPath}".to_string()],
+        );
+
+        assert_eq!(args[0], "--reuse-window");
+        assert_eq!(args[1], dir.path().to_string_lossy().to_string());
+    }
+
+    #[test]
+    fn rejects_project_open_profile_without_command_or_executable() {
+        let profile = ProjectOpenProfile {
+            id: "broken".to_string(),
+            name: "Broken".to_string(),
+            kind: ProjectOpenProfileKind::App,
+            command: String::new(),
+            executable_path: String::new(),
+            args: Vec::new(),
+            workdir: "{projectPath}".to_string(),
+            enabled: true,
+            sort_order: 0,
+        };
+
+        let result = validate_project_open_profile(&profile);
+
+        assert!(result
+            .unwrap_err()
+            .contains("打开方式未配置命令或可执行文件路径"));
+    }
+
+    #[test]
     fn migrates_project_archive_state_default_to_false() {
         let dir = tempdir().unwrap();
         let database_path = dir.path().join("workbench.sqlite");
@@ -1231,5 +1727,14 @@ mod tests {
 
         assert_eq!(projects.len(), 1);
         assert!(!projects[0].archived);
+    }
+
+    fn delete_project_open_profile_from_connection(connection: &Connection, id: &str) {
+        connection
+            .execute(
+                "DELETE FROM project_open_profiles WHERE id = ?1",
+                params![id],
+            )
+            .unwrap();
     }
 }

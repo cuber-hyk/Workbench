@@ -120,8 +120,9 @@ code { font-family: Consolas, monospace; }
 .table-head > *, .table-row > * { min-width: 0; }
 .table-head { position: sticky; top: 0; z-index: 1; color: var(--muted); background: color-mix(in srgb, var(--panel), var(--bg) 45%); font-size: 11px; font-weight: 600; }
 .table-row { min-height: 70px; border: 0; border-top: 1px solid var(--border); background: var(--panel); color: var(--text); cursor: pointer; }
+.table-row { overflow: visible; }
 .table-row:hover, .table-row.selected { background: var(--accent-soft); }
-.projects-grid { grid-template-columns: minmax(160px, 1fr) 72px 88px 62px 142px; }
+.projects-grid { grid-template-columns: minmax(160px, 1fr) 72px 88px 62px 178px; }
 .skills-grid { grid-template-columns: minmax(190px, 1.5fr) 84px 118px 72px 76px; }
 .title-cell { display: grid; gap: 3px; min-width: 0; }
 .title-cell strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -145,6 +146,11 @@ code { font-family: Consolas, monospace; }
 .row-actions .icon-button { width: 30px; height: 30px; }
 .action-group.row-actions .icon-button { width: 30px; height: 30px; }
 .action-group.row-actions .favorite-star { width: 30px; height: 30px; }
+.row-menu { position: relative; display: inline-flex; }
+.row-menu-popover { position: absolute; top: calc(100% + 6px); right: 0; z-index: 6; display: grid; gap: 4px; min-width: 160px; padding: 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); box-shadow: 0 12px 30px rgba(15,25,32,.18); }
+.row-menu-popover button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 9px; border: 0; border-radius: 4px; background: transparent; color: var(--text); text-align: left; }
+.row-menu-popover button:hover { background: var(--accent-soft); }
+.row-menu-empty { padding: 8px 9px; color: var(--muted); font-size: 11px; }
 .danger-icon { color: var(--danger-text); }
 .danger-icon:hover { border-color: var(--danger-text); background: var(--danger-bg); }
 .empty-state { display: grid; place-items: center; align-content: center; gap: 6px; min-height: 160px; padding: 24px; color: var(--muted); text-align: center; }
@@ -265,6 +271,8 @@ code { font-family: Consolas, monospace; }
 
 .settings-stack { display: grid; gap: 14px; max-width: 920px; min-height: 0; overflow: auto; padding-right: 4px; }
 .settings-panel { padding: 18px; }
+.settings-panel-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.settings-panel-title span { display: grid; gap: 3px; min-width: 0; }
 .settings-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 14px; min-height: 58px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
 .settings-row span { display: grid; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
 .settings-row small { color: var(--muted); font-size: 10px; }
@@ -285,6 +293,10 @@ code { font-family: Consolas, monospace; }
 .dialog-form { display: grid; gap: 12px; }
 .dialog-form label { display: grid; gap: 5px; color: var(--muted); font-size: 11px; font-weight: 600; }
 .dialog-form input, .dialog-form select, .dialog-form textarea, .path-box { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 5px; background: var(--panel); color: var(--text); }
+.dialog-form .full { grid-column: 1 / -1; }
+.dialog-form .checkbox-row { display: flex; align-items: center; gap: 8px; color: var(--text); }
+.dialog-form .checkbox-row input { width: auto; }
+.compact-empty { min-height: 96px; }
 .field-error { padding: 10px 12px; border-radius: 5px; background: var(--danger-bg); color: var(--danger-text); font-size: 11px; font-weight: 600; }
 .field-with-action { display: grid; grid-template-columns: minmax(0, 1fr) 34px; gap: 8px; align-items: center; }
 .field-with-action input { min-width: 0; }
@@ -320,7 +332,7 @@ body[data-theme="dark"] .warning { color: #ffd58a; background: #3b2f18; }
 
 @media (max-width: 1320px) {
   .split-layout { grid-template-columns: minmax(0, 1fr) 360px; }
-  .projects-grid { grid-template-columns: minmax(130px, 1fr) 64px 58px 142px; }
+  .projects-grid { grid-template-columns: minmax(130px, 1fr) 64px 58px 178px; }
   .projects-grid > :nth-child(2) { display: none; }
   .search { width: 300px; }
 }

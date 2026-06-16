@@ -1,8 +1,8 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { App, ModuleStateView, ProjectDialog, ProjectsView, RadarView, applyPendingLaunchEvents, markLaunchRunStopped, mergeLaunchRunSnapshots } from "./App";
-import type { LaunchSessionEvent, Project, RadarDuplicateGroup, RadarItem } from "./lib/types/domain";
+import { App, ModuleStateView, ProjectDialog, ProjectsView, RadarView, SettingsView, applyPendingLaunchEvents, markLaunchRunStopped, mergeLaunchRunSnapshots } from "./App";
+import type { AppSettings, LaunchSessionEvent, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem } from "./lib/types/domain";
 
 const activeProject: Project = {
   id: "active",
@@ -46,6 +46,46 @@ const secondActiveProject: Project = {
       command: "pnpm dev",
       workdir: "E:\\Second",
       enabled: true
+    }
+  ]
+};
+
+const projectOpenProfiles: ProjectOpenProfile[] = [
+  {
+    id: "vscode",
+    name: "VS Code",
+    kind: "app",
+    command: "code",
+    executablePath: "",
+    args: ["{projectPath}"],
+    workdir: "{projectPath}",
+    enabled: true,
+    sortOrder: 0
+  },
+  {
+    id: "claude-code",
+    name: "Claude Code",
+    kind: "terminal",
+    command: "claude",
+    executablePath: "",
+    args: [],
+    workdir: "{projectPath}",
+    enabled: true,
+    sortOrder: 1
+  }
+];
+
+const appSettings: AppSettings = {
+  workbenchRoot: "C:\\Users\\dev\\.workbench",
+  skillsRoot: "C:\\Users\\dev\\.workbench\\skills",
+  projectOpenProfiles,
+  toolTargets: [
+    {
+      key: "codex",
+      name: "Codex",
+      globalSkillsDir: "C:\\Users\\dev\\.codex\\skills",
+      supportsProjectScope: true,
+      available: true
     }
   ]
 };
@@ -410,6 +450,65 @@ describe("Workbench UI interactions", () => {
 
     expect(onEdit).toHaveBeenCalledWith(secondActiveProject);
     expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("opens a project with a configured tool without selecting the row", async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    const onOpenWithProfile = vi.fn();
+    render(
+      <ProjectsView
+        projects={[activeProject, secondActiveProject]}
+        selectedProject={activeProject}
+        projectLaunchTimes={{}}
+        projectOpenProfiles={projectOpenProfiles}
+        loading={false}
+        loadError=""
+        onSelect={onSelect}
+        onOpenWithProfile={onOpenWithProfile}
+        onLaunch={vi.fn()}
+        onStopLaunchSession={vi.fn()}
+        onStopLaunchRun={vi.fn()}
+        onEdit={vi.fn()}
+        onArchive={vi.fn()}
+        onAdd={vi.fn()}
+      />
+    );
+
+    await user.click(within(screen.getByRole("group", { name: "Second Project 项目" })).getByRole("button", { name: "用工具打开 Second Project" }));
+    await user.click(screen.getByRole("menuitem", { name: /VS Code/ }));
+
+    expect(onOpenWithProfile).toHaveBeenCalledWith(secondActiveProject, projectOpenProfiles[0]);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("shows project open profiles in settings actions", async () => {
+    const user = userEvent.setup();
+    const onAddProjectOpenProfile = vi.fn();
+    const onEditProjectOpenProfile = vi.fn();
+    const onDeleteProjectOpenProfile = vi.fn();
+    render(
+      <SettingsView
+        settings={appSettings}
+        theme="dark"
+        onThemeToggle={vi.fn()}
+        onRootChange={vi.fn()}
+        onOpenPath={vi.fn()}
+        onAddProjectOpenProfile={onAddProjectOpenProfile}
+        onEditProjectOpenProfile={onEditProjectOpenProfile}
+        onDeleteProjectOpenProfile={onDeleteProjectOpenProfile}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: "添加" }));
+    await user.click(screen.getByRole("button", { name: "编辑 VS Code" }));
+    await user.click(screen.getByRole("button", { name: "删除 VS Code" }));
+
+    expect(screen.getByText("项目打开方式")).toBeInTheDocument();
+    expect(screen.getByText('code {projectPath}')).toBeInTheDocument();
+    expect(onAddProjectOpenProfile).toHaveBeenCalled();
+    expect(onEditProjectOpenProfile).toHaveBeenCalledWith(projectOpenProfiles[0]);
+    expect(onDeleteProjectOpenProfile).toHaveBeenCalledWith(projectOpenProfiles[0]);
   });
 
   it("tracks active launch sessions for multiple projects at the same time", () => {

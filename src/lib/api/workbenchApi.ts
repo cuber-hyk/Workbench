@@ -1,14 +1,16 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { projects, radarItems, settings, skillCategories, skills } from "./mockData";
-import type { GitHubStarsSyncResult, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, Project, RadarDuplicateGroup, RadarItem, SkillVersionSource, SkillsState, ToolTarget } from "../types/domain";
+import type { GitHubStarsSyncResult, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, SkillVersionSource, SkillsState, ToolTarget } from "../types/domain";
 
 const delay = async () => new Promise((resolve) => window.setTimeout(resolve, 80));
 const isTauri = "__TAURI_INTERNALS__" in window;
 
 async function skillsState(): Promise<SkillsState> {
   if (isTauri) {
-    return await invoke<SkillsState>("get_skills_state");
+    const state = await invoke<SkillsState>("get_skills_state");
+    const projectOpenProfiles = await invoke<ProjectOpenProfile[]>("list_project_open_profiles");
+    return { ...state, settings: { ...state.settings, projectOpenProfiles } };
   }
   await delay();
   return { settings, skills };
@@ -162,6 +164,50 @@ export const workbenchApi = {
   },
   async getSettings() {
     return (await skillsState()).settings;
+  },
+  async listProjectOpenProfiles() {
+    if (isTauri) {
+      return invoke<ProjectOpenProfile[]>("list_project_open_profiles");
+    }
+    await delay();
+    return settings.projectOpenProfiles;
+  },
+  async saveProjectOpenProfile(profile: ProjectOpenProfile) {
+    if (!isTauri) {
+      await delay();
+      const index = settings.projectOpenProfiles.findIndex((item) => item.id === profile.id);
+      if (index >= 0) {
+        settings.projectOpenProfiles[index] = profile;
+      } else {
+        settings.projectOpenProfiles.push(profile);
+      }
+      settings.projectOpenProfiles.sort((left, right) => left.sortOrder - right.sortOrder || left.name.localeCompare(right.name));
+      return settings.projectOpenProfiles;
+    }
+    return invoke<ProjectOpenProfile[]>("save_project_open_profile", { profile });
+  },
+  async deleteProjectOpenProfile(id: string) {
+    if (!isTauri) {
+      await delay();
+      const index = settings.projectOpenProfiles.findIndex((item) => item.id === id);
+      if (index >= 0) settings.projectOpenProfiles.splice(index, 1);
+      return settings.projectOpenProfiles;
+    }
+    return invoke<ProjectOpenProfile[]>("delete_project_open_profile", { id });
+  },
+  async selectProjectOpenExecutable() {
+    if (!isTauri) {
+      await delay();
+      throw new Error("程序选择器仅在 Tauri 桌面应用中可用");
+    }
+    return invoke<string | null>("select_project_open_executable");
+  },
+  async openProjectWithProfile(project: Project, profile: ProjectOpenProfile) {
+    if (!isTauri) {
+      await delay();
+      return;
+    }
+    return invoke<void>("open_project_with_profile", { projectPath: project.path, profile });
   },
   async getSkillsState() {
     return skillsState();
