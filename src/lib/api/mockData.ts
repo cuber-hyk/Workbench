@@ -137,6 +137,7 @@ export const skills: Skill[] = [
 
 const manualRadarSource = {
   source: "manual" as const,
+  sources: ["manual" as const],
   externalId: "",
   sourceDescription: "",
   sourceMetadata: {
@@ -154,6 +155,7 @@ export const radarItems: RadarItem[] = [
     id: "mcp",
     name: "Model Context Protocol",
     category: "项目",
+    domain: "Agent",
     url: "https://modelcontextprotocol.io",
     tags: ["MCP", "Agent"],
     note: "连接 AI 应用与外部工具、数据的开放协议。",
@@ -165,6 +167,7 @@ export const radarItems: RadarItem[] = [
     id: "claude-code-practice",
     name: "Claude Code 最佳实践",
     category: "资讯",
+    domain: "Agent",
     url: "https://www.anthropic.com",
     tags: ["Claude", "开发"],
     note: "记录 Claude Code 在本地项目中的使用经验。",
@@ -176,6 +179,7 @@ export const radarItems: RadarItem[] = [
     id: "qwen3-report",
     name: "Qwen3 技术报告",
     category: "论文",
+    domain: "AI 基础",
     url: "https://qwenlm.github.io",
     tags: ["模型", "论文"],
     note: "本地记录技术报告链接和阅读备注。",
@@ -187,6 +191,7 @@ export const radarItems: RadarItem[] = [
     id: "openai-codex",
     name: "OpenAI Codex",
     category: "项目",
+    domain: "开发工具",
     url: "https://openai.com/codex",
     tags: ["Codex", "开发"],
     note: "用于跟踪 Codex 相关能力和本地工作流。",

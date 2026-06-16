@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { projects, radarItems, settings, skillCategories, skills } from "./mockData";
-import type { GitHubStarsSyncResult, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, Project, RadarItem, SkillVersionSource, SkillsState, ToolTarget } from "../types/domain";
+import type { GitHubStarsSyncResult, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, Project, RadarDuplicateGroup, RadarItem, SkillVersionSource, SkillsState, ToolTarget } from "../types/domain";
 
 const delay = async () => new Promise((resolve) => window.setTimeout(resolve, 80));
 const isTauri = "__TAURI_INTERNALS__" in window;
@@ -103,6 +103,20 @@ export const workbenchApi = {
     }
     await delay();
     return radarItems;
+  },
+  async listRadarDuplicateGroups() {
+    if (isTauri) {
+      return invoke<RadarDuplicateGroup[]>("list_radar_duplicate_groups");
+    }
+    await delay();
+    return [] as RadarDuplicateGroup[];
+  },
+  async mergeRadarDuplicateGroup(groupId: string, primaryItemId: string) {
+    if (!isTauri) {
+      await delay();
+      return radarItems;
+    }
+    return invoke<RadarItem[]>("merge_radar_duplicate_group", { groupId, primaryItemId });
   },
   async saveRadarItem(item: RadarItem) {
     if (!isTauri) {
