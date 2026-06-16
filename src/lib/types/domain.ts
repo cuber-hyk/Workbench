@@ -114,17 +114,29 @@ export interface RadarItem {
   id: string;
   name: string;
   category: RadarCategory;
+  domain: string;
   url: string;
   tags: string[];
   note: string;
   favorite: boolean;
   updatedAt: string;
   source: RadarSource;
+  sources: RadarSource[];
   externalId: string;
   sourceDescription: string;
   sourceMetadata: RadarSourceMetadata;
   sourceActive: boolean;
   lastSyncedAt: string;
+}
+
+export interface RadarDuplicateGroup {
+  id: string;
+  source: RadarSource;
+  externalId: string;
+  candidateIds: string[];
+  candidates: RadarItem[];
+  status: "open" | "resolved";
+  updatedAt: string;
 }
 
 export interface GitHubStarsSyncResult {

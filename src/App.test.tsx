@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { App, ModuleStateView, ProjectDialog, ProjectsView, RadarView, applyPendingLaunchEvents, markLaunchRunStopped, mergeLaunchRunSnapshots } from "./App";
-import type { LaunchSessionEvent, Project, RadarItem } from "./lib/types/domain";
+import type { LaunchSessionEvent, Project, RadarDuplicateGroup, RadarItem } from "./lib/types/domain";
 
 const activeProject: Project = {
   id: "active",
@@ -55,12 +55,14 @@ const radarItems: RadarItem[] = [
     id: "nano",
     name: "nano-vllm",
     category: "项目",
+    domain: "AI 基础",
     url: "https://github.com/GeeeekExplorer/nano-vllm",
     tags: ["vLLM"],
     note: "轻量推理引擎",
     favorite: true,
     updatedAt: "2026-06-14",
     source: "github_star",
+    sources: ["github_star"],
     externalId: "GeeeekExplorer/nano-vllm",
     sourceDescription: "GitHub description",
     sourceMetadata: { language: "Python", topics: ["inference"], stars: 100, repositoryUpdatedAt: "2026-06-14" },
@@ -71,17 +73,31 @@ const radarItems: RadarItem[] = [
     id: "paper",
     name: "Attention Paper",
     category: "论文",
+    domain: "RAG",
     url: "",
     tags: ["论文"],
     note: "论文记录",
     favorite: false,
     updatedAt: "2026-06-13",
     source: "manual",
+    sources: ["manual"],
     externalId: "",
     sourceDescription: "",
     sourceMetadata: { language: "", topics: [], stars: 0, repositoryUpdatedAt: "" },
     sourceActive: true,
     lastSyncedAt: ""
+  }
+];
+
+const radarDuplicateGroups: RadarDuplicateGroup[] = [
+  {
+    id: "github_star:GeeeekExplorer/nano-vllm",
+    source: "github_star",
+    externalId: "GeeeekExplorer/nano-vllm",
+    candidateIds: ["nano", "paper"],
+    candidates: radarItems,
+    status: "open",
+    updatedAt: "2026-06-15"
   }
 ];
 
@@ -721,6 +737,7 @@ describe("Workbench UI interactions", () => {
     render(
       <RadarView
         items={radarItems}
+        duplicateGroups={[]}
         selectedItem={radarItems[0]}
         loading={false}
         loadError=""
@@ -732,18 +749,19 @@ describe("Workbench UI interactions", () => {
         onOpenLink={vi.fn()}
         syncingGithubStars={false}
         onSyncGithubStars={vi.fn()}
+        onMergeDuplicateGroup={vi.fn()}
       />
     );
 
     await user.selectOptions(screen.getByLabelText("按分类筛选"), "论文");
 
-    expect(screen.getByRole("button", { name: /Attention Paper/ })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /nano-vllm/ })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /Attention Paper/ }).length).toBeGreaterThan(0);
+    expect(screen.queryAllByRole("button", { name: /nano-vllm/ })).toHaveLength(0);
 
     await user.clear(screen.getByLabelText("搜索名称、标签或备注"));
     await user.type(screen.getByLabelText("搜索名称、标签或备注"), "attention");
 
-    expect(screen.getByRole("button", { name: /Attention Paper/ })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /Attention Paper/ }).length).toBeGreaterThan(0);
   });
 
   it("filters resources by source and prevents duplicate GitHub sync", async () => {
@@ -752,6 +770,7 @@ describe("Workbench UI interactions", () => {
     const { rerender } = render(
       <RadarView
         items={radarItems}
+        duplicateGroups={[]}
         selectedItem={radarItems[0]}
         loading={false}
         loadError=""
@@ -763,12 +782,13 @@ describe("Workbench UI interactions", () => {
         onOpenLink={vi.fn()}
         syncingGithubStars={false}
         onSyncGithubStars={onSyncGithubStars}
+        onMergeDuplicateGroup={vi.fn()}
       />
     );
 
     await user.selectOptions(screen.getByLabelText("按来源筛选"), "github_star");
-    expect(screen.getByRole("button", { name: /nano-vllm/ })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Attention Paper/ })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /nano-vllm/ }).length).toBeGreaterThan(0);
+    expect(screen.queryAllByRole("button", { name: /Attention Paper/ })).toHaveLength(0);
 
     await user.click(screen.getByRole("button", { name: "同步 GitHub Stars" }));
     expect(onSyncGithubStars).toHaveBeenCalledOnce();
@@ -776,6 +796,7 @@ describe("Workbench UI interactions", () => {
     rerender(
       <RadarView
         items={radarItems}
+        duplicateGroups={[]}
         selectedItem={radarItems[0]}
         loading={false}
         loadError=""
@@ -787,9 +808,80 @@ describe("Workbench UI interactions", () => {
         onOpenLink={vi.fn()}
         syncingGithubStars
         onSyncGithubStars={onSyncGithubStars}
+        onMergeDuplicateGroup={vi.fn()}
       />
     );
     expect(screen.getByRole("button", { name: "同步中" })).toBeDisabled();
+  });
+
+  it("toggles favorite from the resource list star without selecting the row", async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    const onToggleFavorite = vi.fn();
+    render(
+      <RadarView
+        items={radarItems}
+        duplicateGroups={[]}
+        selectedItem={radarItems[0]}
+        loading={false}
+        loadError=""
+        onSelect={onSelect}
+        onAdd={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onToggleFavorite={onToggleFavorite}
+        onOpenLink={vi.fn()}
+        syncingGithubStars={false}
+        onSyncGithubStars={vi.fn()}
+        onMergeDuplicateGroup={vi.fn()}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: "收藏 Attention Paper" }));
+
+    expect(onToggleFavorite).toHaveBeenCalledWith(radarItems[1]);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("filters resources by domain language duplicate state and merges duplicate groups", async () => {
+    const user = userEvent.setup();
+    const onMergeDuplicateGroup = vi.fn();
+    render(
+      <RadarView
+        items={radarItems}
+        duplicateGroups={radarDuplicateGroups}
+        selectedItem={radarItems[0]}
+        loading={false}
+        loadError=""
+        onSelect={vi.fn()}
+        onAdd={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onToggleFavorite={vi.fn()}
+        onOpenLink={vi.fn()}
+        syncingGithubStars={false}
+        onSyncGithubStars={vi.fn()}
+        onMergeDuplicateGroup={onMergeDuplicateGroup}
+      />
+    );
+
+    await user.selectOptions(screen.getByLabelText("按领域筛选"), "RAG");
+    expect(screen.getAllByRole("button", { name: /Attention Paper/ }).length).toBeGreaterThan(0);
+    expect(screen.queryAllByRole("button", { name: /nano-vllm/ })).toHaveLength(0);
+
+    await user.selectOptions(screen.getByLabelText("按领域筛选"), "全部领域");
+    await user.click(screen.getByRole("button", { name: "更多筛选" }));
+    await user.selectOptions(screen.getByLabelText("按语言筛选"), "Python");
+    expect(screen.getAllByRole("button", { name: /nano-vllm/ }).length).toBeGreaterThan(0);
+    expect(screen.queryAllByRole("button", { name: /Attention Paper/ })).toHaveLength(0);
+
+    await user.selectOptions(screen.getByLabelText("按语言筛选"), "全部语言");
+    await user.selectOptions(screen.getByLabelText("按重复状态筛选"), "待合并");
+    expect(screen.getAllByRole("button", { name: /nano-vllm/ }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: /Attention Paper/ }).length).toBeGreaterThan(0);
+
+    await user.click(screen.getAllByRole("button", { name: "合并到此" })[0]);
+    expect(onMergeDuplicateGroup).toHaveBeenCalledWith("github_star:GeeeekExplorer/nano-vllm", "nano");
   });
 
   it("hides details when the selected resource is excluded by filters", async () => {
@@ -797,6 +889,7 @@ describe("Workbench UI interactions", () => {
     render(
       <RadarView
         items={radarItems}
+        duplicateGroups={[]}
         selectedItem={radarItems[1]}
         loading={false}
         loadError=""
@@ -808,6 +901,7 @@ describe("Workbench UI interactions", () => {
         onOpenLink={vi.fn()}
         syncingGithubStars={false}
         onSyncGithubStars={vi.fn()}
+        onMergeDuplicateGroup={vi.fn()}
       />
     );
 
@@ -821,6 +915,7 @@ describe("Workbench UI interactions", () => {
     render(
       <RadarView
         items={[inactiveItem]}
+        duplicateGroups={[]}
         selectedItem={inactiveItem}
         loading={false}
         loadError=""
@@ -832,6 +927,7 @@ describe("Workbench UI interactions", () => {
         onOpenLink={vi.fn()}
         syncingGithubStars={false}
         onSyncGithubStars={vi.fn()}
+        onMergeDuplicateGroup={vi.fn()}
       />
     );
 

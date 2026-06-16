@@ -19,13 +19,14 @@ import {
   Settings,
   Sparkles,
   Square,
+  Star,
   Sun,
   Trash2,
   X
 } from "lucide-react";
 import { Button, IconButton, Modal, PageHeader, Panel, SearchInput, TagList } from "./components/ui";
 import { workbenchApi } from "./lib/api/workbenchApi";
-import type { AppSettings, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, Project, ProjectLaunchConfig, RadarCategory, RadarItem, Skill, SkillVersionSource, ToolTarget, ViewKey } from "./lib/types/domain";
+import type { AppSettings, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, Project, ProjectLaunchConfig, RadarCategory, RadarDuplicateGroup, RadarItem, Skill, SkillVersionSource, ToolTarget, ViewKey } from "./lib/types/domain";
 
 const views: Array<{ key: ViewKey; label: string; icon: JSX.Element }> = [
   { key: "projects", label: "项目", icon: <Box size={16} /> },
@@ -33,6 +34,8 @@ const views: Array<{ key: ViewKey; label: string; icon: JSX.Element }> = [
   { key: "radar", label: "资源 Radar", icon: <CircleDot size={16} /> },
   { key: "settings", label: "设置", icon: <Settings size={16} /> }
 ];
+
+const radarDomains = ["未分类", "Skills", "Agent", "RAG", "AI 基础", "开发工具", "文档工具", "算法与数据结构", "教程与资源", "前端开发", "Android 开发", "桌面应用", "音视频工具", "安全与网络", "其他"];
 
 export function App() {
   const [activeView, setActiveView] = useState<ViewKey>("projects");
@@ -42,6 +45,7 @@ export function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [radarItems, setRadarItems] = useState<RadarItem[]>([]);
+  const [radarDuplicateGroups, setRadarDuplicateGroups] = useState<RadarDuplicateGroup[]>([]);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState("workbench");
   const [selectedSkillId, setSelectedSkillId] = useState("security-review");
@@ -70,6 +74,7 @@ export function App() {
       workbenchApi.listProjects().then(setProjects),
       workbenchApi.listSkills().then(setSkills),
       workbenchApi.listRadarItems().then(setRadarItems),
+      workbenchApi.listRadarDuplicateGroups().then(setRadarDuplicateGroups),
       workbenchApi.getSettings().then(setSettings)
     ])
       .catch((error) => {
@@ -159,6 +164,7 @@ export function App() {
     try {
       const nextItems = await workbenchApi.saveRadarItem(item);
       setRadarItems(nextItems);
+      setRadarDuplicateGroups(await workbenchApi.listRadarDuplicateGroups());
       setSelectedRadarId(item.id);
       setActiveDialog(null);
       setEditingRadarId("");
@@ -172,6 +178,7 @@ export function App() {
     try {
       const nextItems = await workbenchApi.deleteRadarItem(item.id);
       setRadarItems(nextItems);
+      setRadarDuplicateGroups(await workbenchApi.listRadarDuplicateGroups());
       setSelectedRadarId(nextItems[0]?.id ?? "");
       setActiveDialog(null);
       showToast("资源条目已删除");
@@ -195,11 +202,24 @@ export function App() {
     try {
       const result = await workbenchApi.syncGithubStars();
       setRadarItems(result.items);
+      setRadarDuplicateGroups(await workbenchApi.listRadarDuplicateGroups());
       showToast(`GitHub Stars 同步完成：新增 ${result.added}，更新 ${result.updated}，失效 ${result.deactivated}，未变化 ${result.unchanged}`);
     } catch (error) {
       showToast(error instanceof Error ? error.message : String(error));
     } finally {
       setSyncingGithubStars(false);
+    }
+  }
+
+  async function mergeRadarDuplicateGroup(groupId: string, primaryItemId: string) {
+    try {
+      const nextItems = await workbenchApi.mergeRadarDuplicateGroup(groupId, primaryItemId);
+      setRadarItems(nextItems);
+      setRadarDuplicateGroups(await workbenchApi.listRadarDuplicateGroups());
+      setSelectedRadarId(primaryItemId);
+      showToast("重复来源已合并");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -457,6 +477,7 @@ export function App() {
         {activeView === "radar" && (
           <RadarView
             items={radarItems}
+            duplicateGroups={radarDuplicateGroups}
             selectedItem={selectedRadar}
             loading={loading}
             loadError={loadError}
@@ -474,6 +495,7 @@ export function App() {
             onOpenLink={(url) => void workbenchApi.openRadarLink(url).catch((error) => showToast(String(error)))}
             syncingGithubStars={syncingGithubStars}
             onSyncGithubStars={() => void syncGithubStars()}
+            onMergeDuplicateGroup={(groupId, primaryItemId) => void mergeRadarDuplicateGroup(groupId, primaryItemId)}
           />
         )}
         {activeView === "settings" && settings && (
@@ -1723,6 +1745,7 @@ function SkillConflictPanel({
 
 export function RadarView({
   items,
+  duplicateGroups,
   selectedItem,
   loading,
   loadError,
@@ -1733,9 +1756,11 @@ export function RadarView({
   onToggleFavorite,
   onOpenLink,
   syncingGithubStars,
-  onSyncGithubStars
+  onSyncGithubStars,
+  onMergeDuplicateGroup
 }: {
   items: RadarItem[];
+  duplicateGroups: RadarDuplicateGroup[];
   selectedItem?: RadarItem;
   loading: boolean;
   loadError: string;
@@ -1747,19 +1772,31 @@ export function RadarView({
   onOpenLink: (url: string) => void;
   syncingGithubStars: boolean;
   onSyncGithubStars: () => void;
+  onMergeDuplicateGroup: (groupId: string, primaryItemId: string) => void;
 }) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("全部分类");
-  const [tag, setTag] = useState("全部标签");
+  const [domain, setDomain] = useState("全部领域");
   const [source, setSource] = useState("全部来源");
+  const [language, setLanguage] = useState("全部语言");
+  const [sourceState, setSourceState] = useState("全部状态");
+  const [duplicateState, setDuplicateState] = useState("全部重复状态");
   const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [showMoreFilters, setShowMoreFilters] = useState(false);
   const categories = useMemo(() => ["全部分类", "项目", "资讯", "论文", "其他"], []);
-  const tags = useMemo(
-    () => ["全部标签", ...Array.from(new Set(items.flatMap((item) => [...item.tags, ...item.sourceMetadata.topics]))).sort()],
+  const domains = useMemo(() => ["全部领域", ...Array.from(new Set([...radarDomains, ...items.map((item) => item.domain || "未分类")]))], [items]);
+  const languages = useMemo(
+    () => ["全部语言", ...Array.from(new Set(items.map((item) => item.sourceMetadata.language).filter(Boolean))).sort()],
     [items]
+  );
+  const duplicateCandidateIds = useMemo(
+    () => new Set(duplicateGroups.flatMap((group) => group.candidateIds)),
+    [duplicateGroups]
   );
   const filteredItems = items.filter((item) => {
     const displayTags = [...new Set([...item.tags, ...item.sourceMetadata.topics])];
+    const itemSources = item.sources.length > 0 ? item.sources : [item.source];
+    const isDuplicateCandidate = duplicateCandidateIds.has(item.id);
     const normalizedQuery = query.trim().toLowerCase();
     const matchesQuery =
       !normalizedQuery ||
@@ -1770,8 +1807,11 @@ export function RadarView({
     return (
       matchesQuery &&
       (category === "全部分类" || item.category === category) &&
-      (tag === "全部标签" || displayTags.includes(tag)) &&
-      (source === "全部来源" || item.source === source) &&
+      (domain === "全部领域" || item.domain === domain) &&
+      (source === "全部来源" || itemSources.includes(source as RadarItem["source"])) &&
+      (language === "全部语言" || item.sourceMetadata.language === language) &&
+      (sourceState === "全部状态" || (sourceState === "来源有效" ? item.sourceActive : !item.sourceActive)) &&
+      (duplicateState === "全部重复状态" || (duplicateState === "待合并" ? isDuplicateCandidate : !isDuplicateCandidate)) &&
       (!favoritesOnly || item.favorite)
     );
   });
@@ -1789,16 +1829,69 @@ export function RadarView({
         <select aria-label="按分类筛选" value={category} onChange={(event) => setCategory(event.target.value)}>
           {categories.map((option) => <option key={option}>{option}</option>)}
         </select>
-        <select aria-label="按标签筛选" value={tag} onChange={(event) => setTag(event.target.value)}>
-          {tags.map((option) => <option key={option}>{option}</option>)}
+        <select aria-label="按领域筛选" value={domain} onChange={(event) => setDomain(event.target.value)}>
+          {domains.map((option) => <option key={option}>{option}</option>)}
         </select>
         <select aria-label="按来源筛选" value={source} onChange={(event) => setSource(event.target.value)}>
           <option value="全部来源">全部来源</option>
           <option value="manual">手动添加</option>
           <option value="github_star">GitHub Stars</option>
         </select>
-        <Button onClick={() => setFavoritesOnly((value) => !value)}>{favoritesOnly ? "★ 仅收藏" : "☆ 仅收藏"}</Button>
+        <div className="filter-more">
+          <Button aria-expanded={showMoreFilters} onClick={() => setShowMoreFilters((value) => !value)}>更多筛选</Button>
+          {showMoreFilters && (
+            <div className="filter-popover">
+              <select aria-label="按语言筛选" value={language} onChange={(event) => setLanguage(event.target.value)}>
+                {languages.map((option) => <option key={option}>{option}</option>)}
+              </select>
+              <select aria-label="按来源状态筛选" value={sourceState} onChange={(event) => setSourceState(event.target.value)}>
+                <option>全部状态</option>
+                <option>来源有效</option>
+                <option>来源失效</option>
+              </select>
+              <select aria-label="按重复状态筛选" value={duplicateState} onChange={(event) => setDuplicateState(event.target.value)}>
+                <option>全部重复状态</option>
+                <option>待合并</option>
+                <option>非重复项</option>
+              </select>
+            </div>
+          )}
+        </div>
+        <Button
+          className={`favorite-filter ${favoritesOnly ? "active" : ""}`}
+          aria-label={favoritesOnly ? "显示全部资源" : "仅显示收藏资源"}
+          title={favoritesOnly ? "显示全部资源" : "仅显示收藏资源"}
+          onClick={() => setFavoritesOnly((value) => !value)}
+        >
+          <Star size={16} fill="currentColor" />
+        </Button>
       </div>
+      {duplicateGroups.length > 0 && (
+        <div className="radar-duplicate-stack" aria-label="待合并来源">
+          {duplicateGroups.map((group) => (
+            <section key={group.id} className="skill-conflict-panel radar-duplicate-panel">
+              <div className="conflict-panel-title">
+                <span>
+                  <strong>发现可能重复的 GitHub Stars 来源</strong>
+                  <small>{group.externalId} 匹配到 {group.candidates.length} 个手动资源。选择保留的主资源后，来源、标签、备注和收藏会合并。</small>
+                </span>
+              </div>
+              <div className="version-options">
+                {group.candidates.map((candidate) => (
+                  <label key={candidate.id}>
+                    <input type="radio" name={`duplicate-${group.id}`} defaultChecked={candidate.id === group.candidateIds[0]} readOnly />
+                    <span>
+                      <strong>{candidate.name}</strong>
+                      <small>{candidate.category} · {candidate.domain || "未分类"} · {candidate.url || "无链接"}</small>
+                    </span>
+                    <Button onClick={() => onMergeDuplicateGroup(group.id, candidate.id)}>合并到此</Button>
+                  </label>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
       <div className="split-layout">
         <Panel className="list-panel card-list">
           {loading && (
@@ -1820,12 +1913,38 @@ export function RadarView({
             </div>
           )}
           {!loading && !loadError && filteredItems.map((item) => (
-            <button key={item.id} className={`row-card ${visibleSelectedItem?.id === item.id ? "selected" : ""}`} onClick={() => onSelect(item.id)}>
-              <span className="row-main"><strong>{item.name}</strong><i>{item.favorite ? "★ 已收藏" : "☆"}</i></span>
-              <span className="meta-line">{item.category} · {radarSourceLabel(item)}{item.sourceMetadata.language ? ` · ${item.sourceMetadata.language}` : ""}{item.source === "github_star" ? ` · ★ ${item.sourceMetadata.stars}` : ""} · {item.updatedAt}</span>
+            <div
+              key={item.id}
+              className={`row-card ${visibleSelectedItem?.id === item.id ? "selected" : ""}`}
+              role="button"
+              tabIndex={0}
+              onClick={() => onSelect(item.id)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onSelect(item.id);
+                }
+              }}
+            >
+              <span className="row-main">
+                <strong>{item.name}</strong>
+                <button
+                  className={`favorite-star ${item.favorite ? "active" : ""}`}
+                  aria-label={item.favorite ? `取消收藏 ${item.name}` : `收藏 ${item.name}`}
+                  title={item.favorite ? "取消收藏" : "收藏"}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onToggleFavorite(item);
+                  }}
+                >
+                  <Star size={15} fill="currentColor" />
+                </button>
+              </span>
+              <span className="meta-line">{item.category} · {item.domain || "未分类"} · {radarSourceLabel(item)}{item.sourceMetadata.language ? ` · ${item.sourceMetadata.language}` : ""}{item.source === "github_star" ? ` · ★ ${item.sourceMetadata.stars}` : ""} · {item.updatedAt}</span>
               <p>{item.note || item.sourceDescription}</p>
               {!item.sourceActive && <strong className="source-inactive">GitHub Stars 来源已失效</strong>}
-            </button>
+              {duplicateCandidateIds.has(item.id) && <strong className="source-inactive">待合并重复来源</strong>}
+            </div>
           ))}
         </Panel>
         <Panel className="detail-panel">
@@ -1834,12 +1953,22 @@ export function RadarView({
               <div className="detail-title">
                 <div>
                   <h2>{visibleSelectedItem.name}</h2>
-                  <p>{visibleSelectedItem.category} · {radarSourceLabel(visibleSelectedItem)} · {visibleSelectedItem.favorite ? "已收藏" : "未收藏"}{visibleSelectedItem.sourceActive ? "" : " · 来源已失效"}</p>
+                  <p>{visibleSelectedItem.category} · {visibleSelectedItem.domain || "未分类"} · {radarSourceLabel(visibleSelectedItem)}{visibleSelectedItem.sourceActive ? "" : " · 来源已失效"}</p>
                 </div>
+                <IconButton
+                  className={`favorite-star-button ${visibleSelectedItem.favorite ? "active" : ""}`}
+                  title={visibleSelectedItem.favorite ? "取消收藏" : "收藏"}
+                  aria-label={visibleSelectedItem.favorite ? "取消收藏" : "收藏"}
+                  onClick={() => onToggleFavorite(visibleSelectedItem)}
+                >
+                  <Star size={17} fill="currentColor" />
+                </IconButton>
               </div>
               <div className="form-grid">
                 <label>名称<input value={visibleSelectedItem.name} readOnly /></label>
                 <label>分类<input value={visibleSelectedItem.category} readOnly /></label>
+                <label>领域<input value={visibleSelectedItem.domain || "未分类"} readOnly /></label>
+                <label>来源<input value={radarSourceLabel(visibleSelectedItem)} readOnly /></label>
                 <label className="full">链接<input value={visibleSelectedItem.url} readOnly /></label>
                 <label>标签<input value={visibleSelectedItem.tags.join(", ")} readOnly /></label>
                 <label>更新时间<input value={visibleSelectedItem.updatedAt} readOnly /></label>
@@ -1847,12 +1976,13 @@ export function RadarView({
                 <label className="full">备注<textarea rows={5} value={visibleSelectedItem.note} readOnly /></label>
               </div>
               <div className="detail-actions">
-                <div>
-                  <Button onClick={() => onToggleFavorite(visibleSelectedItem)}>{visibleSelectedItem.favorite ? "取消收藏" : "收藏"}</Button>
+                <div className="detail-primary-actions">
                   <Button onClick={() => onOpenLink(visibleSelectedItem.url)} disabled={!visibleSelectedItem.url}>打开链接</Button>
                   <Button onClick={() => onEdit(visibleSelectedItem)}>编辑条目</Button>
                 </div>
-                <Button className="danger" onClick={() => onDelete(visibleSelectedItem)}>删除条目</Button>
+                <div className="detail-danger-actions">
+                  <Button className="danger" onClick={() => onDelete(visibleSelectedItem)}>删除条目</Button>
+                </div>
               </div>
             </>
           ) : (
@@ -2263,6 +2393,7 @@ function RadarDialog({
 }) {
   const [name, setName] = useState(item?.name ?? "");
   const [category, setCategory] = useState<RadarCategory>(item?.category ?? "项目");
+  const [domain, setDomain] = useState(item?.domain ?? "未分类");
   const [url, setUrl] = useState(item?.url ?? "");
   const [tags, setTags] = useState(item?.tags.join(", ") ?? "");
   const [note, setNote] = useState(item?.note ?? "");
@@ -2284,12 +2415,14 @@ function RadarDialog({
       id: item?.id ?? createRadarId(trimmedName),
       name: trimmedName,
       category,
+      domain,
       url: trimmedUrl,
       tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean),
       note: note.trim(),
       favorite: item?.favorite ?? false,
       updatedAt: item?.updatedAt ?? new Date().toISOString().slice(0, 10),
       source: item?.source ?? "manual",
+      sources: item?.sources ?? [item?.source ?? "manual"],
       externalId: item?.externalId ?? "",
       sourceDescription: item?.sourceDescription ?? "",
       sourceMetadata: item?.sourceMetadata ?? { language: "", topics: [], stars: 0, repositoryUpdatedAt: "" },
@@ -2309,6 +2442,7 @@ function RadarDialog({
         {formError && <p className="field-error">{formError}</p>}
         <label>名称<input value={name} onChange={(event) => setName(event.target.value)} placeholder="条目名称" autoFocus readOnly={item?.source === "github_star"} /></label>
         <label>分类<select value={category} onChange={(event) => setCategory(event.target.value as RadarCategory)}><option>项目</option><option>资讯</option><option>论文</option><option>其他</option></select></label>
+        <label>领域<select value={domain} onChange={(event) => setDomain(event.target.value)}>{radarDomains.map((option) => <option key={option}>{option}</option>)}</select></label>
         <label>链接<input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://" readOnly={item?.source === "github_star"} /></label>
         <label>标签<input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="使用逗号分隔" /></label>
         <label>备注<textarea rows={4} value={note} onChange={(event) => setNote(event.target.value)} /></label>
@@ -2347,5 +2481,6 @@ function createRadarId(name: string) {
 }
 
 function radarSourceLabel(item: RadarItem) {
-  return item.source === "github_star" ? "GitHub Stars" : "手动添加";
+  const sources = item.sources.length > 0 ? item.sources : [item.source];
+  return sources.map((source) => source === "github_star" ? "GitHub Stars" : "手动添加").join(" + ");
 }
