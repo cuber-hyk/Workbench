@@ -18,7 +18,8 @@ Do not read `docs/plans/`, `docs/audits/`, or archived directories by default.
 - `src/lib/api/workbenchApi.ts`：前端到 Tauri commands 的 API 边界。
 - `src-tauri/src/lib.rs`：Tauri command 注册入口。
 - `src-tauri/src/projects.rs`：项目持久化、目录选择和启动逻辑。
-- `src-tauri/src/radar.rs`：AI Radar 持久化、校验和链接打开逻辑。
+- `src-tauri/src/radar.rs`：资源 Radar 持久化、GitHub Stars 手动同步、校验和链接打开逻辑。
+- `docs/capabilities/resource-radar.md`：资源 Radar 当前能力、数据所有权和同步规则。
 - `src-tauri/src/skills.rs`：Skills 扫描、导入、启用、冲突、删除和 SQLite 逻辑。
 
 ## 设计

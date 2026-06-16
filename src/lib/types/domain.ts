@@ -101,6 +101,14 @@ export interface Skill {
 }
 
 export type RadarCategory = "项目" | "资讯" | "论文" | "其他";
+export type RadarSource = "manual" | "github_star";
+
+export interface RadarSourceMetadata {
+  language: string;
+  topics: string[];
+  stars: number;
+  repositoryUpdatedAt: string;
+}
 
 export interface RadarItem {
   id: string;
@@ -111,6 +119,20 @@ export interface RadarItem {
   note: string;
   favorite: boolean;
   updatedAt: string;
+  source: RadarSource;
+  externalId: string;
+  sourceDescription: string;
+  sourceMetadata: RadarSourceMetadata;
+  sourceActive: boolean;
+  lastSyncedAt: string;
+}
+
+export interface GitHubStarsSyncResult {
+  items: RadarItem[];
+  added: number;
+  updated: number;
+  deactivated: number;
+  unchanged: number;
 }
 
 export interface AppSettings {

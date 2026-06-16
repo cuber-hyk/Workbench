@@ -59,7 +59,13 @@ const radarItems: RadarItem[] = [
     tags: ["vLLM"],
     note: "轻量推理引擎",
     favorite: true,
-    updatedAt: "2026-06-14"
+    updatedAt: "2026-06-14",
+    source: "github_star",
+    externalId: "GeeeekExplorer/nano-vllm",
+    sourceDescription: "GitHub description",
+    sourceMetadata: { language: "Python", topics: ["inference"], stars: 100, repositoryUpdatedAt: "2026-06-14" },
+    sourceActive: true,
+    lastSyncedAt: "2026-06-15"
   },
   {
     id: "paper",
@@ -69,7 +75,13 @@ const radarItems: RadarItem[] = [
     tags: ["论文"],
     note: "论文记录",
     favorite: false,
-    updatedAt: "2026-06-13"
+    updatedAt: "2026-06-13",
+    source: "manual",
+    externalId: "",
+    sourceDescription: "",
+    sourceMetadata: { language: "", topics: [], stars: 0, repositoryUpdatedAt: "" },
+    sourceActive: true,
+    lastSyncedAt: ""
   }
 ];
 
@@ -704,7 +716,7 @@ describe("Workbench UI interactions", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it("filters Radar items by search and category", async () => {
+  it("filters resource items by search and category", async () => {
     const user = userEvent.setup();
     render(
       <RadarView
@@ -718,6 +730,8 @@ describe("Workbench UI interactions", () => {
         onDelete={vi.fn()}
         onToggleFavorite={vi.fn()}
         onOpenLink={vi.fn()}
+        syncingGithubStars={false}
+        onSyncGithubStars={vi.fn()}
       />
     );
 
@@ -730,6 +744,99 @@ describe("Workbench UI interactions", () => {
     await user.type(screen.getByLabelText("搜索名称、标签或备注"), "attention");
 
     expect(screen.getByRole("button", { name: /Attention Paper/ })).toBeInTheDocument();
+  });
+
+  it("filters resources by source and prevents duplicate GitHub sync", async () => {
+    const user = userEvent.setup();
+    const onSyncGithubStars = vi.fn();
+    const { rerender } = render(
+      <RadarView
+        items={radarItems}
+        selectedItem={radarItems[0]}
+        loading={false}
+        loadError=""
+        onSelect={vi.fn()}
+        onAdd={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onToggleFavorite={vi.fn()}
+        onOpenLink={vi.fn()}
+        syncingGithubStars={false}
+        onSyncGithubStars={onSyncGithubStars}
+      />
+    );
+
+    await user.selectOptions(screen.getByLabelText("按来源筛选"), "github_star");
+    expect(screen.getByRole("button", { name: /nano-vllm/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Attention Paper/ })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "同步 GitHub Stars" }));
+    expect(onSyncGithubStars).toHaveBeenCalledOnce();
+
+    rerender(
+      <RadarView
+        items={radarItems}
+        selectedItem={radarItems[0]}
+        loading={false}
+        loadError=""
+        onSelect={vi.fn()}
+        onAdd={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onToggleFavorite={vi.fn()}
+        onOpenLink={vi.fn()}
+        syncingGithubStars
+        onSyncGithubStars={onSyncGithubStars}
+      />
+    );
+    expect(screen.getByRole("button", { name: "同步中" })).toBeDisabled();
+  });
+
+  it("hides details when the selected resource is excluded by filters", async () => {
+    const user = userEvent.setup();
+    render(
+      <RadarView
+        items={radarItems}
+        selectedItem={radarItems[1]}
+        loading={false}
+        loadError=""
+        onSelect={vi.fn()}
+        onAdd={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onToggleFavorite={vi.fn()}
+        onOpenLink={vi.fn()}
+        syncingGithubStars={false}
+        onSyncGithubStars={vi.fn()}
+      />
+    );
+
+    await user.selectOptions(screen.getByLabelText("按来源筛选"), "github_star");
+    expect(screen.getByText("选择一个资源条目")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Attention Paper" })).not.toBeInTheDocument();
+  });
+
+  it("shows an explicit warning when a GitHub Stars source is inactive", () => {
+    const inactiveItem = { ...radarItems[0], sourceActive: false };
+    render(
+      <RadarView
+        items={[inactiveItem]}
+        selectedItem={inactiveItem}
+        loading={false}
+        loadError=""
+        onSelect={vi.fn()}
+        onAdd={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onToggleFavorite={vi.fn()}
+        onOpenLink={vi.fn()}
+        syncingGithubStars={false}
+        onSyncGithubStars={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("GitHub Stars 来源已失效")).toBeInTheDocument();
+    expect(screen.getAllByText(/来源已失效/)).toHaveLength(2);
   });
 
   it("renders a Skills empty state without a blank module", () => {
@@ -760,6 +867,6 @@ describe("Workbench UI interactions", () => {
     await user.click(screen.getByRole("button", { name: "浅色主题" }));
 
     expect(document.body.dataset.theme).toBe("dark");
-    expect(within(navigation).getByRole("button", { name: "AI Radar" })).toBeInTheDocument();
+    expect(within(navigation).getByRole("button", { name: "资源 Radar" })).toBeInTheDocument();
   });
 });

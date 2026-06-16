@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { projects, radarItems, settings, skillCategories, skills } from "./mockData";
-import type { ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, Project, RadarItem, SkillVersionSource, SkillsState, ToolTarget } from "../types/domain";
+import type { GitHubStarsSyncResult, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, Project, RadarItem, SkillVersionSource, SkillsState, ToolTarget } from "../types/domain";
 
 const delay = async () => new Promise((resolve) => window.setTimeout(resolve, 80));
 const isTauri = "__TAURI_INTERNALS__" in window;
@@ -132,6 +132,19 @@ export const workbenchApi = {
       return;
     }
     return invoke<void>("open_radar_link", { url });
+  },
+  async syncGithubStars() {
+    if (!isTauri) {
+      await delay();
+      return {
+        items: radarItems,
+        added: 0,
+        updated: 0,
+        deactivated: 0,
+        unchanged: radarItems.filter((item) => item.source === "github_star").length
+      } satisfies GitHubStarsSyncResult;
+    }
+    return invoke<GitHubStarsSyncResult>("sync_github_stars");
   },
   async getSettings() {
     return (await skillsState()).settings;

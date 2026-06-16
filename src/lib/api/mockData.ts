@@ -5,7 +5,7 @@ export const projects: Project[] = [
     id: "workbench",
     name: "Workbench App",
     path: "E:\\Development\\12-工具-Utility\\Workbench",
-    note: "统一管理项目、Skills 与 AI Radar。",
+    note: "统一管理项目、Skills 与资源 Radar。",
     tags: ["Tauri", "本地工具"],
     archived: false,
     launchConfigs: [
@@ -135,6 +135,20 @@ export const skills: Skill[] = [
   }
 ];
 
+const manualRadarSource = {
+  source: "manual" as const,
+  externalId: "",
+  sourceDescription: "",
+  sourceMetadata: {
+    language: "",
+    topics: [] as string[],
+    stars: 0,
+    repositoryUpdatedAt: ""
+  },
+  sourceActive: true,
+  lastSyncedAt: ""
+};
+
 export const radarItems: RadarItem[] = [
   {
     id: "mcp",
@@ -144,7 +158,8 @@ export const radarItems: RadarItem[] = [
     tags: ["MCP", "Agent"],
     note: "连接 AI 应用与外部工具、数据的开放协议。",
     favorite: true,
-    updatedAt: "今天"
+    updatedAt: "今天",
+    ...manualRadarSource
   },
   {
     id: "claude-code-practice",
@@ -154,7 +169,8 @@ export const radarItems: RadarItem[] = [
     tags: ["Claude", "开发"],
     note: "记录 Claude Code 在本地项目中的使用经验。",
     favorite: true,
-    updatedAt: "昨天"
+    updatedAt: "昨天",
+    ...manualRadarSource
   },
   {
     id: "qwen3-report",
@@ -164,7 +180,8 @@ export const radarItems: RadarItem[] = [
     tags: ["模型", "论文"],
     note: "本地记录技术报告链接和阅读备注。",
     favorite: false,
-    updatedAt: "6月8日"
+    updatedAt: "6月8日",
+    ...manualRadarSource
   },
   {
     id: "openai-codex",
@@ -174,7 +191,8 @@ export const radarItems: RadarItem[] = [
     tags: ["Codex", "开发"],
     note: "用于跟踪 Codex 相关能力和本地工作流。",
     favorite: false,
-    updatedAt: "6月5日"
+    updatedAt: "6月5日",
+    ...manualRadarSource
   }
 ];
 

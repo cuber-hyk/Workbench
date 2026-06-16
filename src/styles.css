@@ -95,6 +95,7 @@ code { font-family: Consolas, monospace; }
 .row-main i { padding: 3px 8px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); background: color-mix(in srgb, var(--panel), var(--bg) 35%); font-size: 11px; font-style: normal; white-space: nowrap; }
 .meta-line { color: var(--muted); font-family: Consolas, monospace; font-size: 11px; overflow-wrap: anywhere; }
 .row-card p { color: var(--muted); font-size: 12px; }
+.source-inactive { color: var(--danger-text); font-size: 11px; }
 .tags, .tool-icons { display: flex; flex-wrap: wrap; gap: 5px; }
 .tags i, .available { padding: 3px 7px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); font-size: 10px; font-style: normal; font-weight: 600; }
 

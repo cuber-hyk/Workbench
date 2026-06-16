@@ -25,6 +25,7 @@ pub fn run() {
             radar::list_radar_items,
             radar::open_radar_link,
             radar::save_radar_item,
+            radar::sync_github_stars,
             skills::get_skills_state,
             skills::set_skills_root,
             skills::set_skill_category,

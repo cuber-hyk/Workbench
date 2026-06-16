@@ -2,7 +2,7 @@
 
 ## 项目定位
 
-Workbench App 是一个本地优先的 AI 开发工作台。当前 MVP 聚焦项目管理、Skills 管理、AI Radar 和设置，不引入独立 HTTP 后端、插件系统、在线市场或云同步。
+Workbench App 是一个本地优先的 AI 开发工作台。当前 MVP 聚焦项目管理、Skills 管理、资源 Radar 和设置，不引入独立 HTTP 后端、插件系统、在线市场或云同步。
 
 ## 工作原则
 
