@@ -2,21 +2,25 @@ import { X } from "lucide-react";
 import type { ButtonHTMLAttributes, InputHTMLAttributes, PropsWithChildren, ReactNode } from "react";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: "default" | "primary";
+  variant?: "default" | "primary" | "danger";
   full?: boolean;
 };
 
 export function Button({ variant = "default", full, className = "", ...props }: ButtonProps) {
   return (
     <button
-      className={`button ${variant === "primary" ? "primary" : ""} ${full ? "full" : ""} ${className}`}
+      className={`button ${variant === "primary" ? "primary" : ""} ${variant === "danger" ? "danger" : ""} ${full ? "full" : ""} ${className}`}
       {...props}
     />
   );
 }
 
-export function IconButton({ className = "", ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
-  return <button className={`icon-button ${className}`} {...props} />;
+type IconButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: "default" | "danger" | "active";
+};
+
+export function IconButton({ variant = "default", className = "", ...props }: IconButtonProps) {
+  return <button className={`icon-button ${variant === "danger" ? "danger-icon" : ""} ${variant === "active" ? "active-icon" : ""} ${className}`} {...props} />;
 }
 
 export function Panel({ children, className = "" }: PropsWithChildren<{ className?: string }>) {
@@ -52,6 +56,92 @@ export function SearchInput(props: InputHTMLAttributes<HTMLInputElement>) {
   );
 }
 
+export function Toolbar({ children }: PropsWithChildren) {
+  return <div className="toolbar">{children}</div>;
+}
+
+export function FilterMore({
+  expanded,
+  label = "更多筛选",
+  onToggle,
+  children
+}: PropsWithChildren<{
+  expanded: boolean;
+  label?: string;
+  onToggle: () => void;
+}>) {
+  return (
+    <div className="filter-more">
+      <Button aria-expanded={expanded} onClick={onToggle}>{label}</Button>
+      {expanded && <div className="filter-popover">{children}</div>}
+    </div>
+  );
+}
+
+export function ActionGroup({
+  children,
+  align = "end",
+  className = ""
+}: PropsWithChildren<{
+  align?: "start" | "end";
+  className?: string;
+}>) {
+  return <span className={`action-group ${align === "start" ? "start" : "end"} ${className}`}>{children}</span>;
+}
+
+export function StatusBadge({
+  children,
+  tone = "accent",
+  className = ""
+}: PropsWithChildren<{
+  tone?: "neutral" | "accent" | "success" | "warning" | "danger" | "attention";
+  className?: string;
+}>) {
+  return <i className={`status-badge ${tone} ${className}`}>{children}</i>;
+}
+
+export function DetailHeader({
+  title,
+  description,
+  actions
+}: {
+  title: string;
+  description?: ReactNode;
+  actions?: ReactNode;
+}) {
+  return (
+    <div className="detail-title">
+      <div>
+        <h2>{title}</h2>
+        {description && <p>{description}</p>}
+      </div>
+      {actions && <ActionGroup className="detail-title-actions">{actions}</ActionGroup>}
+    </div>
+  );
+}
+
+export function DetailActions({
+  primary,
+  secondary,
+  danger
+}: {
+  primary?: ReactNode;
+  secondary?: ReactNode;
+  danger?: ReactNode;
+}) {
+  return (
+    <div className="detail-actions">
+      {(primary || secondary) && (
+        <div className="detail-primary-actions">
+          {primary}
+          {secondary}
+        </div>
+      )}
+      {danger && <div className="detail-danger-actions">{danger}</div>}
+    </div>
+  );
+}
+
 export function TagList({ tags }: { tags: string[] }) {
   return (
     <span className="tags">
@@ -59,6 +149,32 @@ export function TagList({ tags }: { tags: string[] }) {
         <i key={tag}>{tag}</i>
       ))}
     </span>
+  );
+}
+
+export function ConfirmDeleteModal({
+  title,
+  description,
+  children,
+  confirmLabel,
+  onClose,
+  onConfirm
+}: PropsWithChildren<{
+  title: string;
+  description: string;
+  confirmLabel: string;
+  onClose: () => void;
+  onConfirm: () => void;
+}>) {
+  return (
+    <Modal
+      title={title}
+      description={description}
+      onClose={onClose}
+      footer={<><Button onClick={onClose}>取消</Button><Button variant="danger" onClick={onConfirm}>{confirmLabel}</Button></>}
+    >
+      <div className="delete-summary">{children}</div>
+    </Modal>
   );
 }
 

@@ -385,6 +385,33 @@ describe("Workbench UI interactions", () => {
     expect(onArchive).not.toHaveBeenCalled();
   });
 
+  it("runs project row actions without selecting the row", async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    const onEdit = vi.fn();
+    render(
+      <ProjectsView
+        projects={[activeProject, secondActiveProject]}
+        selectedProject={activeProject}
+        projectLaunchTimes={{}}
+        loading={false}
+        loadError=""
+        onSelect={onSelect}
+        onLaunch={vi.fn()}
+        onStopLaunchSession={vi.fn()}
+        onStopLaunchRun={vi.fn()}
+        onEdit={onEdit}
+        onArchive={vi.fn()}
+        onAdd={vi.fn()}
+      />
+    );
+
+    await user.click(within(screen.getByRole("group", { name: "Second Project 项目" })).getByRole("button", { name: "编辑项目" }));
+
+    expect(onEdit).toHaveBeenCalledWith(secondActiveProject);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
   it("tracks active launch sessions for multiple projects at the same time", () => {
     render(
       <ProjectsView
@@ -840,6 +867,44 @@ describe("Workbench UI interactions", () => {
     await user.click(screen.getByRole("button", { name: "收藏 Attention Paper" }));
 
     expect(onToggleFavorite).toHaveBeenCalledWith(radarItems[1]);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("uses compact detail icons for resource link edit and row delete actions", async () => {
+    const user = userEvent.setup();
+    const onOpenLink = vi.fn();
+    const onEdit = vi.fn();
+    const onDelete = vi.fn();
+    const onSelect = vi.fn();
+    render(
+      <RadarView
+        items={radarItems}
+        duplicateGroups={[]}
+        selectedItem={radarItems[0]}
+        loading={false}
+        loadError=""
+        onSelect={onSelect}
+        onAdd={vi.fn()}
+        onEdit={onEdit}
+        onDelete={onDelete}
+        onToggleFavorite={vi.fn()}
+        onOpenLink={onOpenLink}
+        syncingGithubStars={false}
+        onSyncGithubStars={vi.fn()}
+        onMergeDuplicateGroup={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByRole("button", { name: "取消收藏" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "删除条目" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "打开链接" }));
+    await user.click(screen.getByRole("button", { name: "编辑条目" }));
+    await user.click(screen.getByRole("button", { name: "删除 nano-vllm" }));
+
+    expect(onOpenLink).toHaveBeenCalledWith(radarItems[0].url);
+    expect(onEdit).toHaveBeenCalledWith(radarItems[0]);
+    expect(onDelete).toHaveBeenCalledWith(radarItems[0]);
     expect(onSelect).not.toHaveBeenCalled();
   });
 
