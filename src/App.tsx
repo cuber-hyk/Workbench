@@ -12,6 +12,7 @@ import {
   ExternalLink,
   FileText,
   FolderOpen,
+  MonitorUp,
   Moon,
   Pause,
   Play,
@@ -22,12 +23,13 @@ import {
   Square,
   Star,
   Sun,
+  Terminal,
   Trash2,
   X
 } from "lucide-react";
 import { ActionGroup, Button, ConfirmDeleteModal, DetailHeader, FilterMore, IconButton, Modal, PageHeader, Panel, SearchInput, StatusBadge, TagList, Toolbar } from "./components/ui";
 import { workbenchApi } from "./lib/api/workbenchApi";
-import type { AppSettings, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, Project, ProjectLaunchConfig, RadarCategory, RadarDuplicateGroup, RadarItem, Skill, SkillVersionSource, ToolTarget, ViewKey } from "./lib/types/domain";
+import type { AppSettings, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, Project, ProjectLaunchConfig, ProjectOpenProfile, RadarCategory, RadarDuplicateGroup, RadarItem, Skill, SkillVersionSource, ToolTarget, ViewKey } from "./lib/types/domain";
 
 const views: Array<{ key: ViewKey; label: string; icon: JSX.Element }> = [
   { key: "projects", label: "项目", icon: <Box size={16} /> },
@@ -57,8 +59,10 @@ export function App() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [toast, setToast] = useState("");
-  const [activeDialog, setActiveDialog] = useState<"project" | "skills-import" | "skill-delete" | "radar" | "radar-delete" | null>(null);
+  const [activeDialog, setActiveDialog] = useState<"project" | "project-open-profile" | "project-open-profile-delete" | "skills-import" | "skill-delete" | "radar" | "radar-delete" | null>(null);
   const [editingProjectId, setEditingProjectId] = useState("");
+  const [editingProjectOpenProfileId, setEditingProjectOpenProfileId] = useState("");
+  const [deleteProjectOpenProfileId, setDeleteProjectOpenProfileId] = useState("");
   const [editingRadarId, setEditingRadarId] = useState("");
   const [importResults, setImportResults] = useState<ImportResult[]>([]);
   const [deleteSkillId, setDeleteSkillId] = useState("");
@@ -117,6 +121,8 @@ export function App() {
   const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? activeProjects[0] ?? projects[0];
   const selectedSkill = skills.find((skill) => skill.id === selectedSkillId) ?? skills[0];
   const deleteSkill = skills.find((skill) => skill.id === deleteSkillId) ?? selectedSkill;
+  const editingProjectOpenProfile = settings?.projectOpenProfiles.find((profile) => profile.id === editingProjectOpenProfileId);
+  const deletingProjectOpenProfile = settings?.projectOpenProfiles.find((profile) => profile.id === deleteProjectOpenProfileId);
   const selectedRadar = radarItems.find((item) => item.id === selectedRadarId) ?? radarItems[0];
 
   function showToast(message: string) {
@@ -156,6 +162,39 @@ export function App() {
       setActiveDialog(null);
       setEditingProjectId("");
       showToast(editingProjectId ? "项目已更新" : "项目已添加");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function openProjectWithProfile(project: Project, profile: ProjectOpenProfile) {
+    try {
+      await workbenchApi.openProjectWithProfile(project, profile);
+      showToast(`正在用 ${profile.name} 打开项目`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function saveProjectOpenProfile(profile: ProjectOpenProfile) {
+    try {
+      const nextProfiles = await workbenchApi.saveProjectOpenProfile(profile);
+      setSettings((current) => current ? { ...current, projectOpenProfiles: nextProfiles } : current);
+      setActiveDialog(null);
+      setEditingProjectOpenProfileId("");
+      showToast(editingProjectOpenProfileId ? "打开方式已更新" : "打开方式已添加");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function deleteProjectOpenProfile(profile: ProjectOpenProfile) {
+    try {
+      const nextProfiles = await workbenchApi.deleteProjectOpenProfile(profile.id);
+      setSettings((current) => current ? { ...current, projectOpenProfiles: nextProfiles } : current);
+      setActiveDialog(null);
+      setDeleteProjectOpenProfileId("");
+      showToast("打开方式已删除");
     } catch (error) {
       showToast(error instanceof Error ? error.message : String(error));
     }
@@ -282,9 +321,11 @@ export function App() {
             selectedProject={selectedProject}
             projectLaunchTimes={projectLaunchTimes}
             launchRuns={launchRuns}
+            projectOpenProfiles={settings?.projectOpenProfiles ?? []}
             loading={loading}
             loadError={loadError}
             onSelect={setSelectedProjectId}
+            onOpenWithProfile={(project, profile) => void openProjectWithProfile(project, profile)}
             onLaunch={async (project) => {
               try {
                 const nextLaunchRun = await workbenchApi.launchProject(project);
@@ -506,6 +547,18 @@ export function App() {
             onThemeToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
             onRootChange={(path) => void runSkillAction(() => workbenchApi.setSkillsRoot(path), "Skills 根目录已更新")}
             onOpenPath={(path) => void workbenchApi.openLocalPath(path).catch((error) => showToast(String(error)))}
+            onAddProjectOpenProfile={() => {
+              setEditingProjectOpenProfileId("");
+              setActiveDialog("project-open-profile");
+            }}
+            onEditProjectOpenProfile={(profile) => {
+              setEditingProjectOpenProfileId(profile.id);
+              setActiveDialog("project-open-profile");
+            }}
+            onDeleteProjectOpenProfile={(profile) => {
+              setDeleteProjectOpenProfileId(profile.id);
+              setActiveDialog("project-open-profile-delete");
+            }}
           />
         )}
         {activeView === "settings" && !settings && (
@@ -556,6 +609,29 @@ export function App() {
             setDeleteSkillId("");
             void runSkillAction(() => workbenchApi.deleteSkill(target.directoryName), "Skill 已删除");
           }}
+        />
+      )}
+      {activeDialog === "project-open-profile" && settings && (
+        <ProjectOpenProfileDialog
+          profile={editingProjectOpenProfile}
+          nextSortOrder={settings.projectOpenProfiles.length}
+          onSelectExecutable={() => workbenchApi.selectProjectOpenExecutable()}
+          onError={showToast}
+          onSubmit={saveProjectOpenProfile}
+          onClose={() => {
+            setActiveDialog(null);
+            setEditingProjectOpenProfileId("");
+          }}
+        />
+      )}
+      {activeDialog === "project-open-profile-delete" && deletingProjectOpenProfile && (
+        <DeleteProjectOpenProfileDialog
+          profile={deletingProjectOpenProfile}
+          onClose={() => {
+            setActiveDialog(null);
+            setDeleteProjectOpenProfileId("");
+          }}
+          onConfirm={() => void deleteProjectOpenProfile(deletingProjectOpenProfile)}
         />
       )}
       {activeDialog === "radar" && (
@@ -613,9 +689,11 @@ export function ProjectsView({
   projectLaunchTimes,
   launchRuns,
   launchRun,
+  projectOpenProfiles = [],
   loading,
   loadError,
   onSelect,
+  onOpenWithProfile,
   onLaunch,
   onStopLaunchSession = () => undefined,
   onStopLaunchRun = () => undefined,
@@ -632,9 +710,11 @@ export function ProjectsView({
   projectLaunchTimes: Record<string, string>;
   launchRuns?: Record<string, LaunchRun>;
   launchRun?: LaunchRun | null;
+  projectOpenProfiles?: ProjectOpenProfile[];
   loading: boolean;
   loadError: string;
   onSelect: (id: string) => void;
+  onOpenWithProfile?: (project: Project, profile: ProjectOpenProfile) => void;
   onLaunch: (project: Project) => void;
   onStopLaunchSession?: (sessionId: string) => void;
   onStopLaunchRun?: (launchRunId: string) => void;
@@ -768,6 +848,11 @@ export function ProjectsView({
                   >
                     <FolderOpen size={14} />
                   </IconButton>
+                  <ProjectOpenProfileMenu
+                    project={project}
+                    profiles={projectOpenProfiles}
+                    onOpen={onOpenWithProfile ?? (() => undefined)}
+                  />
                   <IconButton
                     title={isRunningProject ? "停止项目" : "启动项目"}
                     disabled={enabledLaunchConfigs(project).length === 0}
@@ -899,6 +984,55 @@ export function getProjectLaunchStatus(project: Project, _projectLaunchTimes: Re
     if (statuses.every((status) => status === "exited")) return "已结束";
   }
   return enabledLaunchConfigs(project).length ? "可启动" : "未配置";
+}
+
+function ProjectOpenProfileMenu({
+  project,
+  profiles,
+  onOpen
+}: {
+  project: Project;
+  profiles: ProjectOpenProfile[];
+  onOpen: (project: Project, profile: ProjectOpenProfile) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const enabledProfiles = profiles.filter((profile) => profile.enabled);
+  return (
+    <span className="row-menu">
+      <IconButton
+        title="用工具打开"
+        aria-label={`用工具打开 ${project.name}`}
+        aria-expanded={open}
+        onClick={(event) => {
+          event.stopPropagation();
+          setOpen((current) => !current);
+        }}
+      >
+        <MonitorUp size={14} />
+      </IconButton>
+      {open && (
+        <span className="row-menu-popover" role="menu" aria-label={`${project.name} 打开方式`}>
+          {enabledProfiles.length ? enabledProfiles.map((profile) => (
+            <button
+              key={profile.id}
+              type="button"
+              role="menuitem"
+              onClick={(event) => {
+                event.stopPropagation();
+                setOpen(false);
+                onOpen(project, profile);
+              }}
+            >
+              {profile.kind === "terminal" ? <Terminal size={13} /> : <MonitorUp size={13} />}
+              <span>{profile.name}</span>
+            </button>
+          )) : (
+            <span className="row-menu-empty">没有启用的打开方式</span>
+          )}
+        </span>
+      )}
+    </span>
+  );
 }
 
 function projectStatusTone(status: string): "neutral" | "accent" | "success" | "danger" {
@@ -1997,18 +2131,24 @@ export function RadarView({
   );
 }
 
-function SettingsView({
+export function SettingsView({
   settings,
   theme,
   onThemeToggle,
   onRootChange,
-  onOpenPath
+  onOpenPath,
+  onAddProjectOpenProfile,
+  onEditProjectOpenProfile,
+  onDeleteProjectOpenProfile
 }: {
   settings: AppSettings;
   theme: "light" | "dark";
   onThemeToggle: () => void;
   onRootChange: (path: string) => void;
   onOpenPath: (path: string) => void;
+  onAddProjectOpenProfile: () => void;
+  onEditProjectOpenProfile: (profile: ProjectOpenProfile) => void;
+  onDeleteProjectOpenProfile: (profile: ProjectOpenProfile) => void;
 }) {
   return (
     <section className="view">
@@ -2049,6 +2189,35 @@ function SettingsView({
           ))}
         </section>
         <section className="settings-panel">
+          <div className="settings-panel-title">
+            <span>
+              <h2>项目打开方式</h2>
+              <p>配置项目列表中的“用工具打开”菜单。命令会优先使用 PATH，也可以选择 exe 作为兜底。</p>
+            </span>
+            <Button onClick={onAddProjectOpenProfile}><Plus size={15} />添加</Button>
+          </div>
+          {settings.projectOpenProfiles.map((profile) => (
+            <div className="settings-row" key={profile.id}>
+              <span>
+                <strong>{profile.name}</strong>
+                <small>{projectOpenProfileSummary(profile)}</small>
+              </span>
+              <span className="settings-row-actions">
+                <StatusBadge tone={profile.enabled ? "accent" : "neutral"}>{profile.enabled ? "启用" : "停用"}</StatusBadge>
+                <StatusBadge tone={profile.kind === "terminal" ? "attention" : "neutral"}>{profile.kind === "terminal" ? "终端" : "应用"}</StatusBadge>
+                <IconButton title={`编辑 ${profile.name}`} onClick={() => onEditProjectOpenProfile(profile)}><Edit3 size={15} /></IconButton>
+                <IconButton variant="danger" title={`删除 ${profile.name}`} onClick={() => onDeleteProjectOpenProfile(profile)}><Trash2 size={15} /></IconButton>
+              </span>
+            </div>
+          ))}
+          {settings.projectOpenProfiles.length === 0 && (
+            <div className="empty-state compact-empty">
+              <strong>暂无打开方式</strong>
+              <small>添加 VS Code、Trae 或 Claude Code 等工具后，可从项目列表快速打开。</small>
+            </div>
+          )}
+        </section>
+        <section className="settings-panel">
           <h2>Skills 路径映射</h2>
           <p>真实副本、全局链接和项目链接保持单一来源关系。</p>
           <div className="path-map">
@@ -2077,6 +2246,112 @@ function SettingsView({
         <div className="notice">符号链接目标已存在时，Workbench 不会覆盖或删除已有内容。</div>
       </div>
     </section>
+  );
+}
+
+function projectOpenProfileSummary(profile: ProjectOpenProfile) {
+  const command = profile.executablePath || profile.command || "未配置命令";
+  const args = profile.args.length ? ` ${profile.args.join(" ")}` : "";
+  return `${command}${args}`;
+}
+
+function ProjectOpenProfileDialog({
+  profile,
+  nextSortOrder,
+  onSelectExecutable,
+  onError,
+  onSubmit,
+  onClose
+}: {
+  profile?: ProjectOpenProfile;
+  nextSortOrder: number;
+  onSelectExecutable: () => Promise<string | null>;
+  onError: (message: string) => void;
+  onSubmit: (profile: ProjectOpenProfile) => void;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState(profile?.name ?? "");
+  const [kind, setKind] = useState<ProjectOpenProfile["kind"]>(profile?.kind ?? "app");
+  const [command, setCommand] = useState(profile?.command ?? "");
+  const [executablePath, setExecutablePath] = useState(profile?.executablePath ?? "");
+  const [argsText, setArgsText] = useState((profile?.args ?? ["{projectPath}"]).join("\n"));
+  const [workdir, setWorkdir] = useState(profile?.workdir ?? "{projectPath}");
+  const [enabled, setEnabled] = useState(profile?.enabled ?? true);
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    const trimmedName = name.trim();
+    const trimmedCommand = command.trim();
+    const trimmedExecutablePath = executablePath.trim();
+    if (!trimmedName) {
+      onError("打开方式名称不能为空");
+      return;
+    }
+    if (!trimmedCommand && !trimmedExecutablePath) {
+      onError("打开方式未配置命令或可执行文件路径。");
+      return;
+    }
+    onSubmit({
+      id: profile?.id ?? createProjectOpenProfileId(trimmedName),
+      name: trimmedName,
+      kind,
+      command: trimmedCommand,
+      executablePath: trimmedExecutablePath,
+      args: argsText.split(/\r?\n/).map((arg) => arg.trim()).filter(Boolean),
+      workdir: workdir.trim() || "{projectPath}",
+      enabled,
+      sortOrder: profile?.sortOrder ?? nextSortOrder
+    });
+  }
+
+  return (
+    <Modal
+      title={profile ? "编辑打开方式" : "添加打开方式"}
+      description="命令会优先从 PATH 启动；如果工具没有加入 PATH，可以选择 exe 文件作为兜底。"
+      onClose={onClose}
+      footer={<><Button onClick={onClose}>取消</Button><Button variant="primary" type="submit" form="project-open-profile-form">保存</Button></>}
+    >
+      <form id="project-open-profile-form" className="dialog-form" onSubmit={submit}>
+        <label>名称<input value={name} onChange={(event) => setName(event.target.value)} placeholder="Trae" /></label>
+        <label>类型<select value={kind} onChange={(event) => setKind(event.target.value as ProjectOpenProfile["kind"])}><option value="app">应用</option><option value="terminal">终端命令</option></select></label>
+        <label>命令<input value={command} onChange={(event) => setCommand(event.target.value)} placeholder={kind === "terminal" ? "claude" : "trae"} /></label>
+        <label className="full">可执行文件路径<span className="field-with-action"><input value={executablePath} onChange={(event) => setExecutablePath(event.target.value)} placeholder="可选：选择 trae.exe / Code.exe" /><IconButton title="选择程序" type="button" onClick={async () => {
+          try {
+            const path = await onSelectExecutable();
+            if (path) setExecutablePath(path);
+          } catch (error) {
+            onError(error instanceof Error ? error.message : String(error));
+          }
+        }}><FolderOpen size={15} /></IconButton></span></label>
+        <label className="full">参数<textarea rows={3} value={argsText} onChange={(event) => setArgsText(event.target.value)} placeholder="每行一个参数，例如 {projectPath}" /></label>
+        <label>工作目录<input value={workdir} onChange={(event) => setWorkdir(event.target.value)} placeholder="{projectPath}" /></label>
+        <label className="checkbox-row"><input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />启用此打开方式</label>
+        <div className="notice full">支持占位符 <code>{"{projectPath}"}</code>。Claude Code 等交互式 CLI 会在外部终端中打开，不进入项目启动日志。</div>
+      </form>
+    </Modal>
+  );
+}
+
+function DeleteProjectOpenProfileDialog({
+  profile,
+  onClose,
+  onConfirm
+}: {
+  profile: ProjectOpenProfile;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <ConfirmDeleteModal
+      title="删除打开方式"
+      description={`确认删除 ${profile.name}`}
+      onClose={onClose}
+      onConfirm={onConfirm}
+      confirmLabel="删除"
+    >
+      <p>删除后，该打开方式会从项目列表菜单中移除，不会卸载本机软件。</p>
+      <div className="file-block"><span>命令</span><code>{projectOpenProfileSummary(profile)}</code></div>
+    </ConfirmDeleteModal>
   );
 }
 
@@ -2271,6 +2546,11 @@ function createLaunchConfig(name: string, workdir: string): ProjectLaunchConfig 
     workdir,
     enabled: true
   };
+}
+
+function createProjectOpenProfileId(name: string) {
+  const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return `open-${slug || Date.now()}`;
 }
 
 function SkillsImportDialog({

@@ -18,6 +18,20 @@ export interface ProjectLaunchConfig {
   enabled: boolean;
 }
 
+export type ProjectOpenProfileKind = "app" | "terminal";
+
+export interface ProjectOpenProfile {
+  id: string;
+  name: string;
+  kind: ProjectOpenProfileKind;
+  command: string;
+  executablePath: string;
+  args: string[];
+  workdir: string;
+  enabled: boolean;
+  sortOrder: number;
+}
+
 export type LaunchSessionStatus = "starting" | "running" | "exited" | "failed" | "stopped";
 
 export interface LaunchOutputChunk {
@@ -151,6 +165,7 @@ export interface AppSettings {
   workbenchRoot: string;
   skillsRoot: string;
   toolTargets: ToolTarget[];
+  projectOpenProfiles: ProjectOpenProfile[];
 }
 
 export interface SkillsState {
