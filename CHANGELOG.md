@@ -8,6 +8,19 @@
 
 ### Added
 
+### Fixed
+
+## [0.1.1] - 2026-06-17
+
+### Fixed
+
+- 修复 Windows Release 版本双击启动时同时打开终端窗口的问题。
+- 重新发布无 BOM 的 updater `latest.json`，避免检查更新时被 Tauri 识别为无效 Release JSON。
+
+## [0.1.0] - 2026-06-17
+
+### Added
+
 - 增加应用更新入口：启动后静默检查 GitHub Releases，新版本可在左下角提示并进入设置页确认下载、安装和重启。
 - 建立可运行的 Tauri、React 和 TypeScript 桌面应用骨架。
 - 实现项目、Skills、AI Radar、设置四个 MVP 页面及列表详情工作区。
