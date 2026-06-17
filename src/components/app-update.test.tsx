@@ -1,13 +1,15 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AppUpdatePanel } from "./AppUpdatePanel";
+import { AppUpdateDialog, AppUpdatePanel } from "./AppUpdatePanel";
 import { UpdateBadge } from "./UpdateBadge";
 
 const updateState = vi.hoisted(() => ({
   value: {
     status: "idle",
     currentVersion: "0.1.0",
-    updateInfo: null as { currentVersion: string; latestVersion: string; body?: string } | null,
+    updateInfo: null as { currentVersion: string; latestVersion: string; body?: string; date?: string } | null,
+    downloadProgress: { percent: null as number | null, downloaded: 0, total: null as number | null },
     error: "",
     hasUpdate: false,
     checkUpdate: vi.fn(),
@@ -26,6 +28,7 @@ describe("app update UI", () => {
       status: "idle",
       currentVersion: "0.1.0",
       updateInfo: null,
+      downloadProgress: { percent: null, downloaded: 0, total: null },
       error: "",
       hasUpdate: false,
       checkUpdate: vi.fn(),
@@ -56,7 +59,30 @@ describe("app update UI", () => {
     expect(screen.getByRole("button", { name: "发现新版本 0.2.0，点击查看更新" })).toBeInTheDocument();
   });
 
-  it("shows install action in the settings update panel when an update is available", () => {
+  it("keeps the settings update panel compact and opens the update dialog entry", async () => {
+    const user = userEvent.setup();
+    const onOpenDetails = vi.fn();
+    updateState.value = {
+      ...updateState.value,
+      status: "available",
+      hasUpdate: true,
+      updateInfo: {
+        currentVersion: "0.1.0",
+        latestVersion: "0.2.0"
+      }
+    };
+
+    render(<AppUpdatePanel onOpenDetails={onOpenDetails} />);
+
+    expect(screen.getByText("发现新版本 0.2.0")).toBeInTheDocument();
+    expect(screen.queryByText("新增更新提示")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /查看更新/ }));
+
+    expect(onOpenDetails).toHaveBeenCalledOnce();
+  });
+
+  it("shows release notes and install action in the update dialog", () => {
     updateState.value = {
       ...updateState.value,
       status: "available",
@@ -64,26 +90,66 @@ describe("app update UI", () => {
       updateInfo: {
         currentVersion: "0.1.0",
         latestVersion: "0.2.0",
-        body: "新增更新提示"
+        body: "新增更新提示",
+        date: "2026-06-17T04:16:14Z"
       }
     };
 
-    render(<AppUpdatePanel />);
+    render(<AppUpdateDialog onClose={vi.fn()} />);
 
-    expect(screen.getByText("软件更新")).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "软件更新" })).toBeInTheDocument();
     expect(screen.getByText("0.2.0")).toBeInTheDocument();
     expect(screen.getByText("新增更新提示")).toBeInTheDocument();
+    expect(screen.getByText(/2026/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "检查更新" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "稍后" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /下载并安装/ })).toBeInTheDocument();
   });
 
-  it("explains missing release metadata in Chinese when update check cannot fetch latest.json", () => {
+  it("shows download progress while updating", () => {
+    updateState.value = {
+      ...updateState.value,
+      status: "downloading",
+      updateInfo: {
+        currentVersion: "0.1.0",
+        latestVersion: "0.2.0"
+      },
+      downloadProgress: { percent: 42, downloaded: 42 * 1024 * 1024, total: 100 * 1024 * 1024 }
+    };
+
+    render(<AppUpdateDialog onClose={vi.fn()} />);
+
+    expect(screen.getByText("正在下载更新 42%")).toBeInTheDocument();
+    expect(screen.getByText("42.0 MB / 100.0 MB")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /更新中/ })).toBeDisabled();
+  });
+
+  it("offers restart after update installation is ready", async () => {
+    const user = userEvent.setup();
+    updateState.value = {
+      ...updateState.value,
+      status: "ready-to-restart",
+      updateInfo: {
+        currentVersion: "0.1.0",
+        latestVersion: "0.2.0"
+      }
+    };
+
+    render(<AppUpdateDialog onClose={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: /重启完成更新/ }));
+
+    expect(updateState.value.restart).toHaveBeenCalledOnce();
+  });
+
+  it("explains missing release metadata in Chinese in the update dialog", () => {
     updateState.value = {
       ...updateState.value,
       status: "error",
       error: "还没有发布可用于自动更新的 Release 元数据（latest.json）。发布第一版带更新产物的 GitHub Release 后，检查更新才会返回真实结果。"
     };
 
-    render(<AppUpdatePanel />);
+    render(<AppUpdateDialog onClose={vi.fn()} />);
 
     expect(screen.getByText(/还没有发布可用于自动更新的 Release 元数据/)).toBeInTheDocument();
   });

@@ -184,12 +184,14 @@ export function Modal({
   children,
   footer,
   onClose,
+  actions,
   large = false
 }: PropsWithChildren<{
   title: string;
   description?: string;
   footer: ReactNode;
   onClose: () => void;
+  actions?: ReactNode;
   large?: boolean;
 }>) {
   return (
@@ -206,7 +208,10 @@ export function Modal({
             <h2>{title}</h2>
             {description && <p>{description}</p>}
           </div>
-          <IconButton title="关闭" onClick={onClose}><X size={16} /></IconButton>
+          <span className="dialog-header-actions">
+            {actions}
+            <IconButton title="关闭" onClick={onClose}><X size={16} /></IconButton>
+          </span>
         </header>
         <div className="dialog-body">{children}</div>
         <footer>{footer}</footer>

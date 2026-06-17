@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { App, ModuleStateView, ProjectDialog, ProjectsView, RadarView, SettingsView, applyPendingLaunchEvents, markLaunchRunStopped, mergeLaunchRunSnapshots } from "./App";
+import { App, ModuleStateView, ProjectDialog, ProjectsView, RadarView, SettingsView, applyPendingLaunchEvents, markLaunchRunStopped, mergeLaunchRunSnapshots, rememberUpdateNotice, shouldShowUpdateNotice } from "./App";
 import { AppUpdateProvider } from "./contexts/AppUpdateContext";
 import type { AppSettings, LaunchSessionEvent, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem } from "./lib/types/domain";
 
@@ -148,6 +148,23 @@ const radarDuplicateGroups: RadarDuplicateGroup[] = [
 ];
 
 describe("Workbench UI interactions", () => {
+  it("tracks whether an update version has already shown a discovery notice", () => {
+    const remembered = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => remembered.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        remembered.set(key, value);
+      }
+    };
+
+    expect(shouldShowUpdateNotice("0.2.0", storage)).toBe(true);
+
+    rememberUpdateNotice("0.2.0", storage);
+
+    expect(shouldShowUpdateNotice("0.2.0", storage)).toBe(false);
+    expect(shouldShowUpdateNotice("0.2.1", storage)).toBe(true);
+  });
+
   it("filters archived projects separately from active projects", async () => {
     const user = userEvent.setup();
     render(
@@ -497,7 +514,7 @@ describe("Workbench UI interactions", () => {
       <SettingsView
         settings={appSettings}
         theme="dark"
-        updateFocusSignal={0}
+        onOpenUpdateDetails={vi.fn()}
         onThemeToggle={vi.fn()}
         onRootChange={vi.fn()}
         onOpenPath={vi.fn()}
