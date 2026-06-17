@@ -27,6 +27,8 @@ import {
   Trash2,
   X
 } from "lucide-react";
+import { AppUpdatePanel } from "./components/AppUpdatePanel";
+import { UpdateBadge } from "./components/UpdateBadge";
 import { ActionGroup, Button, ConfirmDeleteModal, DetailHeader, FilterMore, IconButton, Modal, PageHeader, Panel, SearchInput, StatusBadge, TagList, Toolbar } from "./components/ui";
 import { workbenchApi } from "./lib/api/workbenchApi";
 import type { AppSettings, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, Project, ProjectLaunchConfig, ProjectOpenProfile, RadarCategory, RadarDuplicateGroup, RadarItem, Skill, SkillVersionSource, ToolTarget, ViewKey } from "./lib/types/domain";
@@ -67,6 +69,7 @@ export function App() {
   const [importResults, setImportResults] = useState<ImportResult[]>([]);
   const [deleteSkillId, setDeleteSkillId] = useState("");
   const [syncingGithubStars, setSyncingGithubStars] = useState(false);
+  const [settingsUpdateFocusSignal, setSettingsUpdateFocusSignal] = useState(0);
 
   useEffect(() => {
     document.body.dataset.theme = theme;
@@ -307,6 +310,12 @@ export function App() {
             {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
             {theme === "dark" ? "深色主题" : "浅色主题"}
           </button>
+          <UpdateBadge
+            onClick={() => {
+              setActiveView("settings");
+              setSettingsUpdateFocusSignal((value) => value + 1);
+            }}
+          />
           <div className="local-status">
             <span className="status-dot" />
             <span>本地模式</span>
@@ -544,6 +553,7 @@ export function App() {
           <SettingsView
             settings={settings}
             theme={theme}
+            updateFocusSignal={settingsUpdateFocusSignal}
             onThemeToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
             onRootChange={(path) => void runSkillAction(() => workbenchApi.setSkillsRoot(path), "Skills 根目录已更新")}
             onOpenPath={(path) => void workbenchApi.openLocalPath(path).catch((error) => showToast(String(error)))}
@@ -2134,6 +2144,7 @@ export function RadarView({
 export function SettingsView({
   settings,
   theme,
+  updateFocusSignal,
   onThemeToggle,
   onRootChange,
   onOpenPath,
@@ -2143,6 +2154,7 @@ export function SettingsView({
 }: {
   settings: AppSettings;
   theme: "light" | "dark";
+  updateFocusSignal: number;
   onThemeToggle: () => void;
   onRootChange: (path: string) => void;
   onOpenPath: (path: string) => void;
@@ -2150,10 +2162,20 @@ export function SettingsView({
   onEditProjectOpenProfile: (profile: ProjectOpenProfile) => void;
   onDeleteProjectOpenProfile: (profile: ProjectOpenProfile) => void;
 }) {
+  const updatePanelRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (updateFocusSignal > 0) {
+      updatePanelRef.current?.scrollIntoView({ block: "nearest" });
+      updatePanelRef.current?.focus({ preventScroll: true });
+    }
+  }, [updateFocusSignal]);
+
   return (
     <section className="view">
       <PageHeader title="设置" description="管理本地路径、工具目录与主题" />
       <div className="settings-stack">
+        <AppUpdatePanel focusRef={updatePanelRef} />
         <section className="settings-panel">
           <h2>Skills 存储</h2>
           <p>Workbench Skills 根目录是所有 Skill 的唯一真实来源。</p>
