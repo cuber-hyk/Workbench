@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import type { AppUpdateInfo } from "../lib/api/updateApi";
+import type { AppUpdateInfo, AppUpdateProgress } from "../lib/api/updateApi";
 import { checkForAppUpdate, downloadAndInstallAppUpdate, getCurrentAppVersion, restartAppForUpdate } from "../lib/api/updateApi";
 
 type AppUpdateStatus = "idle" | "checking" | "available" | "current" | "downloading" | "ready-to-restart" | "error" | "unsupported";
@@ -9,6 +9,7 @@ interface AppUpdateContextValue {
   status: AppUpdateStatus;
   currentVersion: string;
   updateInfo: AppUpdateInfo | null;
+  downloadProgress: AppUpdateProgress;
   error: string;
   hasUpdate: boolean;
   checkUpdate: (options?: { silent?: boolean }) => Promise<void>;
@@ -22,6 +23,7 @@ export function AppUpdateProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AppUpdateStatus>("idle");
   const [currentVersion, setCurrentVersion] = useState("");
   const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<AppUpdateProgress>(emptyProgress());
   const [error, setError] = useState("");
   const checkingRef = useRef(false);
 
@@ -34,6 +36,7 @@ export function AppUpdateProvider({ children }: { children: ReactNode }) {
     checkingRef.current = true;
     if (!options?.silent) setStatus("checking");
     setError("");
+    setDownloadProgress(emptyProgress());
 
     try {
       const result = await checkForAppUpdate();
@@ -62,9 +65,16 @@ export function AppUpdateProvider({ children }: { children: ReactNode }) {
   const downloadAndInstall = useCallback(async () => {
     setStatus("downloading");
     setError("");
+    setDownloadProgress(emptyProgress());
 
     try {
-      await downloadAndInstallAppUpdate();
+      await downloadAndInstallAppUpdate((event) => {
+        setDownloadProgress((current) => reduceUpdateProgress(current, event));
+      });
+      setDownloadProgress((current) => ({
+        ...current,
+        percent: 100
+      }));
       setStatus("ready-to-restart");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -90,6 +100,7 @@ export function AppUpdateProvider({ children }: { children: ReactNode }) {
         status,
         currentVersion,
         updateInfo,
+        downloadProgress,
         error,
         hasUpdate: Boolean(updateInfo) && status === "available",
         checkUpdate,
@@ -100,6 +111,52 @@ export function AppUpdateProvider({ children }: { children: ReactNode }) {
       {children}
     </AppUpdateContext.Provider>
   );
+}
+
+function emptyProgress(): AppUpdateProgress {
+  return { percent: null, downloaded: 0, total: null };
+}
+
+export function reduceUpdateProgress(current: AppUpdateProgress, rawEvent: unknown): AppUpdateProgress {
+  if (!rawEvent || typeof rawEvent !== "object") return current;
+
+  const event = rawEvent as {
+    event?: string;
+    data?: {
+      contentLength?: number;
+      chunkLength?: number;
+      downloaded?: number;
+      total?: number;
+    };
+  };
+
+  if (event.event === "Started") {
+    const total = numberOrNull(event.data?.contentLength ?? event.data?.total);
+    return { percent: null, downloaded: 0, total };
+  }
+
+  if (event.event === "Progress") {
+    const total = numberOrNull(event.data?.total) ?? current.total;
+    const downloaded = numberOrNull(event.data?.downloaded) ?? current.downloaded + (event.data?.chunkLength ?? 0);
+    return {
+      total,
+      downloaded,
+      percent: total && total > 0 ? Math.min(100, Math.round((downloaded / total) * 100)) : null
+    };
+  }
+
+  if (event.event === "Finished") {
+    return {
+      ...current,
+      percent: 100
+    };
+  }
+
+  return current;
+}
+
+function numberOrNull(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 export function useAppUpdate() {

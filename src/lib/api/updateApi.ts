@@ -7,6 +7,12 @@ export interface AppUpdateInfo {
   date?: string;
 }
 
+export interface AppUpdateProgress {
+  percent: number | null;
+  downloaded: number;
+  total: number | null;
+}
+
 export type AppUpdateCheckResult =
   | { status: "available"; info: AppUpdateInfo }
   | { status: "current"; currentVersion: string }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import {
   Archive,
@@ -27,9 +27,10 @@ import {
   Trash2,
   X
 } from "lucide-react";
-import { AppUpdatePanel } from "./components/AppUpdatePanel";
+import { AppUpdateDialog, AppUpdatePanel } from "./components/AppUpdatePanel";
 import { UpdateBadge } from "./components/UpdateBadge";
 import { ActionGroup, Button, ConfirmDeleteModal, DetailHeader, FilterMore, IconButton, Modal, PageHeader, Panel, SearchInput, StatusBadge, TagList, Toolbar } from "./components/ui";
+import { useAppUpdate } from "./contexts/AppUpdateContext";
 import { workbenchApi } from "./lib/api/workbenchApi";
 import type { AppSettings, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, Project, ProjectLaunchConfig, ProjectOpenProfile, RadarCategory, RadarDuplicateGroup, RadarItem, Skill, SkillVersionSource, ToolTarget, ViewKey } from "./lib/types/domain";
 
@@ -41,8 +42,16 @@ const views: Array<{ key: ViewKey; label: string; icon: JSX.Element }> = [
 ];
 
 const radarDomains = ["未分类", "Skills", "Agent", "RAG", "AI 基础", "开发工具", "文档工具", "算法与数据结构", "教程与资源", "前端开发", "Android 开发", "桌面应用", "音视频工具", "安全与网络", "其他"];
+const updateNoticeStorageKey = "workbench-update-notice-version";
+
+type ToastState = {
+  message: string;
+  actionLabel?: string;
+  onAction?: () => void;
+};
 
 export function App() {
+  const { hasUpdate, updateInfo } = useAppUpdate();
   const [activeView, setActiveView] = useState<ViewKey>("projects");
   const [theme, setTheme] = useState<"light" | "dark">(() => {
     return (localStorage.getItem("workbench-theme") as "light" | "dark") || "light";
@@ -60,8 +69,9 @@ export function App() {
   const pendingLaunchEventsRef = useRef<Record<string, LaunchSessionEvent[]>>({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [toast, setToast] = useState("");
-  const [activeDialog, setActiveDialog] = useState<"project" | "project-open-profile" | "project-open-profile-delete" | "skills-import" | "skill-delete" | "radar" | "radar-delete" | null>(null);
+  const [toast, setToast] = useState<ToastState | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+  const [activeDialog, setActiveDialog] = useState<"project" | "project-open-profile" | "project-open-profile-delete" | "skills-import" | "skill-delete" | "radar" | "radar-delete" | "app-update" | null>(null);
   const [editingProjectId, setEditingProjectId] = useState("");
   const [editingProjectOpenProfileId, setEditingProjectOpenProfileId] = useState("");
   const [deleteProjectOpenProfileId, setDeleteProjectOpenProfileId] = useState("");
@@ -69,12 +79,23 @@ export function App() {
   const [importResults, setImportResults] = useState<ImportResult[]>([]);
   const [deleteSkillId, setDeleteSkillId] = useState("");
   const [syncingGithubStars, setSyncingGithubStars] = useState(false);
-  const [settingsUpdateFocusSignal, setSettingsUpdateFocusSignal] = useState(0);
 
   useEffect(() => {
     document.body.dataset.theme = theme;
     localStorage.setItem("workbench-theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
+
+  const openUpdateDialog = useCallback(() => {
+    setActiveDialog("app-update");
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -128,9 +149,32 @@ export function App() {
   const deletingProjectOpenProfile = settings?.projectOpenProfiles.find((profile) => profile.id === deleteProjectOpenProfileId);
   const selectedRadar = radarItems.find((item) => item.id === selectedRadarId) ?? radarItems[0];
 
-  function showToast(message: string) {
-    setToast(message);
-    window.setTimeout(() => setToast(""), 1800);
+  function showToast(message: string, options?: { actionLabel?: string; onAction?: () => void; duration?: number }) {
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    setToast({ message, actionLabel: options?.actionLabel, onAction: options?.onAction });
+    toastTimerRef.current = window.setTimeout(() => setToast(null), options?.duration ?? 1800);
+  }
+
+  useEffect(() => {
+    if (!hasUpdate || !updateInfo?.latestVersion || !shouldShowUpdateNotice(updateInfo.latestVersion)) return;
+
+    rememberUpdateNotice(updateInfo.latestVersion);
+    showToast(`发现新版本 ${updateInfo.latestVersion}`, {
+      actionLabel: "查看更新",
+      onAction: openUpdateDialog,
+      duration: 5000
+    });
+  }, [hasUpdate, openUpdateDialog, updateInfo?.latestVersion]);
+
+  function runToastAction(currentToast: ToastState) {
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = null;
+    }
+    setToast(null);
+    currentToast.onAction?.();
   }
 
   async function refreshSkills() {
@@ -311,10 +355,7 @@ export function App() {
             {theme === "dark" ? "深色主题" : "浅色主题"}
           </button>
           <UpdateBadge
-            onClick={() => {
-              setActiveView("settings");
-              setSettingsUpdateFocusSignal((value) => value + 1);
-            }}
+            onClick={openUpdateDialog}
           />
           <div className="local-status">
             <span className="status-dot" />
@@ -553,7 +594,7 @@ export function App() {
           <SettingsView
             settings={settings}
             theme={theme}
-            updateFocusSignal={settingsUpdateFocusSignal}
+            onOpenUpdateDetails={openUpdateDialog}
             onThemeToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
             onRootChange={(path) => void runSkillAction(() => workbenchApi.setSkillsRoot(path), "Skills 根目录已更新")}
             onOpenPath={(path) => void workbenchApi.openLocalPath(path).catch((error) => showToast(String(error)))}
@@ -583,7 +624,17 @@ export function App() {
         )}
       </main>
 
-      {toast && <div className="toast show">{toast}</div>}
+      {toast && (
+        <div className={`toast show ${toast.onAction ? "actionable" : ""}`}>
+          <span>{toast.message}</span>
+          {toast.onAction && (
+            <button type="button" onClick={() => runToastAction(toast)}>
+              {toast.actionLabel ?? "查看"}
+            </button>
+          )}
+        </div>
+      )}
+      {activeDialog === "app-update" && <AppUpdateDialog onClose={() => setActiveDialog(null)} />}
       {activeDialog === "project" && (
         <ProjectDialog
           project={projects.find((project) => project.id === editingProjectId)}
@@ -663,6 +714,22 @@ export function App() {
       )}
     </div>
   );
+}
+
+export function shouldShowUpdateNotice(latestVersion: string, storage: Pick<Storage, "getItem"> = localStorage) {
+  try {
+    return storage.getItem(updateNoticeStorageKey) !== latestVersion;
+  } catch {
+    return true;
+  }
+}
+
+export function rememberUpdateNotice(latestVersion: string, storage: Pick<Storage, "setItem"> = localStorage) {
+  try {
+    storage.setItem(updateNoticeStorageKey, latestVersion);
+  } catch {
+    // 更新提醒记录只影响是否重复 toast，失败时不阻断更新检查。
+  }
 }
 
 export function ModuleStateView({
@@ -2144,7 +2211,7 @@ export function RadarView({
 export function SettingsView({
   settings,
   theme,
-  updateFocusSignal,
+  onOpenUpdateDetails,
   onThemeToggle,
   onRootChange,
   onOpenPath,
@@ -2154,7 +2221,7 @@ export function SettingsView({
 }: {
   settings: AppSettings;
   theme: "light" | "dark";
-  updateFocusSignal: number;
+  onOpenUpdateDetails: () => void;
   onThemeToggle: () => void;
   onRootChange: (path: string) => void;
   onOpenPath: (path: string) => void;
@@ -2162,20 +2229,11 @@ export function SettingsView({
   onEditProjectOpenProfile: (profile: ProjectOpenProfile) => void;
   onDeleteProjectOpenProfile: (profile: ProjectOpenProfile) => void;
 }) {
-  const updatePanelRef = useRef<HTMLElement>(null);
-
-  useEffect(() => {
-    if (updateFocusSignal > 0) {
-      updatePanelRef.current?.scrollIntoView({ block: "nearest" });
-      updatePanelRef.current?.focus({ preventScroll: true });
-    }
-  }, [updateFocusSignal]);
-
   return (
     <section className="view">
       <PageHeader title="设置" description="管理本地路径、工具目录与主题" />
       <div className="settings-stack">
-        <AppUpdatePanel focusRef={updatePanelRef} />
+        <AppUpdatePanel onOpenDetails={onOpenUpdateDetails} />
         <section className="settings-panel">
           <h2>Skills 存储</h2>
           <p>Workbench Skills 根目录是所有 Skill 的唯一真实来源。</p>
