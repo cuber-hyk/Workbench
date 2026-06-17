@@ -1,7 +1,9 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { App, ModuleStateView, ProjectDialog, ProjectsView, RadarView, SettingsView, applyPendingLaunchEvents, markLaunchRunStopped, mergeLaunchRunSnapshots } from "./App";
+import { AppUpdateProvider } from "./contexts/AppUpdateContext";
 import type { AppSettings, LaunchSessionEvent, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem } from "./lib/types/domain";
 
 const activeProject: Project = {
@@ -89,6 +91,10 @@ const appSettings: AppSettings = {
     }
   ]
 };
+
+function renderWithUpdateProvider(ui: ReactElement) {
+  return render(<AppUpdateProvider>{ui}</AppUpdateProvider>);
+}
 
 const radarItems: RadarItem[] = [
   {
@@ -487,10 +493,11 @@ describe("Workbench UI interactions", () => {
     const onAddProjectOpenProfile = vi.fn();
     const onEditProjectOpenProfile = vi.fn();
     const onDeleteProjectOpenProfile = vi.fn();
-    render(
+    renderWithUpdateProvider(
       <SettingsView
         settings={appSettings}
         theme="dark"
+        updateFocusSignal={0}
         onThemeToggle={vi.fn()}
         onRootChange={vi.fn()}
         onOpenPath={vi.fn()}
@@ -1118,7 +1125,7 @@ describe("Workbench UI interactions", () => {
   it("keeps navigation names available after theme toggle", async () => {
     const user = userEvent.setup();
     localStorage.clear();
-    render(<App />);
+    renderWithUpdateProvider(<App />);
 
     const navigation = screen.getByRole("navigation", { name: "主导航" });
     expect(within(navigation).getByRole("button", { name: "项目" })).toBeInTheDocument();

@@ -8,6 +8,7 @@
 
 ### Added
 
+- 增加应用更新入口：启动后静默检查 GitHub Releases，新版本可在左下角提示并进入设置页确认下载、安装和重启。
 - 建立可运行的 Tauri、React 和 TypeScript 桌面应用骨架。
 - 实现项目、Skills、AI Radar、设置四个 MVP 页面及列表详情工作区。
 - 增加浅色与深色主题、共享 UI 组件和 mock API 边界。
