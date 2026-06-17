@@ -1003,37 +1003,23 @@ export function ProjectsView({
                 <label>标签<input value={selectedProject.tags.join(", ")} readOnly /></label>
                 <label className="full">备注<textarea rows={4} value={selectedProject.note} readOnly /></label>
               </div>
-              <div className="launch-config-list">
-                <h3>启动配置</h3>
-                {selectedProject.launchConfigs.length ? selectedProject.launchConfigs.map((config) => (
-                  <div className="launch-config-item" key={config.id}>
-                    <span>
-                      <strong>{config.name}</strong>
-                      <small>{config.workdir}</small>
-                      <code>{config.command || "未配置命令"}</code>
-                    </span>
-                    <StatusBadge tone={config.enabled ? "accent" : "neutral"}>{config.enabled ? "启用" : "停用"}</StatusBadge>
-                  </div>
-                )) : <p className="muted">暂无启动配置。</p>}
-              </div>
               <div className="detail-meta-grid">
                 <div><small>启动状态</small><strong>{getProjectLaunchStatus(selectedProject, projectLaunchTimes, selectedLaunchRun)}</strong></div>
                 <div><small>最近启动</small><strong>{projectLaunchTimes[selectedProject.id] ?? "暂无"}</strong></div>
                 <div><small>项目状态</small><strong>{selectedProject.archived ? "已归档" : "活跃"}</strong></div>
                 <div><small>启动方式</small><strong>内嵌启动会话</strong></div>
               </div>
-              {selectedLaunchRun && (
-                <LaunchRunPanel
-                  launchRun={selectedLaunchRun}
-                  project={selectedProject}
-                  onLaunch={onLaunch}
-                  onStopLaunchSession={onStopLaunchSession}
-                  onStopLaunchRun={onStopLaunchRun}
-                  onRestartLaunchSession={onRestartLaunchSession}
-                  onClearLaunchRun={() => onClearLaunchRun(selectedProject.id)}
-                  onOpenLaunchLogs={() => setLaunchLogProjectId(selectedProject.id)}
-                />
-              )}
+              <LaunchItemsPanel
+                project={selectedProject}
+                launchRun={selectedLaunchRun}
+                projectLaunchTime={projectLaunchTimes[selectedProject.id]}
+                onLaunch={onLaunch}
+                onStopLaunchSession={onStopLaunchSession}
+                onStopLaunchRun={onStopLaunchRun}
+                onRestartLaunchSession={onRestartLaunchSession}
+                onClearLaunchRun={() => onClearLaunchRun(selectedProject.id)}
+                onOpenLaunchLogs={() => setLaunchLogProjectId(selectedProject.id)}
+              />
               <div className="boundary-note">
                 <span className="status-dot" />
                 <p>Workbench 只展示本次启动的内存日志；不保存历史日志，再次启动会创建全新的会话组。</p>
@@ -1126,9 +1112,10 @@ function launchStatusTone(status: LaunchSession["status"]): "neutral" | "accent"
   return "accent";
 }
 
-function LaunchRunPanel({
-  launchRun,
+function LaunchItemsPanel({
   project,
+  launchRun,
+  projectLaunchTime,
   onLaunch,
   onStopLaunchSession,
   onStopLaunchRun,
@@ -1136,8 +1123,9 @@ function LaunchRunPanel({
   onClearLaunchRun,
   onOpenLaunchLogs
 }: {
-  launchRun: LaunchRun;
   project: Project;
+  launchRun: LaunchRun | null;
+  projectLaunchTime?: string;
   onLaunch: (project: Project) => void;
   onStopLaunchSession: (sessionId: string) => void;
   onStopLaunchRun: (launchRunId: string) => void;
@@ -1145,25 +1133,50 @@ function LaunchRunPanel({
   onClearLaunchRun: () => void;
   onOpenLaunchLogs: () => void;
 }) {
-  const hasRunningSession = launchRun.sessions.some((session) => isActiveLaunchStatus(session.status));
+  const hasRunningSession = Boolean(launchRun?.sessions.some((session) => isActiveLaunchStatus(session.status)));
+  const launchSessionsByConfigId = new Map((launchRun?.sessions ?? []).map((session) => [session.configId, session]));
+  const launchItems = [
+    ...project.launchConfigs.map((config) => ({
+      key: config.id,
+      name: config.name,
+      command: config.command,
+      workdir: config.workdir || project.path,
+      config,
+      session: launchSessionsByConfigId.get(config.id)
+    })),
+    ...(launchRun?.sessions ?? [])
+      .filter((session) => !project.launchConfigs.some((config) => config.id === session.configId))
+      .map((session) => ({
+        key: session.id,
+        name: session.configName,
+        command: session.command,
+        workdir: session.workdir || project.path,
+        config: null,
+        session
+      }))
+  ];
+  const enabledCount = enabledLaunchConfigs(project).length;
+  const headerSummary = launchRun
+    ? `${projectLaunchTime ?? launchRun.startedAt} · ${launchRun.sessions.length} 个启动项`
+    : `${enabledCount}/${project.launchConfigs.length} 启动项`;
 
   return (
-    <section className="launch-run-panel" aria-label="本次启动会话">
+    <section className="launch-items-panel" aria-label="启动项">
       <header>
         <span>
-          <h3>本次启动</h3>
-          <small>{launchRun.startedAt} · {launchRun.sessions.length} 个启动项</small>
+          <h3>启动项</h3>
+          <small>{headerSummary}</small>
         </span>
         <span className="launch-run-actions">
-          <Button onClick={onOpenLaunchLogs}><FileText size={14} />查看日志</Button>
-          {hasRunningSession ? (
+          {launchRun && <Button onClick={onOpenLaunchLogs}><FileText size={14} />查看日志</Button>}
+          {launchRun && hasRunningSession ? (
             <IconButton
               title="停止全部会话"
               onClick={() => onStopLaunchRun(launchRun.id)}
             >
               <Square size={14} />
             </IconButton>
-          ) : (
+          ) : launchRun ? (
             <>
               <IconButton title="重新启动全部" onClick={() => onLaunch(project)}>
                 <RefreshCcw size={14} />
@@ -1172,43 +1185,68 @@ function LaunchRunPanel({
                 <X size={14} />
               </IconButton>
             </>
+          ) : (
+            enabledCount > 0 && (
+              <IconButton title="启动项目" onClick={() => onLaunch(project)}>
+                <Play size={14} />
+              </IconButton>
+            )
           )}
         </span>
       </header>
-      <div className="launch-session-list">
-        {launchRun.sessions.map((session) => (
-          <article className="launch-session-item" key={session.id}>
-            <div className="launch-session-head">
-              <span>
-                <strong>{session.configName}</strong>
-                <small>{session.workdir}</small>
-              </span>
-              <span className="launch-session-actions">
-                <StatusBadge tone={launchStatusTone(session.status)}>{formatLaunchSessionStatus(session)}</StatusBadge>
-                {isActiveLaunchStatus(session.status) && (
-                  <IconButton
-                    title="停止会话"
-                    onClick={() => onStopLaunchSession(session.id)}
-                  >
-                    <Square size={14} />
-                  </IconButton>
-                )}
-                {!isActiveLaunchStatus(session.status) && (
-                  <IconButton
-                    title="重新启动此项"
-                    onClick={() => onRestartLaunchSession(session)}
-                  >
-                    <RefreshCcw size={14} />
-                  </IconButton>
-                )}
-              </span>
-            </div>
-            <code>{session.command}</code>
-          </article>
-        ))}
+      <div className="launch-item-list">
+        {launchItems.length ? launchItems.map((item) => {
+          const session = item.session;
+          const sessionStatus = session ? formatLaunchSessionStatus(session) : formatLaunchConfigState(item.config);
+          return (
+            <article className="launch-item-card" key={item.key}>
+              <div className="launch-item-head">
+                <span>
+                  <strong>{item.name}</strong>
+                  <small>{item.workdir}</small>
+                </span>
+                <span className="launch-session-actions">
+                  <StatusBadge tone={session ? launchStatusTone(session.status) : launchConfigTone(item.config)}>{sessionStatus}</StatusBadge>
+                </span>
+              </div>
+              <code>{item.command || "未配置命令"}</code>
+              {session && (
+                <div className="launch-item-footer">
+                  <span className="launch-session-actions">
+                    {isActiveLaunchStatus(session.status) ? (
+                      <IconButton
+                        title="停止会话"
+                        onClick={() => onStopLaunchSession(session.id)}
+                      >
+                        <Square size={14} />
+                      </IconButton>
+                    ) : (
+                      <IconButton
+                        title="重新启动此项"
+                        onClick={() => onRestartLaunchSession(session)}
+                      >
+                        <RefreshCcw size={14} />
+                      </IconButton>
+                    )}
+                  </span>
+                </div>
+              )}
+            </article>
+          );
+        }) : <p className="muted">暂无启动项。</p>}
       </div>
     </section>
   );
+}
+
+function launchConfigTone(config: ProjectLaunchConfig | null): "neutral" | "accent" {
+  return config?.enabled && config.command.trim() ? "accent" : "neutral";
+}
+
+function formatLaunchConfigState(config: ProjectLaunchConfig | null) {
+  if (!config) return "已结束";
+  if (!config.enabled) return "停用";
+  return config.command.trim() ? "可启动" : "未配置";
 }
 
 function LaunchLogDetailPage({

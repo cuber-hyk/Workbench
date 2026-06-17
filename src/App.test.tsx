@@ -238,9 +238,10 @@ describe("Workbench UI interactions", () => {
       />
     );
 
-    expect(screen.getByText("本次启动")).toBeInTheDocument();
-    expect(screen.getByText("Frontend")).toBeInTheDocument();
-    expect(screen.getByText("Worker")).toBeInTheDocument();
+    expect(screen.getAllByText("启动项").length).toBeGreaterThan(0);
+    expect(screen.queryByText("本次启动")).not.toBeInTheDocument();
+    expect(screen.queryByText("启动配置")).not.toBeInTheDocument();
+    expect(screen.getByText("Dev")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "查看日志" })).toBeInTheDocument();
     expect(screen.queryByText("ready in 812ms")).not.toBeInTheDocument();
     expect(screen.queryByText("missing env DATABASE_URL")).not.toBeInTheDocument();
