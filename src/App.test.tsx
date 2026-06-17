@@ -2,9 +2,9 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { App, ModuleStateView, ProjectDialog, ProjectsView, RadarView, SettingsView, applyPendingLaunchEvents, markLaunchRunStopped, mergeLaunchRunSnapshots, rememberUpdateNotice, shouldShowUpdateNotice } from "./App";
+import { App, ModuleStateView, ProjectDialog, ProjectsView, RadarView, SettingsView, SkillsView, applyPendingLaunchEvents, markLaunchRunStopped, mergeLaunchRunSnapshots, rememberUpdateNotice, shouldShowUpdateNotice } from "./App";
 import { AppUpdateProvider } from "./contexts/AppUpdateContext";
-import type { AppSettings, LaunchSessionEvent, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem } from "./lib/types/domain";
+import type { AppSettings, LaunchSessionEvent, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, Skill } from "./lib/types/domain";
 
 const activeProject: Project = {
   id: "active",
@@ -91,6 +91,94 @@ const appSettings: AppSettings = {
     }
   ]
 };
+
+const skillsSettings: AppSettings = {
+  ...appSettings,
+  toolTargets: [
+    appSettings.toolTargets[0],
+    {
+      key: "claude",
+      name: "Claude Code",
+      globalSkillsDir: "C:\\Users\\dev\\.claude\\skills",
+      supportsProjectScope: true,
+      available: true
+    },
+    {
+      key: "opencode",
+      name: "OpenCode",
+      globalSkillsDir: "C:\\Users\\dev\\.opencode\\skills",
+      supportsProjectScope: true,
+      available: true
+    }
+  ]
+};
+
+const skillsForView: Skill[] = [
+  {
+    id: "global-codex",
+    directoryName: "global-codex",
+    name: "global-codex",
+    description: "Global Codex skill",
+    category: "安全",
+    skillPath: "C:\\Users\\dev\\.workbench\\skills\\global-codex\\SKILL.md",
+    enabledTools: ["codex"],
+    enabledToolMethods: [{ tool: "codex", syncMethod: "symlink" }],
+    globalToolStates: [
+      { tool: "codex", status: "managed", syncMethod: "symlink" },
+      { tool: "claude", status: "disabled" },
+      { tool: "opencode", status: "disabled" }
+    ],
+    enabledProjects: []
+  },
+  {
+    id: "project-claude-active",
+    directoryName: "project-claude-active",
+    name: "project-claude-active",
+    description: "Active project Claude skill",
+    category: "测试",
+    skillPath: "C:\\Users\\dev\\.workbench\\skills\\project-claude-active\\SKILL.md",
+    enabledTools: [],
+    enabledToolMethods: [],
+    globalToolStates: [
+      { tool: "codex", status: "disabled" },
+      { tool: "claude", status: "disabled" },
+      { tool: "opencode", status: "disabled" }
+    ],
+    enabledProjects: [{ projectName: activeProject.name, projectPath: activeProject.path, tool: "claude", syncMethod: "copy" }]
+  },
+  {
+    id: "project-codex-second",
+    directoryName: "project-codex-second",
+    name: "project-codex-second",
+    description: "Second project Codex skill",
+    category: "文档",
+    skillPath: "C:\\Users\\dev\\.workbench\\skills\\project-codex-second\\SKILL.md",
+    enabledTools: [],
+    enabledToolMethods: [],
+    globalToolStates: [
+      { tool: "codex", status: "disabled" },
+      { tool: "claude", status: "disabled" },
+      { tool: "opencode", status: "disabled" }
+    ],
+    enabledProjects: [{ projectName: secondActiveProject.name, projectPath: secondActiveProject.path, tool: "codex", syncMethod: "copy" }]
+  },
+  {
+    id: "disabled-skill",
+    directoryName: "disabled-skill",
+    name: "disabled-skill",
+    description: "Disabled skill",
+    category: "写作",
+    skillPath: "C:\\Users\\dev\\.workbench\\skills\\disabled-skill\\SKILL.md",
+    enabledTools: [],
+    enabledToolMethods: [],
+    globalToolStates: [
+      { tool: "codex", status: "disabled" },
+      { tool: "claude", status: "disabled" },
+      { tool: "opencode", status: "disabled" }
+    ],
+    enabledProjects: []
+  }
+];
 
 function renderWithUpdateProvider(ui: ReactElement) {
   return render(<AppUpdateProvider>{ui}</AppUpdateProvider>);
@@ -1138,6 +1226,95 @@ describe("Workbench UI interactions", () => {
 
     expect(screen.getByRole("heading", { name: "Skills" })).toBeInTheDocument();
     expect(screen.getByText("暂无 Skills")).toBeInTheDocument();
+  });
+
+  it("filters skills by enabled tool and project scope", async () => {
+    const user = userEvent.setup();
+    render(
+      <SkillsView
+        skills={skillsForView}
+        selectedSkill={skillsForView[0]}
+        settings={skillsSettings}
+        projects={[activeProject, secondActiveProject]}
+        onSelect={vi.fn()}
+        onImport={vi.fn()}
+        onRefresh={vi.fn()}
+        onToggle={vi.fn()}
+        onToggleSkillGlobal={vi.fn()}
+        onToggleProjectAll={vi.fn()}
+        onCategorySkill={vi.fn()}
+        onResolve={vi.fn()}
+        onDeleteSkill={vi.fn()}
+      />
+    );
+
+    await user.selectOptions(screen.getByLabelText("按启用工具筛选 Skills"), "codex");
+    expect(screen.getByRole("group", { name: "global-codex Skill" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "project-codex-second Skill" })).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "project-claude-active Skill" })).not.toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText("按启用项目筛选 Skills"), secondActiveProject.path);
+    expect(screen.queryByRole("group", { name: "global-codex Skill" })).not.toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "project-codex-second Skill" })).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText("按启用工具筛选 Skills"), "claude");
+    await user.selectOptions(screen.getByLabelText("按启用项目筛选 Skills"), activeProject.path);
+    expect(screen.getByRole("group", { name: "project-claude-active Skill" })).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "project-codex-second Skill" })).not.toBeInTheDocument();
+  });
+
+  it("updates skill categories from a list selector or a new category", async () => {
+    const user = userEvent.setup();
+    const onCategorySkill = vi.fn();
+    render(
+      <SkillsView
+        skills={skillsForView}
+        selectedSkill={skillsForView[0]}
+        settings={skillsSettings}
+        projects={[activeProject, secondActiveProject]}
+        onSelect={vi.fn()}
+        onImport={vi.fn()}
+        onRefresh={vi.fn()}
+        onToggle={vi.fn()}
+        onToggleSkillGlobal={vi.fn()}
+        onToggleProjectAll={vi.fn()}
+        onCategorySkill={onCategorySkill}
+        onResolve={vi.fn()}
+        onDeleteSkill={vi.fn()}
+      />
+    );
+
+    const globalRow = screen.getByRole("group", { name: "global-codex Skill" });
+    await user.selectOptions(within(globalRow).getByLabelText("global-codex 分类"), "测试");
+    expect(onCategorySkill).toHaveBeenCalledWith("global-codex", "测试");
+
+    await user.selectOptions(within(globalRow).getByLabelText("global-codex 分类"), "__new__");
+    await user.type(within(globalRow).getByLabelText("新分类名称"), "效率");
+    await user.keyboard("{Enter}");
+    expect(onCategorySkill).toHaveBeenCalledWith("global-codex", "效率");
+  });
+
+  it("does not repeat the skill category in the detail panel", () => {
+    render(
+      <SkillsView
+        skills={skillsForView}
+        selectedSkill={skillsForView[0]}
+        settings={skillsSettings}
+        projects={[activeProject, secondActiveProject]}
+        onSelect={vi.fn()}
+        onImport={vi.fn()}
+        onRefresh={vi.fn()}
+        onToggle={vi.fn()}
+        onToggleSkillGlobal={vi.fn()}
+        onToggleProjectAll={vi.fn()}
+        onCategorySkill={vi.fn()}
+        onResolve={vi.fn()}
+        onDeleteSkill={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByText("分类：安全")).not.toBeInTheDocument();
+    expect(screen.queryByText("例如：文档")).not.toBeInTheDocument();
   });
 
   it("keeps navigation names available after theme toggle", async () => {
