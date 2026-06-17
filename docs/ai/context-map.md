@@ -25,6 +25,7 @@ Do not read `docs/plans/`, `docs/audits/`, or archived directories by default.
 - `docs/capabilities/resource-radar.md`：资源 Radar 当前能力、领域分类、数据所有权、同步规则和重复组合并规则。
 - `docs/adr/2026-06-16-resource-radar-duplicate-merge.md`：资源 Radar 重复组合并后删除副资源的长期决策。
 - `src-tauri/src/skills.rs`：Skills 扫描、导入、启用、冲突、删除和 SQLite 逻辑。
+- `docs/capabilities/skills-management.md`：Skills 当前能力、分类与筛选语义、数据所有权、同步边界和验证。
 
 ## 设计
 

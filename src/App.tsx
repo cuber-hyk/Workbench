@@ -528,12 +528,6 @@ export function App() {
                 enabled ? "项目工具已全部启用" : "项目工具已全部关闭"
               )
             }
-            onCategory={(category) =>
-              void runSkillAction(
-                () => workbenchApi.setSkillCategory(selectedSkill.directoryName, category),
-                "分类已更新"
-              )
-            }
             onCategorySkill={(directoryName, category) =>
               void runSkillAction(
                 () => workbenchApi.setSkillCategory(directoryName, category),
@@ -1613,7 +1607,7 @@ function formatLaunchTime(date: Date) {
   }).format(date);
 }
 
-function SkillsView({
+export function SkillsView({
   skills,
   selectedSkill,
   settings,
@@ -1624,7 +1618,6 @@ function SkillsView({
   onToggle,
   onToggleSkillGlobal,
   onToggleProjectAll,
-  onCategory,
   onCategorySkill,
   onResolve,
   onDeleteSkill
@@ -1639,7 +1632,6 @@ function SkillsView({
   onToggle: (tool: ToolTarget["key"], enabled: boolean, project?: Project) => void;
   onToggleSkillGlobal: (directoryName: string, tool: ToolTarget["key"], enabled: boolean) => void;
   onToggleProjectAll: (project: Project, enabled: boolean) => void;
-  onCategory: (category: string) => void;
   onCategorySkill: (directoryName: string, category: string) => void;
   onResolve: (source: SkillVersionSource) => void;
   onDeleteSkill: (skillId: string) => void;
@@ -1647,8 +1639,11 @@ function SkillsView({
   const [query, setQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("全部分类");
   const [statusFilter, setStatusFilter] = useState("全部状态");
+  const [toolFilter, setToolFilter] = useState<ToolTarget["key"] | "全部工具">("全部工具");
+  const [projectFilter, setProjectFilter] = useState("全部项目");
   const [importMenuOpen, setImportMenuOpen] = useState(false);
-  const categories = ["全部分类", ...Array.from(new Set(skills.map((skill) => skill.category))).sort()];
+  const skillCategories = useMemo(() => Array.from(new Set(skills.map((skill) => skill.category || "未分类"))).sort(), [skills]);
+  const categories = ["全部分类", ...skillCategories];
   const visibleSkills = skills.filter((skill) => {
     const normalizedQuery = query.trim().toLowerCase();
     const matchesQuery =
@@ -1657,7 +1652,8 @@ function SkillsView({
       skill.description.toLowerCase().includes(normalizedQuery);
     const matchesCategory = categoryFilter === "全部分类" || skill.category === categoryFilter;
     const matchesStatus = skillMatchesStatusFilter(skill, statusFilter);
-    return matchesQuery && matchesCategory && matchesStatus;
+    const matchesToolProject = skillMatchesToolProjectFilter(skill, toolFilter, projectFilter);
+    return matchesQuery && matchesCategory && matchesStatus && matchesToolProject;
   });
 
   return (
@@ -1697,6 +1693,14 @@ function SkillsView({
           <option>内容冲突</option>
           <option>未启用</option>
         </select>
+        <select aria-label="按启用项目筛选 Skills" value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)}>
+          <option value="全部项目">全部项目</option>
+          {projects.map((project) => <option key={project.path} value={project.path}>{project.name}</option>)}
+        </select>
+        <select aria-label="按启用工具筛选 Skills" value={toolFilter} onChange={(event) => setToolFilter(event.target.value as ToolTarget["key"] | "全部工具")}>
+          <option value="全部工具">全部工具</option>
+          {settings.toolTargets.map((tool) => <option key={tool.key} value={tool.key}>{tool.name}</option>)}
+        </select>
       </Toolbar>
       <div className="split-layout skills-layout">
         <Panel className="list-panel">
@@ -1715,8 +1719,10 @@ function SkillsView({
               }}
             >
               <span className="title-cell"><strong>{skill.name}</strong><small>{skill.description}</small></span>
-              <InlineCategory
+              <SkillCategorySelect
+                skillName={skill.name}
                 category={skill.category}
+                categories={skillCategories}
                 onSave={(category) => onCategorySkill(skill.directoryName, category)}
               />
               <GlobalToolIcons
@@ -1751,7 +1757,7 @@ function SkillsView({
         </Panel>
 
         <Panel className="detail-panel">
-          <DetailHeader title={selectedSkill.name} description={`分类：${selectedSkill.category}`} />
+          <DetailHeader title={selectedSkill.name} />
           <p className="description">{selectedSkill.description}</p>
           {selectedSkill.globalToolStates.some((state) => state.status === "conflict") && (
             <SkillConflictPanel skill={selectedSkill} settings={settings} onResolve={onResolve} />
@@ -1795,18 +1801,6 @@ function SkillsView({
             ))}
           </div>
           <div className="file-block"><span>SKILL.md</span><code>{selectedSkill.skillPath}</code></div>
-          <label className="category-field">
-            <span>分类</span>
-            <input
-              key={`${selectedSkill.id}-${selectedSkill.category}`}
-              defaultValue={selectedSkill.category}
-              onBlur={(event) => {
-                const category = event.target.value.trim() || "未分类";
-                if (category !== selectedSkill.category) onCategory(category);
-              }}
-              placeholder="例如：文档"
-            />
-          </label>
         </Panel>
       </div>
     </section>
@@ -1863,30 +1857,36 @@ function GlobalToolIcons({
   );
 }
 
-function InlineCategory({
+function SkillCategorySelect({
+  skillName,
   category,
+  categories,
   onSave
 }: {
+  skillName: string;
   category: string;
+  categories: string[];
   onSave: (category: string) => void;
 }) {
-  const [editing, setEditing] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [value, setValue] = useState(category);
 
   useEffect(() => {
     setValue(category);
+    setCreating(false);
   }, [category]);
 
   function save() {
     const next = value.trim() || "未分类";
-    setEditing(false);
+    setCreating(false);
     if (next !== category) onSave(next);
   }
 
-  if (editing) {
+  if (creating) {
     return (
       <input
         className="inline-category-input"
+        aria-label="新分类名称"
         autoFocus
         value={value}
         onClick={(event) => event.stopPropagation()}
@@ -1897,7 +1897,7 @@ function InlineCategory({
           if (event.key === "Enter") save();
           if (event.key === "Escape") {
             setValue(category);
-            setEditing(false);
+            setCreating(false);
           }
         }}
       />
@@ -1905,17 +1905,24 @@ function InlineCategory({
   }
 
   return (
-    <button
-      className="inline-category-tag"
-      title="双击编辑分类"
+    <select
+      className="inline-category-select"
+      aria-label={`${skillName} 分类`}
+      value={category}
       onClick={(event) => event.stopPropagation()}
-      onDoubleClick={(event) => {
+      onChange={(event) => {
         event.stopPropagation();
-        setEditing(true);
+        if (event.target.value === "__new__") {
+          setValue("");
+          setCreating(true);
+          return;
+        }
+        onSave(event.target.value || "未分类");
       }}
     >
-      {category}
-    </button>
+      {categories.map((item) => <option key={item} value={item}>{item}</option>)}
+      <option value="__new__">新建分类...</option>
+    </select>
   );
 }
 
@@ -2764,6 +2771,30 @@ function skillMatchesStatusFilter(skill: Skill, filter: string) {
   if (filter === "内容冲突") return hasConflict;
   if (filter === "未启用") return !enabled && !hasConflict;
   return true;
+}
+
+function skillMatchesToolProjectFilter(
+  skill: Skill,
+  toolFilter: ToolTarget["key"] | "全部工具",
+  projectFilter: string
+) {
+  const hasToolFilter = toolFilter !== "全部工具";
+  const hasProjectFilter = projectFilter !== "全部项目";
+  if (!hasToolFilter && !hasProjectFilter) return true;
+  const toolKey = hasToolFilter ? toolFilter : undefined;
+
+  if (hasProjectFilter) {
+    const projectEnablements = skill.enabledProjects.filter((entry) => entry.projectPath === projectFilter);
+    if (!toolKey) return projectEnablements.length > 0;
+    return projectEnablements.some((entry) => entry.tool === toolKey);
+  }
+
+  if (!toolKey) return true;
+  return (
+    skill.enabledTools.includes(toolKey) ||
+    skill.globalToolStates.some((state) => state.tool === toolKey && state.status === "managed") ||
+    skill.enabledProjects.some((entry) => entry.tool === toolKey)
+  );
 }
 
 function globalStatusLabel(
