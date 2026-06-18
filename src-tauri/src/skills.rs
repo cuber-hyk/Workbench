@@ -79,6 +79,15 @@ pub struct SkillsSettings {
     pub workbench_root: String,
     pub skills_root: String,
     pub tool_targets: Vec<ToolTarget>,
+    pub close_behavior: CloseBehavior,
+    pub close_tray_hint_dismissed: bool,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CloseBehavior {
+    Exit,
+    HideToTray,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -90,6 +99,8 @@ struct ToolTargetDefinition {
 }
 
 const TOOL_TARGET_ORDER_SETTING: &str = "tool_target_order";
+const CLOSE_BEHAVIOR_SETTING: &str = "close_behavior";
+const CLOSE_TRAY_HINT_DISMISSED_SETTING: &str = "close_tray_hint_dismissed";
 const TOOL_TARGET_DEFINITIONS: &[ToolTargetDefinition] = &[
     ToolTargetDefinition {
         key: "codex",
@@ -788,6 +799,40 @@ fn configured_tool_target_order(connection: &Connection) -> SkillResult<Vec<Stri
     }
 }
 
+fn configured_close_behavior(connection: &Connection) -> SkillResult<CloseBehavior> {
+    let configured = connection.query_row(
+        "SELECT value FROM app_settings WHERE key = ?1",
+        [CLOSE_BEHAVIOR_SETTING],
+        |row| row.get::<_, String>(0),
+    );
+    match configured {
+        Ok(value) => match value.as_str() {
+            "\"exit\"" => Ok(CloseBehavior::Exit),
+            "\"hide_to_tray\"" | "\"ask\"" => Ok(CloseBehavior::HideToTray),
+            _ => serde_json::from_str(&value).map_err(error_message),
+        },
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(CloseBehavior::HideToTray),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+fn configured_bool_setting(
+    connection: &Connection,
+    key: &str,
+    default_value: bool,
+) -> SkillResult<bool> {
+    let configured = connection.query_row(
+        "SELECT value FROM app_settings WHERE key = ?1",
+        [key],
+        |row| row.get::<_, String>(0),
+    );
+    match configured {
+        Ok(value) => serde_json::from_str(&value).map_err(error_message),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(default_value),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
 fn default_tool_target_index(key: &str) -> usize {
     TOOL_TARGET_DEFINITIONS
         .iter()
@@ -829,6 +874,12 @@ fn current_settings() -> SkillResult<SkillsSettings> {
         workbench_root: workbench_root.to_string_lossy().to_string(),
         skills_root: skills_root.to_string_lossy().to_string(),
         tool_targets: ordered_tool_targets(&connection)?,
+        close_behavior: configured_close_behavior(&connection)?,
+        close_tray_hint_dismissed: configured_bool_setting(
+            &connection,
+            CLOSE_TRAY_HINT_DISMISSED_SETTING,
+            false,
+        )?,
     })
 }
 
@@ -1269,6 +1320,36 @@ pub fn set_skills_root(path: String) -> SkillResult<SkillsState> {
             "INSERT INTO app_settings(key, value) VALUES('skills_root', ?1)
              ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             [root.to_string_lossy().to_string()],
+        )
+        .map_err(error_message)?;
+    get_skills_state()
+}
+
+#[tauri::command]
+pub fn set_close_behavior(close_behavior: CloseBehavior) -> SkillResult<SkillsState> {
+    let workbench_root = default_workbench_root()?;
+    let connection = open_database(&workbench_root)?;
+    let behavior_json = serde_json::to_string(&close_behavior).map_err(error_message)?;
+    connection
+        .execute(
+            "INSERT INTO app_settings(key, value) VALUES(?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![CLOSE_BEHAVIOR_SETTING, behavior_json],
+        )
+        .map_err(error_message)?;
+    get_skills_state()
+}
+
+#[tauri::command]
+pub fn set_close_tray_hint_dismissed(dismissed: bool) -> SkillResult<SkillsState> {
+    let workbench_root = default_workbench_root()?;
+    let connection = open_database(&workbench_root)?;
+    let dismissed_json = serde_json::to_string(&dismissed).map_err(error_message)?;
+    connection
+        .execute(
+            "INSERT INTO app_settings(key, value) VALUES(?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![CLOSE_TRAY_HINT_DISMISSED_SETTING, dismissed_json],
         )
         .map_err(error_message)?;
     get_skills_state()
@@ -1763,6 +1844,111 @@ mod tests {
 
         assert_eq!(&order[0..2], ["claude", "codex"]);
         assert_eq!(order.len(), TOOL_TARGET_DEFINITIONS.len());
+    }
+
+    #[test]
+    fn close_behavior_defaults_to_hide_to_tray() {
+        let connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute(
+                "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+                [],
+            )
+            .unwrap();
+
+        let behavior = configured_close_behavior(&connection).unwrap();
+
+        assert_eq!(behavior, CloseBehavior::HideToTray);
+    }
+
+    #[test]
+    fn close_behavior_reads_configured_value() {
+        let connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute(
+                "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO app_settings(key, value) VALUES(?1, ?2)",
+                params![CLOSE_BEHAVIOR_SETTING, "\"hide_to_tray\""],
+            )
+            .unwrap();
+
+        let behavior = configured_close_behavior(&connection).unwrap();
+
+        assert_eq!(behavior, CloseBehavior::HideToTray);
+    }
+
+    #[test]
+    fn close_behavior_treats_legacy_ask_as_hide_to_tray() {
+        let connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute(
+                "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO app_settings(key, value) VALUES(?1, ?2)",
+                params![CLOSE_BEHAVIOR_SETTING, "\"ask\""],
+            )
+            .unwrap();
+
+        let behavior = configured_close_behavior(&connection).unwrap();
+
+        assert_eq!(behavior, CloseBehavior::HideToTray);
+    }
+
+    #[test]
+    fn close_behavior_rejects_invalid_value() {
+        let connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute(
+                "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO app_settings(key, value) VALUES(?1, ?2)",
+                params![CLOSE_BEHAVIOR_SETTING, "\"minimize\""],
+            )
+            .unwrap();
+
+        let error = configured_close_behavior(&connection).unwrap_err();
+
+        assert!(error.contains("unknown variant"));
+    }
+
+    #[test]
+    fn bool_setting_reads_default_and_configured_value() {
+        let connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute(
+                "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+                [],
+            )
+            .unwrap();
+
+        assert!(
+            !configured_bool_setting(&connection, CLOSE_TRAY_HINT_DISMISSED_SETTING, false)
+                .unwrap()
+        );
+
+        connection
+            .execute(
+                "INSERT INTO app_settings(key, value) VALUES(?1, ?2)",
+                params![CLOSE_TRAY_HINT_DISMISSED_SETTING, "true"],
+            )
+            .unwrap();
+
+        assert!(
+            configured_bool_setting(&connection, CLOSE_TRAY_HINT_DISMISSED_SETTING, false).unwrap()
+        );
     }
 
     #[test]

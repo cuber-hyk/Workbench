@@ -35,6 +35,15 @@ pnpm test
 pnpm tauri:verify-build
 ```
 
+## 发布签名
+
+发布带 Tauri updater 的 GitHub Release 时，必须使用与 `src-tauri/tauri.conf.json` 中 `plugins.updater.pubkey` 匹配的本机签名密钥。
+
+- 私钥文件：`C:\Users\胡运宽\.workbench\workbench-updater.key`
+- 私钥密码文件：`C:\Users\胡运宽\.workbench\workbench-updater-password.txt`
+
+不要输出私钥或密码内容。构建发布包时只在当前构建进程内读取文件并设置 `TAURI_SIGNING_PRIVATE_KEY` 和 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 环境变量。
+
 Dev Flow 文档检查：
 
 ```bash

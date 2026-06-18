@@ -285,6 +285,7 @@ code { font-family: Consolas, monospace; }
 .settings-row span { display: grid; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
 .settings-row small { color: var(--muted); font-size: 10px; }
 .settings-row-actions { display: flex !important; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; min-width: 132px; }
+.settings-select { min-width: 150px; min-height: 34px; padding: 0 30px 0 10px; border: 1px solid var(--border); border-radius: 5px; background: var(--panel); color: var(--text); }
 .update-settings-panel { scroll-margin: 16px; }
 .update-settings-panel:focus { outline: 2px solid var(--accent); outline-offset: 3px; }
 .compact-update-panel .settings-row { min-height: 50px; }
@@ -345,6 +346,11 @@ code { font-family: Consolas, monospace; }
 .category-action-panel { display: grid; grid-template-columns: minmax(0, 1fr) 180px auto; align-items: center; gap: 10px; margin-bottom: 12px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--accent), var(--border) 50%); border-radius: 6px; background: color-mix(in srgb, var(--accent-soft), transparent 24%); }
 .category-action-panel span { display: grid; gap: 3px; min-width: 0; }
 .category-action-panel small { color: var(--muted); font-size: 10px; }
+.tray-hint-card { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 12px; align-items: start; padding: 14px; border: 1px solid color-mix(in srgb, var(--accent), var(--border) 52%); border-radius: 7px; background: var(--accent-soft); }
+.tray-hint-icon { display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--border); border-radius: 50%; background: var(--panel); color: var(--accent); }
+.tray-hint-card span:last-child { display: grid; gap: 4px; min-width: 0; }
+.tray-hint-card strong { font-size: 14px; }
+.tray-hint-card small { color: var(--muted); line-height: 1.55; }
 .compact-empty { min-height: 96px; }
 .field-error { padding: 10px 12px; border-radius: 5px; background: var(--danger-bg); color: var(--danger-text); font-size: 11px; font-weight: 600; }
 .field-with-action { display: grid; grid-template-columns: minmax(0, 1fr) 34px; gap: 8px; align-items: center; }

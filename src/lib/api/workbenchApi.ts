@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { projects, radarItems, settings, skillCategories, skills } from "./mockData";
-import type { GitHubStarsSyncResult, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, SkillVersionSource, SkillsState, ToolKey } from "../types/domain";
+import type { CloseBehavior, GitHubStarsSyncResult, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, SkillVersionSource, SkillsState, ToolKey } from "../types/domain";
 
 const delay = async () => new Promise((resolve) => window.setTimeout(resolve, 80));
 const isTauri = "__TAURI_INTERNALS__" in window;
@@ -345,6 +345,28 @@ export const workbenchApi = {
       projectName,
       projectPath
     });
+  },
+  async setCloseBehavior(closeBehavior: CloseBehavior) {
+    if (!isTauri) {
+      settings.closeBehavior = closeBehavior;
+      return { settings, skills, categories: previewSkillCategories() };
+    }
+    return invoke<SkillsState>("set_close_behavior", { closeBehavior });
+  },
+  async setCloseTrayHintDismissed(dismissed: boolean) {
+    if (!isTauri) {
+      settings.closeTrayHintDismissed = dismissed;
+      return { settings, skills, categories: previewSkillCategories() };
+    }
+    return invoke<SkillsState>("set_close_tray_hint_dismissed", { dismissed });
+  },
+  async hideMainWindow() {
+    if (!isTauri) return;
+    return invoke<void>("hide_main_window");
+  },
+  async exitApp() {
+    if (!isTauri) return;
+    return invoke<void>("exit_app");
   },
   async openLocalPath(path: string) {
     return invoke<void>("open_local_path", { path });

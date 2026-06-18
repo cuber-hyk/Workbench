@@ -169,9 +169,13 @@ export interface GitHubStarsSyncResult {
 export interface AppSettings {
   workbenchRoot: string;
   skillsRoot: string;
+  closeBehavior: CloseBehavior;
+  closeTrayHintDismissed: boolean;
   toolTargets: ToolTarget[];
   projectOpenProfiles: ProjectOpenProfile[];
 }
+
+export type CloseBehavior = "exit" | "hide_to_tray";
 
 export interface SkillsState {
   settings: AppSettings;
