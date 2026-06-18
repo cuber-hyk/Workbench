@@ -2,13 +2,13 @@
 
 ## 当前阶段
 
-Workbench App 已完成 MVP 验证。正式工程已经建立，项目管理、Skills 管理和资源 Radar 均已接入本地 Tauri 后端与 SQLite。
+Workbench App 已完成第一阶段基础能力验证，当前进入进阶开发阶段。正式工程已经建立，项目管理、Skills 管理和资源 Radar 均已接入本地 Tauri 后端与 SQLite。
 
 ## 核心产品边界
 
 - 独立桌面软件，不是 Obsidian 插件或目录型工作流。
 - 本地优先，数据默认保存在本机。
-- MVP 不包含 Agent 配置中心、Obsidian 连接、在线 Skills 市场或后台资源采集。
+- Agent 配置中心、Obsidian 连接、在线 Skills 来源、后台资源采集和自动化入口属于后续方向，进入实现前需要单独计划。
 - Skills 使用 `~/.workbench/skills` 作为统一真实来源。
 
 ## 已确认实现方向

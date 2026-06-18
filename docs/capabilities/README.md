@@ -2,7 +2,7 @@
 artifact_type: capability
 status: active
 created: 2026-06-13
-updated: 2026-06-13
+updated: 2026-06-18
 source_of_truth: docs/ARCHITECTURE.md
 ---
 
@@ -10,7 +10,9 @@ source_of_truth: docs/ARCHITECTURE.md
 
 本目录用于记录已经稳定下来的能力说明。
 
-当前能力仍在 MVP 中演进，暂不拆分独立 capability 文档。需要沉淀时优先从以下主题开始：
+项目已进入进阶开发阶段。已经稳定下来的模块事实应沉淀为独立 capability 文档；新功能进入实现前先写计划，完成后再按实际行为更新能力说明。
+
+当前优先维护以下主题：
 
 - Skills 根目录、导入和扫描。
 - Skills 全局与项目级启用。
