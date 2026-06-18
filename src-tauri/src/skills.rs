@@ -1,6 +1,8 @@
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs;
+use std::hash::{Hash, Hasher};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -11,6 +13,8 @@ use walkdir::WalkDir;
 use zip::ZipArchive;
 
 type SkillResult<T> = Result<T, String>;
+const UNCATEGORIZED_CATEGORY_ID: &str = "uncategorized";
+const UNCATEGORIZED_CATEGORY_NAME: &str = "未分类";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -50,6 +54,7 @@ pub struct SkillRecord {
     pub directory_name: String,
     pub name: String,
     pub description: String,
+    pub category_id: String,
     pub category: String,
     pub skill_path: String,
     pub enabled_tools: Vec<String>,
@@ -78,9 +83,19 @@ pub struct SkillsSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct SkillCategory {
+    pub id: String,
+    pub name: String,
+    pub sort_order: i64,
+    pub skill_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct SkillsState {
     pub settings: SkillsSettings,
     pub skills: Vec<SkillRecord>,
+    pub categories: Vec<SkillCategory>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -166,7 +181,8 @@ pub fn scan_skill_directories(root: &Path) -> SkillResult<Vec<SkillRecord>> {
             directory_name,
             name: metadata.name,
             description: metadata.description,
-            category: "未分类".to_string(),
+            category_id: UNCATEGORIZED_CATEGORY_ID.to_string(),
+            category: UNCATEGORIZED_CATEGORY_NAME.to_string(),
             skill_path: skill_path.to_string_lossy().to_string(),
             enabled_tools: Vec::new(),
             enabled_tool_methods: Vec::new(),
@@ -419,9 +435,12 @@ fn open_database(workbench_root: &Path) -> SkillResult<Connection> {
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             );
-            CREATE TABLE IF NOT EXISTS skill_metadata (
-                directory_name TEXT PRIMARY KEY,
-                category TEXT NOT NULL DEFAULT '未分类'
+            CREATE TABLE IF NOT EXISTS skill_categories (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
             CREATE TABLE IF NOT EXISTS skill_enablements (
                 directory_name TEXT NOT NULL,
@@ -436,6 +455,7 @@ fn open_database(workbench_root: &Path) -> SkillResult<Connection> {
             ",
         )
         .map_err(error_message)?;
+    ensure_skill_category_schema(&connection)?;
     let has_sync_method = connection
         .prepare("PRAGMA table_info(skill_enablements)")
         .map_err(error_message)?
@@ -452,6 +472,137 @@ fn open_database(workbench_root: &Path) -> SkillResult<Connection> {
             .map_err(error_message)?;
     }
     Ok(connection)
+}
+
+fn ensure_skill_category_schema(connection: &Connection) -> SkillResult<()> {
+    ensure_category_exists(
+        connection,
+        UNCATEGORIZED_CATEGORY_ID,
+        UNCATEGORIZED_CATEGORY_NAME,
+    )?;
+    let metadata_exists = table_exists(connection, "skill_metadata")?;
+    if !metadata_exists {
+        connection
+            .execute(
+                "CREATE TABLE skill_metadata (
+                    directory_name TEXT PRIMARY KEY,
+                    category_id TEXT NOT NULL DEFAULT 'uncategorized',
+                    FOREIGN KEY(category_id) REFERENCES skill_categories(id)
+                )",
+                [],
+            )
+            .map_err(error_message)?;
+        return Ok(());
+    }
+
+    if table_has_column(connection, "skill_metadata", "category_id")? {
+        return Ok(());
+    }
+
+    let rows = {
+        let mut statement = connection
+            .prepare("SELECT directory_name, category FROM skill_metadata")
+            .map_err(error_message)?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(error_message)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(error_message)?;
+        rows
+    };
+
+    let mut seen_categories = HashSet::new();
+    for (_, category_name) in &rows {
+        let normalized = normalize_category_name(category_name);
+        if seen_categories.insert(normalized.clone()) {
+            let id = category_id_for_name(&normalized);
+            ensure_category_exists(connection, &id, &normalized)?;
+        }
+    }
+
+    connection
+        .execute_batch(
+            "
+            CREATE TABLE skill_metadata_new (
+                directory_name TEXT PRIMARY KEY,
+                category_id TEXT NOT NULL DEFAULT 'uncategorized',
+                FOREIGN KEY(category_id) REFERENCES skill_categories(id)
+            );
+            ",
+        )
+        .map_err(error_message)?;
+    for (directory_name, category_name) in rows {
+        let normalized = normalize_category_name(&category_name);
+        let category_id = category_id_for_name(&normalized);
+        connection
+            .execute(
+                "INSERT INTO skill_metadata_new(directory_name, category_id) VALUES(?1, ?2)",
+                params![directory_name, category_id],
+            )
+            .map_err(error_message)?;
+    }
+    connection
+        .execute_batch(
+            "
+            DROP TABLE skill_metadata;
+            ALTER TABLE skill_metadata_new RENAME TO skill_metadata;
+            ",
+        )
+        .map_err(error_message)?;
+    Ok(())
+}
+
+fn table_exists(connection: &Connection, table: &str) -> SkillResult<bool> {
+    let exists = connection
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1",
+            [table],
+            |_| Ok(()),
+        )
+        .is_ok();
+    Ok(exists)
+}
+
+fn table_has_column(connection: &Connection, table: &str, column: &str) -> SkillResult<bool> {
+    Ok(connection
+        .prepare(&format!("PRAGMA table_info({table})"))
+        .map_err(error_message)?
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(error_message)?
+        .filter_map(Result::ok)
+        .any(|value| value == column))
+}
+
+fn normalize_category_name(name: &str) -> String {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        UNCATEGORIZED_CATEGORY_NAME.to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn category_id_for_name(name: &str) -> String {
+    if name == UNCATEGORIZED_CATEGORY_NAME {
+        return UNCATEGORIZED_CATEGORY_ID.to_string();
+    }
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    name.hash(&mut hasher);
+    format!("category-{:016x}", hasher.finish())
+}
+
+fn ensure_category_exists(connection: &Connection, id: &str, name: &str) -> SkillResult<()> {
+    connection
+        .execute(
+            "INSERT INTO skill_categories(id, name, sort_order)
+             VALUES(?1, ?2, COALESCE((SELECT MAX(sort_order) + 1 FROM skill_categories), 0))
+             ON CONFLICT(id) DO UPDATE SET name = excluded.name, updated_at = CURRENT_TIMESTAMP",
+            params![id, name],
+        )
+        .map_err(error_message)?;
+    Ok(())
 }
 
 fn configured_skills_root(connection: &Connection, workbench_root: &Path) -> SkillResult<PathBuf> {
@@ -519,13 +670,23 @@ fn enrich_skills(
     mut skills: Vec<SkillRecord>,
 ) -> SkillResult<Vec<SkillRecord>> {
     for skill in &mut skills {
-        skill.category = connection
+        let category = connection
             .query_row(
-                "SELECT category FROM skill_metadata WHERE directory_name = ?1",
+                "SELECT skill_categories.id, skill_categories.name
+                 FROM skill_metadata
+                 JOIN skill_categories ON skill_metadata.category_id = skill_categories.id
+                 WHERE skill_metadata.directory_name = ?1",
                 [&skill.directory_name],
-                |row| row.get(0),
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
             )
-            .unwrap_or_else(|_| "未分类".to_string());
+            .unwrap_or_else(|_| {
+                (
+                    UNCATEGORIZED_CATEGORY_ID.to_string(),
+                    UNCATEGORIZED_CATEGORY_NAME.to_string(),
+                )
+            });
+        skill.category_id = category.0;
+        skill.category = category.1;
 
         let mut statement = connection
             .prepare(
@@ -620,6 +781,51 @@ fn enrich_skills(
         }
     }
     Ok(skills)
+}
+
+fn list_skill_categories(connection: &Connection) -> SkillResult<Vec<SkillCategory>> {
+    let mut statement = connection
+        .prepare(
+            "SELECT skill_categories.id,
+                    skill_categories.name,
+                    skill_categories.sort_order,
+                    COUNT(skill_metadata.directory_name) AS skill_count
+             FROM skill_categories
+             LEFT JOIN skill_metadata ON skill_metadata.category_id = skill_categories.id
+             GROUP BY skill_categories.id, skill_categories.name, skill_categories.sort_order
+             ORDER BY skill_categories.sort_order, skill_categories.name",
+        )
+        .map_err(error_message)?;
+    let categories = statement
+        .query_map([], |row| {
+            Ok(SkillCategory {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                sort_order: row.get(2)?,
+                skill_count: row.get(3)?,
+            })
+        })
+        .map_err(error_message)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(error_message)?;
+    Ok(categories)
+}
+
+fn require_category(connection: &Connection, category_id: &str) -> SkillResult<SkillCategory> {
+    connection
+        .query_row(
+            "SELECT id, name, sort_order FROM skill_categories WHERE id = ?1",
+            [category_id],
+            |row| {
+                Ok(SkillCategory {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    sort_order: row.get(2)?,
+                    skill_count: 0,
+                })
+            },
+        )
+        .map_err(|_| "分类不存在".to_string())
 }
 
 fn save_global_enablement(
@@ -881,6 +1087,7 @@ pub fn get_skills_state() -> SkillResult<SkillsState> {
     Ok(SkillsState {
         settings,
         skills: enrich_skills(&connection, skills)?,
+        categories: list_skill_categories(&connection)?,
     })
 }
 
@@ -901,17 +1108,126 @@ pub fn set_skills_root(path: String) -> SkillResult<SkillsState> {
 }
 
 #[tauri::command]
-pub fn set_skill_category(directory_name: String, category: String) -> SkillResult<SkillsState> {
+pub fn set_skill_category(directory_name: String, category_id: String) -> SkillResult<SkillsState> {
+    validate_directory_name(&directory_name)?;
     let workbench_root = default_workbench_root()?;
     let connection = open_database(&workbench_root)?;
+    require_category(&connection, &category_id)?;
     connection
         .execute(
-            "INSERT INTO skill_metadata(directory_name, category) VALUES(?1, ?2)
-             ON CONFLICT(directory_name) DO UPDATE SET category = excluded.category",
-            params![directory_name, category],
+            "INSERT INTO skill_metadata(directory_name, category_id) VALUES(?1, ?2)
+             ON CONFLICT(directory_name) DO UPDATE SET category_id = excluded.category_id",
+            params![directory_name, category_id],
         )
         .map_err(error_message)?;
     get_skills_state()
+}
+
+#[tauri::command]
+pub fn create_skill_category(name: String) -> SkillResult<SkillsState> {
+    let workbench_root = default_workbench_root()?;
+    let connection = open_database(&workbench_root)?;
+    create_skill_category_in(&connection, &name)?;
+    get_skills_state()
+}
+
+#[tauri::command]
+pub fn rename_skill_category(category_id: String, name: String) -> SkillResult<SkillsState> {
+    if category_id == UNCATEGORIZED_CATEGORY_ID {
+        return Err("未分类不能重命名".to_string());
+    }
+    let workbench_root = default_workbench_root()?;
+    let connection = open_database(&workbench_root)?;
+    rename_skill_category_in(&connection, &category_id, &name)?;
+    get_skills_state()
+}
+
+#[tauri::command]
+pub fn delete_skill_category(
+    category_id: String,
+    replacement_category_id: String,
+) -> SkillResult<SkillsState> {
+    let workbench_root = default_workbench_root()?;
+    let connection = open_database(&workbench_root)?;
+    delete_skill_category_in(&connection, &category_id, &replacement_category_id)?;
+    get_skills_state()
+}
+
+#[tauri::command]
+pub fn merge_skill_category(
+    source_category_id: String,
+    target_category_id: String,
+) -> SkillResult<SkillsState> {
+    delete_skill_category(source_category_id, target_category_id)
+}
+
+fn create_skill_category_in(connection: &Connection, name: &str) -> SkillResult<String> {
+    let name = validate_category_name(name)?;
+    let id = category_id_for_name(&name);
+    connection
+        .execute(
+            "INSERT INTO skill_categories(id, name, sort_order)
+             VALUES(?1, ?2, COALESCE((SELECT MAX(sort_order) + 1 FROM skill_categories), 0))",
+            params![id, name],
+        )
+        .map_err(|error| {
+            if is_unique_constraint_error(&error) {
+                "分类名称已存在".to_string()
+            } else {
+                error_message(error)
+            }
+        })?;
+    Ok(id)
+}
+
+fn rename_skill_category_in(
+    connection: &Connection,
+    category_id: &str,
+    name: &str,
+) -> SkillResult<()> {
+    if category_id == UNCATEGORIZED_CATEGORY_ID {
+        return Err("未分类不能重命名".to_string());
+    }
+    let name = validate_category_name(name)?;
+    require_category(connection, category_id)?;
+    connection
+        .execute(
+            "UPDATE skill_categories SET name = ?1, updated_at = CURRENT_TIMESTAMP WHERE id = ?2",
+            params![name, category_id],
+        )
+        .map_err(|error| {
+            if is_unique_constraint_error(&error) {
+                "分类名称已存在".to_string()
+            } else {
+                error_message(error)
+            }
+        })?;
+    Ok(())
+}
+
+fn delete_skill_category_in(
+    connection: &Connection,
+    category_id: &str,
+    replacement_category_id: &str,
+) -> SkillResult<()> {
+    if category_id == UNCATEGORIZED_CATEGORY_ID {
+        return Err("未分类不能删除".to_string());
+    }
+    if category_id == replacement_category_id {
+        return Err("迁移目标不能是当前分类".to_string());
+    }
+    require_category(connection, category_id)?;
+    require_category(connection, replacement_category_id)?;
+    connection
+        .execute(
+            "UPDATE skill_metadata SET category_id = ?1 WHERE category_id = ?2",
+            params![replacement_category_id, category_id],
+        )
+        .map_err(error_message)?;
+    connection
+        .execute("DELETE FROM skill_categories WHERE id = ?1", [category_id])
+        .map_err(error_message)?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -1125,6 +1441,22 @@ fn validate_directory_name(directory_name: &str) -> SkillResult<()> {
     Ok(())
 }
 
+fn validate_category_name(name: &str) -> SkillResult<String> {
+    let normalized = normalize_category_name(name);
+    if normalized == UNCATEGORIZED_CATEGORY_NAME {
+        return Err("未分类是系统分类".to_string());
+    }
+    Ok(normalized)
+}
+
+fn is_unique_constraint_error(error: &rusqlite::Error) -> bool {
+    matches!(
+        error,
+        rusqlite::Error::SqliteFailure(_, Some(message))
+            if message.contains("UNIQUE constraint failed")
+    )
+}
+
 fn error_message(error: impl std::fmt::Display) -> String {
     error.to_string()
 }
@@ -1205,6 +1537,96 @@ mod tests {
         assert_eq!(
             fs::read_to_string(target_root.path().join("shared/references/guide.md")).unwrap(),
             "guide"
+        );
+    }
+
+    #[test]
+    fn migrates_legacy_skill_categories_to_category_table() {
+        let connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch(
+                "
+                CREATE TABLE skill_categories (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL UNIQUE,
+                    sort_order INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE TABLE skill_metadata (
+                    directory_name TEXT PRIMARY KEY,
+                    category TEXT NOT NULL DEFAULT '未分类'
+                );
+                INSERT INTO skill_metadata(directory_name, category) VALUES
+                    ('security-review', '安全'),
+                    ('empty-category', ''),
+                    ('second-security', '安全');
+                ",
+            )
+            .unwrap();
+
+        ensure_skill_category_schema(&connection).unwrap();
+
+        let categories = list_skill_categories(&connection).unwrap();
+        assert!(categories
+            .iter()
+            .any(|category| category.id == UNCATEGORIZED_CATEGORY_ID && category.name == "未分类"));
+        assert!(categories.iter().any(|category| category.name == "安全"));
+        assert!(!table_has_column(&connection, "skill_metadata", "category").unwrap());
+        assert!(table_has_column(&connection, "skill_metadata", "category_id").unwrap());
+
+        let security_category_id = category_id_for_name("安全");
+        let stored_category_id: String = connection
+            .query_row(
+                "SELECT category_id FROM skill_metadata WHERE directory_name = 'security-review'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(stored_category_id, security_category_id);
+    }
+
+    #[test]
+    fn manages_categories_and_moves_skills_between_category_ids() {
+        let connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch(
+                "
+                CREATE TABLE skill_categories (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL UNIQUE,
+                    sort_order INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+                ",
+            )
+            .unwrap();
+        ensure_skill_category_schema(&connection).unwrap();
+        let source_id = create_skill_category_in(&connection, "开发工程").unwrap();
+        let target_id = create_skill_category_in(&connection, "文档与内容").unwrap();
+        connection
+            .execute(
+                "INSERT INTO skill_metadata(directory_name, category_id) VALUES(?1, ?2)",
+                params!["code-cleaner", &source_id],
+            )
+            .unwrap();
+
+        rename_skill_category_in(&connection, &source_id, "工程质量").unwrap();
+        assert!(create_skill_category_in(&connection, "工程质量").is_err());
+
+        delete_skill_category_in(&connection, &source_id, &target_id).unwrap();
+        let moved_category_id: String = connection
+            .query_row(
+                "SELECT category_id FROM skill_metadata WHERE directory_name = 'code-cleaner'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(moved_category_id, target_id);
+        assert!(require_category(&connection, &source_id).is_err());
+        assert!(
+            delete_skill_category_in(&connection, UNCATEGORIZED_CATEGORY_ID, &target_id).is_err()
         );
     }
 

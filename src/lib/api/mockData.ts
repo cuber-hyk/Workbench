@@ -55,10 +55,11 @@ export const projects: Project[] = [
 ];
 
 export const skillCategories: SkillCategory[] = [
-  { id: "security", name: "安全" },
-  { id: "testing", name: "测试" },
-  { id: "docs", name: "文档" },
-  { id: "writing", name: "写作" }
+  { id: "security", name: "安全", sortOrder: 0, skillCount: 1 },
+  { id: "testing", name: "测试", sortOrder: 1, skillCount: 1 },
+  { id: "docs", name: "文档", sortOrder: 2, skillCount: 1 },
+  { id: "writing", name: "写作", sortOrder: 3, skillCount: 1 },
+  { id: "uncategorized", name: "未分类", sortOrder: 4, skillCount: 0 }
 ];
 
 export const skills: Skill[] = [
@@ -67,6 +68,7 @@ export const skills: Skill[] = [
     directoryName: "security-review",
     name: "security-review",
     description: "认证、用户输入、密钥与敏感功能的安全审查指南。",
+    categoryId: "security",
     category: "安全",
     skillPath: "C:\\Users\\dev\\.workbench\\skills\\security-review\\SKILL.md",
     enabledTools: ["codex", "claude"],
@@ -86,6 +88,7 @@ export const skills: Skill[] = [
     directoryName: "playwright-cli",
     name: "playwright-cli",
     description: "浏览器自动化与页面测试。",
+    categoryId: "testing",
     category: "测试",
     skillPath: "C:\\Users\\dev\\.workbench\\skills\\playwright-cli\\SKILL.md",
     enabledTools: ["codex"],
@@ -102,6 +105,7 @@ export const skills: Skill[] = [
     directoryName: "design-doc-mermaid",
     name: "design-doc-mermaid",
     description: "从描述或代码生成 Mermaid 图。",
+    categoryId: "docs",
     category: "文档",
     skillPath: "C:\\Users\\dev\\.workbench\\skills\\design-doc-mermaid\\SKILL.md",
     enabledTools: ["claude"],
@@ -118,6 +122,7 @@ export const skills: Skill[] = [
     directoryName: "humanizer",
     name: "humanizer",
     description: "改善文本自然度与可读性。",
+    categoryId: "writing",
     category: "写作",
     skillPath: "C:\\Users\\dev\\.workbench\\skills\\humanizer\\SKILL.md",
     enabledTools: ["codex", "opencode"],

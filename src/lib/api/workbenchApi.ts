@@ -13,7 +13,16 @@ async function skillsState(): Promise<SkillsState> {
     return { ...state, settings: { ...state.settings, projectOpenProfiles } };
   }
   await delay();
-  return { settings, skills };
+  return { settings, skills, categories: previewSkillCategories() };
+}
+
+function previewSkillCategories() {
+  return skillCategories
+    .map((category) => ({
+      ...category,
+      skillCount: skills.filter((skill) => skill.categoryId === category.id).length
+    }))
+    .sort((left, right) => left.sortOrder - right.sortOrder || left.name.localeCompare(right.name));
 }
 
 export const workbenchApi = {
@@ -96,8 +105,7 @@ export const workbenchApi = {
     return (await skillsState()).skills;
   },
   async listSkillCategories() {
-    await delay();
-    return skillCategories;
+    return (await skillsState()).categories;
   },
   async listRadarItems() {
     if (isTauri) {
@@ -215,8 +223,86 @@ export const workbenchApi = {
   async setSkillsRoot(path: string) {
     return invoke<SkillsState>("set_skills_root", { path });
   },
-  async setSkillCategory(directoryName: string, category: string) {
-    return invoke<SkillsState>("set_skill_category", { directoryName, category });
+  async setSkillCategory(directoryName: string, categoryId: string) {
+    if (!isTauri) {
+      await delay();
+      const category = skillCategories.find((item) => item.id === categoryId);
+      if (!category) throw new Error("分类不存在");
+      const skill = skills.find((item) => item.directoryName === directoryName);
+      if (skill) {
+        skill.categoryId = category.id;
+        skill.category = category.name;
+      }
+      return skillsState();
+    }
+    return invoke<SkillsState>("set_skill_category", { directoryName, categoryId });
+  },
+  async createSkillCategory(name: string) {
+    if (!isTauri) {
+      await delay();
+      const normalized = name.trim();
+      if (!normalized) throw new Error("分类名称不能为空");
+      if (skillCategories.some((category) => category.name === normalized)) throw new Error("分类名称已存在");
+      const category = {
+        id: `category-${Date.now()}`,
+        name: normalized,
+        sortOrder: skillCategories.length,
+        skillCount: 0
+      };
+      skillCategories.push(category);
+      return skillsState();
+    }
+    return invoke<SkillsState>("create_skill_category", { name });
+  },
+  async renameSkillCategory(categoryId: string, name: string) {
+    if (!isTauri) {
+      await delay();
+      const category = skillCategories.find((item) => item.id === categoryId);
+      if (!category) throw new Error("分类不存在");
+      const normalized = name.trim();
+      if (!normalized) throw new Error("分类名称不能为空");
+      if (skillCategories.some((item) => item.id !== categoryId && item.name === normalized)) throw new Error("分类名称已存在");
+      category.name = normalized;
+      skills.forEach((skill) => {
+        if (skill.categoryId === categoryId) skill.category = normalized;
+      });
+      return skillsState();
+    }
+    return invoke<SkillsState>("rename_skill_category", { categoryId, name });
+  },
+  async deleteSkillCategory(categoryId: string, replacementCategoryId: string) {
+    if (!isTauri) {
+      await delay();
+      const replacement = skillCategories.find((item) => item.id === replacementCategoryId);
+      if (!replacement) throw new Error("迁移目标分类不存在");
+      skills.forEach((skill) => {
+        if (skill.categoryId === categoryId) {
+          skill.categoryId = replacement.id;
+          skill.category = replacement.name;
+        }
+      });
+      const index = skillCategories.findIndex((item) => item.id === categoryId);
+      if (index >= 0) skillCategories.splice(index, 1);
+      return skillsState();
+    }
+    return invoke<SkillsState>("delete_skill_category", { categoryId, replacementCategoryId });
+  },
+  async mergeSkillCategory(sourceCategoryId: string, targetCategoryId: string) {
+    if (!isTauri) {
+      await delay();
+      const target = skillCategories.find((item) => item.id === targetCategoryId);
+      if (!target) throw new Error("目标分类不存在");
+      skills.forEach((skill) => {
+        if (skill.categoryId === sourceCategoryId) {
+          skill.categoryId = target.id;
+          skill.category = target.name;
+        }
+      });
+      const index = skillCategories.findIndex((item) => item.id === sourceCategoryId);
+      if (index >= 0) skillCategories.splice(index, 1);
+      return skillsState();
+    }
+    return invoke<SkillsState>("merge_skill_category", { sourceCategoryId, targetCategoryId });
   },
   async importSkillsFromFolder(sourcePath: string) {
     return invoke<ImportResult[]>("import_skills_from_folder", { sourcePath });
