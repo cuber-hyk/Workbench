@@ -84,15 +84,17 @@ export interface SkillCategory {
   skillCount: number;
 }
 
+export type ToolKey = string;
+
 export interface ToolTarget {
-  key: "codex" | "claude" | "opencode";
+  key: ToolKey;
   name: string;
   globalSkillsDir: string;
   supportsProjectScope: boolean;
   available: boolean;
 }
 
-export type SkillVersionSource = "workbench" | ToolTarget["key"];
+export type SkillVersionSource = "workbench" | ToolKey;
 
 export interface Skill {
   id: string;
@@ -102,17 +104,17 @@ export interface Skill {
   categoryId: string;
   category: string;
   skillPath: string;
-  enabledTools: ToolTarget["key"][];
-  enabledToolMethods: Array<{ tool: ToolTarget["key"]; syncMethod: "symlink" | "copy" }>;
+  enabledTools: ToolKey[];
+  enabledToolMethods: Array<{ tool: ToolKey; syncMethod: "symlink" | "copy" }>;
   globalToolStates: Array<{
-    tool: ToolTarget["key"];
+    tool: ToolKey;
     status: "disabled" | "managed" | "conflict";
     syncMethod?: "symlink" | "copy";
   }>;
   enabledProjects: Array<{
     projectName: string;
     projectPath: string;
-    tool: ToolTarget["key"];
+    tool: ToolKey;
     syncMethod: "symlink" | "copy";
   }>;
 }

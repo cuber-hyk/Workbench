@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { projects, radarItems, settings, skillCategories, skills } from "./mockData";
-import type { GitHubStarsSyncResult, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, SkillVersionSource, SkillsState, ToolTarget } from "../types/domain";
+import type { GitHubStarsSyncResult, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, SkillVersionSource, SkillsState, ToolKey } from "../types/domain";
 
 const delay = async () => new Promise((resolve) => window.setTimeout(resolve, 80));
 const isTauri = "__TAURI_INTERNALS__" in window;
@@ -331,7 +331,7 @@ export const workbenchApi = {
   },
   async setSkillEnabled(
     directoryName: string,
-    tool: ToolTarget["key"],
+    tool: ToolKey,
     enabled: boolean,
     scope: "global" | "project",
     projectName?: string,
@@ -349,8 +349,23 @@ export const workbenchApi = {
   async openLocalPath(path: string) {
     return invoke<void>("open_local_path", { path });
   },
-  async openGlobalSkillTarget(directoryName: string, tool: ToolTarget["key"]) {
+  async createAndOpenDirectory(path: string) {
+    if (!isTauri) return;
+    return invoke<void>("create_and_open_directory", { path });
+  },
+  async openGlobalSkillTarget(directoryName: string, tool: ToolKey) {
     return invoke<void>("open_global_skill_target", { directoryName, tool });
+  },
+  async setToolTargetOrder(toolKeys: ToolKey[]) {
+    if (!isTauri) {
+      const ordered = toolKeys
+        .map((key) => settings.toolTargets.find((tool) => tool.key === key))
+        .filter((tool): tool is typeof settings.toolTargets[number] => Boolean(tool));
+      const missing = settings.toolTargets.filter((tool) => !toolKeys.includes(tool.key));
+      settings.toolTargets = [...ordered, ...missing];
+      return { settings, skills, categories: previewSkillCategories() };
+    }
+    return invoke<SkillsState>("set_tool_target_order", { toolKeys });
   },
   async openSkillSourceDirectory(directoryName: string) {
     return invoke<void>("open_skill_source_directory", { directoryName });

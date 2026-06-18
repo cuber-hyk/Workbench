@@ -113,6 +113,41 @@ const skillsSettings: AppSettings = {
   ]
 };
 
+const expandedSkillsSettings: AppSettings = {
+  ...skillsSettings,
+  toolTargets: [
+    ...skillsSettings.toolTargets,
+    {
+      key: "deveco",
+      name: "DevEco Code",
+      globalSkillsDir: "C:\\Users\\dev\\.config\\deveco\\skills",
+      supportsProjectScope: false,
+      available: false
+    },
+    {
+      key: "hermes",
+      name: "Hermes",
+      globalSkillsDir: "C:\\Users\\dev\\.hermes\\skills",
+      supportsProjectScope: false,
+      available: false
+    },
+    {
+      key: "kimi",
+      name: "Kimi Code",
+      globalSkillsDir: "C:\\Users\\dev\\.kimi-code\\skills",
+      supportsProjectScope: false,
+      available: false
+    },
+    {
+      key: "pi",
+      name: "Pi Agent",
+      globalSkillsDir: "C:\\Users\\dev\\.pi\\agent\\skills",
+      supportsProjectScope: false,
+      available: false
+    }
+  ]
+};
+
 const skillCategoriesForView: SkillCategory[] = [
   { id: "security", name: "安全", sortOrder: 0, skillCount: 1 },
   { id: "testing", name: "测试", sortOrder: 1, skillCount: 1 },
@@ -618,6 +653,7 @@ describe("Workbench UI interactions", () => {
         onOpenUpdateDetails={vi.fn()}
         onThemeToggle={vi.fn()}
         onRootChange={vi.fn()}
+        onReorderToolTargets={vi.fn()}
         onOpenPath={vi.fn()}
         onAddProjectOpenProfile={onAddProjectOpenProfile}
         onEditProjectOpenProfile={onEditProjectOpenProfile}
@@ -634,6 +670,29 @@ describe("Workbench UI interactions", () => {
     expect(onAddProjectOpenProfile).toHaveBeenCalled();
     expect(onEditProjectOpenProfile).toHaveBeenCalledWith(projectOpenProfiles[0]);
     expect(onDeleteProjectOpenProfile).toHaveBeenCalledWith(projectOpenProfiles[0]);
+  });
+
+  it("reorders global tool display order from settings", async () => {
+    const user = userEvent.setup();
+    const onReorderToolTargets = vi.fn();
+    renderWithUpdateProvider(
+      <SettingsView
+        settings={skillsSettings}
+        theme="dark"
+        onOpenUpdateDetails={vi.fn()}
+        onThemeToggle={vi.fn()}
+        onRootChange={vi.fn()}
+        onReorderToolTargets={onReorderToolTargets}
+        onOpenPath={vi.fn()}
+        onAddProjectOpenProfile={vi.fn()}
+        onEditProjectOpenProfile={vi.fn()}
+        onDeleteProjectOpenProfile={vi.fn()}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: "下移 Codex" }));
+
+    expect(onReorderToolTargets).toHaveBeenCalledWith(["claude", "codex", "opencode"]);
   });
 
   it("tracks active launch sessions for multiple projects at the same time", () => {
@@ -1276,6 +1335,64 @@ describe("Workbench UI interactions", () => {
     await user.selectOptions(screen.getByLabelText("按启用项目筛选 Skills"), activeProject.path);
     expect(screen.getByRole("group", { name: "project-claude-active Skill" })).toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "project-codex-second Skill" })).not.toBeInTheDocument();
+  });
+
+  it("keeps global tool icons compact and toggles hidden tools from the overflow", async () => {
+    const user = userEvent.setup();
+    const onToggleSkillGlobal = vi.fn();
+    render(
+      <SkillsView
+        skills={skillsForView}
+        selectedSkill={skillsForView[0]}
+        categories={skillCategoriesForView}
+        settings={expandedSkillsSettings}
+        projects={[activeProject, secondActiveProject]}
+        onSelect={vi.fn()}
+        onImport={vi.fn()}
+        onRefresh={vi.fn()}
+        onManageCategories={vi.fn()}
+        onToggle={vi.fn()}
+        onToggleSkillGlobal={onToggleSkillGlobal}
+        onToggleProjectAll={vi.fn()}
+        onCategorySkill={vi.fn()}
+        onCreateCategorySkill={vi.fn()}
+        onResolve={vi.fn()}
+        onDeleteSkill={vi.fn()}
+      />
+    );
+
+    const globalRow = screen.getByRole("group", { name: "global-codex Skill" });
+    await user.click(within(globalRow).getByRole("button", { name: "+1" }));
+    await user.click(within(globalRow).getByTitle("Pi Agent · 未启用"));
+
+    expect(within(globalRow).getByText("Pi Agent")).toBeInTheDocument();
+    expect(onToggleSkillGlobal).toHaveBeenCalledWith("global-codex", "pi", true);
+  });
+
+  it("shows only project-capable tools in the project enablement panel", () => {
+    render(
+      <SkillsView
+        skills={skillsForView}
+        selectedSkill={skillsForView[0]}
+        categories={skillCategoriesForView}
+        settings={expandedSkillsSettings}
+        projects={[activeProject]}
+        onSelect={vi.fn()}
+        onImport={vi.fn()}
+        onRefresh={vi.fn()}
+        onManageCategories={vi.fn()}
+        onToggle={vi.fn()}
+        onToggleSkillGlobal={vi.fn()}
+        onToggleProjectAll={vi.fn()}
+        onCategorySkill={vi.fn()}
+        onCreateCategorySkill={vi.fn()}
+        onResolve={vi.fn()}
+        onDeleteSkill={vi.fn()}
+      />
+    );
+
+    expect(screen.getByTitle("Active Project · Codex")).toBeInTheDocument();
+    expect(screen.queryByTitle("Active Project · DevEco Code")).not.toBeInTheDocument();
   });
 
   it("updates skill categories from a list selector or a new category", async () => {

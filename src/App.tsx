@@ -3,7 +3,9 @@ import type { FormEvent } from "react";
 import {
   Archive,
   ArchiveRestore,
+  ArrowDown,
   ArrowLeft,
+  ArrowUp,
   Box,
   ChevronDown,
   CircleDot,
@@ -27,12 +29,29 @@ import {
   Trash2,
   X
 } from "lucide-react";
+import codexIcon from "./assets/tool-icons/codex.png";
+import claudeCodeIcon from "./assets/tool-icons/claude-code.ico";
+import opencodeIcon from "./assets/tool-icons/opencode.ico";
+import devecoIcon from "./assets/tool-icons/deveco-code.ico";
+import hermesIcon from "./assets/tool-icons/hermes-agent.png";
+import kimiIcon from "./assets/tool-icons/kimi-code.ico";
+import piIcon from "./assets/tool-icons/pi.svg";
+import geminiIcon from "./assets/tool-icons/gemini-cli.png";
+import qwenIcon from "./assets/tool-icons/qwen-code.png";
+import gooseIcon from "./assets/tool-icons/goose.png";
+import kiloIcon from "./assets/tool-icons/kilo-code.ico";
+import clineIcon from "./assets/tool-icons/cline.png";
+import rooIcon from "./assets/tool-icons/roo-code.png";
+import factoryIcon from "./assets/tool-icons/factory-droid.ico";
+import ampIcon from "./assets/tool-icons/amp.ico";
+import kiroIcon from "./assets/tool-icons/kiro-cli.ico";
+import junieIcon from "./assets/tool-icons/junie-cli.ico";
 import { AppUpdateDialog, AppUpdatePanel } from "./components/AppUpdatePanel";
 import { UpdateBadge } from "./components/UpdateBadge";
 import { ActionGroup, Button, ConfirmDeleteModal, DetailHeader, FilterMore, IconButton, Modal, PageHeader, Panel, SearchInput, StatusBadge, TagList, Toolbar } from "./components/ui";
 import { useAppUpdate } from "./contexts/AppUpdateContext";
 import { workbenchApi } from "./lib/api/workbenchApi";
-import type { AppSettings, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, Project, ProjectLaunchConfig, ProjectOpenProfile, RadarCategory, RadarDuplicateGroup, RadarItem, Skill, SkillCategory, SkillVersionSource, ToolTarget, ViewKey } from "./lib/types/domain";
+import type { AppSettings, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, Project, ProjectLaunchConfig, ProjectOpenProfile, RadarCategory, RadarDuplicateGroup, RadarItem, Skill, SkillCategory, SkillVersionSource, ToolKey, ToolTarget, ViewKey } from "./lib/types/domain";
 
 const views: Array<{ key: ViewKey; label: string; icon: JSX.Element }> = [
   { key: "projects", label: "项目", icon: <Box size={16} /> },
@@ -43,6 +62,25 @@ const views: Array<{ key: ViewKey; label: string; icon: JSX.Element }> = [
 
 const radarDomains = ["未分类", "Skills", "Agent", "RAG", "AI 基础", "开发工具", "文档工具", "算法与数据结构", "教程与资源", "前端开发", "Android 开发", "桌面应用", "音视频工具", "安全与网络", "其他"];
 const updateNoticeStorageKey = "workbench-update-notice-version";
+const toolIconSources: Record<string, string> = {
+  codex: codexIcon,
+  claude: claudeCodeIcon,
+  opencode: opencodeIcon,
+  deveco: devecoIcon,
+  hermes: hermesIcon,
+  kimi: kimiIcon,
+  pi: piIcon,
+  gemini: geminiIcon,
+  qwen: qwenIcon,
+  goose: gooseIcon,
+  kilo: kiloIcon,
+  cline: clineIcon,
+  roo: rooIcon,
+  factory: factoryIcon,
+  amp: ampIcon,
+  kiro: kiroIcon,
+  junie: junieIcon
+};
 
 type ToastState = {
   message: string;
@@ -72,13 +110,14 @@ export function App() {
   const [loadError, setLoadError] = useState("");
   const [toast, setToast] = useState<ToastState | null>(null);
   const toastTimerRef = useRef<number | null>(null);
-  const [activeDialog, setActiveDialog] = useState<"project" | "project-open-profile" | "project-open-profile-delete" | "skills-import" | "skill-delete" | "skill-categories" | "radar" | "radar-delete" | "app-update" | null>(null);
+  const [activeDialog, setActiveDialog] = useState<"project" | "project-open-profile" | "project-open-profile-delete" | "skills-import" | "skill-delete" | "skill-categories" | "radar" | "radar-delete" | "app-update" | "create-directory" | null>(null);
   const [editingProjectId, setEditingProjectId] = useState("");
   const [editingProjectOpenProfileId, setEditingProjectOpenProfileId] = useState("");
   const [deleteProjectOpenProfileId, setDeleteProjectOpenProfileId] = useState("");
   const [editingRadarId, setEditingRadarId] = useState("");
   const [importResults, setImportResults] = useState<ImportResult[]>([]);
   const [deleteSkillId, setDeleteSkillId] = useState("");
+  const [createDirectoryPath, setCreateDirectoryPath] = useState("");
   const [syncingGithubStars, setSyncingGithubStars] = useState(false);
 
   useEffect(() => {
@@ -198,6 +237,20 @@ export function App() {
       showToast(success);
     } catch (error) {
       showToast(String(error));
+    }
+  }
+
+  async function openPathOrPromptCreate(path: string) {
+    try {
+      await workbenchApi.openLocalPath(path);
+    } catch (error) {
+      const message = String(error);
+      if (message.includes("路径不存在")) {
+        setCreateDirectoryPath(path);
+        setActiveDialog("create-directory");
+        return;
+      }
+      showToast(message);
     }
   }
 
@@ -515,6 +568,7 @@ export function App() {
                 () =>
                   Promise.all(
                     settings.toolTargets
+                      .filter((tool) => tool.supportsProjectScope)
                       .filter((tool) => {
                         const isEnabled = selectedSkill.enabledProjects.some(
                           (entry) => entry.projectPath === project.path && entry.tool === tool.key
@@ -609,7 +663,8 @@ export function App() {
             onOpenUpdateDetails={openUpdateDialog}
             onThemeToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
             onRootChange={(path) => void runSkillAction(() => workbenchApi.setSkillsRoot(path), "Skills 根目录已更新")}
-            onOpenPath={(path) => void workbenchApi.openLocalPath(path).catch((error) => showToast(String(error)))}
+            onReorderToolTargets={(toolKeys) => void runSkillAction(() => workbenchApi.setToolTargetOrder(toolKeys), "工具展示顺序已更新")}
+            onOpenPath={(path) => void openPathOrPromptCreate(path)}
             onAddProjectOpenProfile={() => {
               setEditingProjectOpenProfileId("");
               setActiveDialog("project-open-profile");
@@ -647,6 +702,21 @@ export function App() {
         </div>
       )}
       {activeDialog === "app-update" && <AppUpdateDialog onClose={() => setActiveDialog(null)} />}
+      {activeDialog === "create-directory" && (
+        <CreateDirectoryDialog
+          path={createDirectoryPath}
+          onClose={() => {
+            setActiveDialog(null);
+            setCreateDirectoryPath("");
+          }}
+          onConfirm={() => {
+            const path = createDirectoryPath;
+            setActiveDialog(null);
+            setCreateDirectoryPath("");
+            void runSkillAction(() => workbenchApi.createAndOpenDirectory(path), "目录已创建");
+          }}
+        />
+      )}
       {activeDialog === "project" && (
         <ProjectDialog
           project={projects.find((project) => project.id === editingProjectId)}
@@ -1662,8 +1732,8 @@ export function SkillsView({
   onImport: (kind: "zip" | "folder") => Promise<void>;
   onRefresh: () => void;
   onManageCategories: () => void;
-  onToggle: (tool: ToolTarget["key"], enabled: boolean, project?: Project) => void;
-  onToggleSkillGlobal: (directoryName: string, tool: ToolTarget["key"], enabled: boolean) => void;
+  onToggle: (tool: ToolKey, enabled: boolean, project?: Project) => void;
+  onToggleSkillGlobal: (directoryName: string, tool: ToolKey, enabled: boolean) => void;
   onToggleProjectAll: (project: Project, enabled: boolean) => void;
   onCategorySkill: (directoryName: string, categoryId: string) => void;
   onCreateCategorySkill: (directoryName: string, name: string) => void;
@@ -1673,10 +1743,11 @@ export function SkillsView({
   const [query, setQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("全部分类");
   const [statusFilter, setStatusFilter] = useState("全部状态");
-  const [toolFilter, setToolFilter] = useState<ToolTarget["key"] | "全部工具">("全部工具");
+  const [toolFilter, setToolFilter] = useState<ToolKey | "全部工具">("全部工具");
   const [projectFilter, setProjectFilter] = useState("全部项目");
   const [importMenuOpen, setImportMenuOpen] = useState(false);
   const categories = ["全部分类", ...skillCategories.map((category) => category.name)];
+  const projectToolTargets = settings.toolTargets.filter((tool) => tool.supportsProjectScope);
   const visibleSkills = skills.filter((skill) => {
     const normalizedQuery = query.trim().toLowerCase();
     const matchesQuery =
@@ -1731,7 +1802,7 @@ export function SkillsView({
           <option value="全部项目">全部项目</option>
           {projects.map((project) => <option key={project.path} value={project.path}>{project.name}</option>)}
         </select>
-        <select aria-label="按启用工具筛选 Skills" value={toolFilter} onChange={(event) => setToolFilter(event.target.value as ToolTarget["key"] | "全部工具")}>
+        <select aria-label="按启用工具筛选 Skills" value={toolFilter} onChange={(event) => setToolFilter(event.target.value as ToolKey | "全部工具")}>
           <option value="全部工具">全部工具</option>
           {settings.toolTargets.map((tool) => <option key={tool.key} value={tool.key}>{tool.name}</option>)}
         </select>
@@ -1804,7 +1875,7 @@ export function SkillsView({
                 <div className="project-skill-head">
                   <span><strong>{project.name}</strong><small>{project.path}</small></span>
                   <SwitchControl
-                    checked={settings.toolTargets.every((tool) =>
+                    checked={projectToolTargets.length > 0 && projectToolTargets.every((tool) =>
                       selectedSkill.enabledProjects.some(
                         (entry) => entry.projectPath === project.path && entry.tool === tool.key
                       )
@@ -1814,7 +1885,7 @@ export function SkillsView({
                   />
                 </div>
                 <div className="project-tool-toggles">
-                  {settings.toolTargets.map((tool) => {
+                  {projectToolTargets.map((tool) => {
                     const enablement = selectedSkill.enabledProjects.find(
                       (entry) => entry.projectPath === project.path && entry.tool === tool.key
                     );
@@ -1866,28 +1937,57 @@ function GlobalToolIcons({
 }: {
   skill: Skill;
   tools: ToolTarget[];
-  onToggle: (tool: ToolTarget["key"], enabled: boolean) => void;
+  onToggle: (tool: ToolKey, enabled: boolean) => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
+  const visibleTools = tools.slice(0, 6);
+  const hiddenTools = tools.slice(6);
+  const renderToolButton = (tool: ToolTarget) => {
+    const state = skill.globalToolStates.find((entry) => entry.tool === tool.key);
+    const enabled = state?.status === "managed";
+    const conflict = state?.status === "conflict";
+    return (
+      <button
+        className={`${enabled ? "managed" : ""} ${conflict ? "conflict" : ""}`}
+        key={tool.key}
+        title={`${tool.name} · ${globalStatusLabel(state)}`}
+        onClick={(event) => {
+          event.stopPropagation();
+          if (!conflict) onToggle(tool.key, !enabled);
+        }}
+      >
+        <ToolIcon tool={tool.key} />
+      </button>
+    );
+  };
+
   return (
     <span className="tool-icons">
-      {tools.map((tool) => {
-        const state = skill.globalToolStates.find((entry) => entry.tool === tool.key);
-        const enabled = state?.status === "managed";
-        const conflict = state?.status === "conflict";
-        return (
+      {visibleTools.map(renderToolButton)}
+      {hiddenTools.length > 0 && (
+        <span className="tool-more">
           <button
-            className={`${enabled ? "managed" : ""} ${conflict ? "conflict" : ""}`}
-            key={tool.key}
-            title={`${tool.name} · ${globalStatusLabel(state)}`}
+            className="more"
+            title="显示全部工具"
             onClick={(event) => {
               event.stopPropagation();
-              if (!conflict) onToggle(tool.key, !enabled);
+              setExpanded((current) => !current);
             }}
           >
-            <ToolIcon tool={tool.key} />
+            +{hiddenTools.length}
           </button>
-        );
-      })}
+          {expanded && (
+            <span className="tool-more-popover" onClick={(event) => event.stopPropagation()}>
+              {tools.map((tool) => (
+                <span className="tool-more-row" key={tool.key}>
+                  {renderToolButton(tool)}
+                  <small>{tool.name}</small>
+                </span>
+              ))}
+            </span>
+          )}
+        </span>
+      )}
     </span>
   );
 }
@@ -2431,6 +2531,7 @@ export function SettingsView({
   onOpenUpdateDetails,
   onThemeToggle,
   onRootChange,
+  onReorderToolTargets,
   onOpenPath,
   onAddProjectOpenProfile,
   onEditProjectOpenProfile,
@@ -2441,11 +2542,20 @@ export function SettingsView({
   onOpenUpdateDetails: () => void;
   onThemeToggle: () => void;
   onRootChange: (path: string) => void;
+  onReorderToolTargets: (toolKeys: ToolKey[]) => void;
   onOpenPath: (path: string) => void;
   onAddProjectOpenProfile: () => void;
   onEditProjectOpenProfile: (profile: ProjectOpenProfile) => void;
   onDeleteProjectOpenProfile: (profile: ProjectOpenProfile) => void;
 }) {
+  const moveToolTarget = (index: number, direction: -1 | 1) => {
+    const nextIndex = index + direction;
+    if (nextIndex < 0 || nextIndex >= settings.toolTargets.length) return;
+    const nextTools = [...settings.toolTargets];
+    [nextTools[index], nextTools[nextIndex]] = [nextTools[nextIndex], nextTools[index]];
+    onReorderToolTargets(nextTools.map((tool) => tool.key));
+  };
+
   return (
     <section className="view">
       <PageHeader title="设置" description="管理本地路径、工具目录与主题" />
@@ -2474,11 +2584,13 @@ export function SettingsView({
         </section>
         <section className="settings-panel">
           <h2>支持的工具目录</h2>
-          <p>Workbench 通过符号链接为以下工具启用 Skills。</p>
-          {settings.toolTargets.map((tool) => (
+          <p>Workbench 通过符号链接为以下工具启用 Skills，展示顺序会影响 Skills 表格的全局工具列。</p>
+          {settings.toolTargets.map((tool, index) => (
             <div className="settings-row" key={tool.key}>
               <span><strong>{tool.name}</strong><small>{tool.globalSkillsDir}</small></span>
               <span className="settings-row-actions">
+                <IconButton title={`上移 ${tool.name}`} disabled={index === 0} onClick={() => moveToolTarget(index, -1)}><ArrowUp size={15} /></IconButton>
+                <IconButton title={`下移 ${tool.name}`} disabled={index === settings.toolTargets.length - 1} onClick={() => moveToolTarget(index, 1)}><ArrowDown size={15} /></IconButton>
                 <IconButton title={`打开 ${tool.name} Skills 目录`} onClick={() => onOpenPath(tool.globalSkillsDir)}><FolderOpen size={15} /></IconButton>
                 <StatusBadge tone={tool.available ? "accent" : "neutral"}>{tool.available ? "可用" : "不可用"}</StatusBadge>
               </span>
@@ -2652,7 +2764,32 @@ function DeleteProjectOpenProfileDialog({
   );
 }
 
-function ToolIcon({ tool }: { tool: ToolTarget["key"] }) {
+function CreateDirectoryDialog({
+  path,
+  onClose,
+  onConfirm
+}: {
+  path: string;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Modal
+      title="创建目录"
+      description="目标目录当前不存在。"
+      onClose={onClose}
+      footer={<><Button onClick={onClose}>取消</Button><Button variant="primary" onClick={onConfirm}>创建并打开</Button></>}
+    >
+      <div className="notice">是否创建对应的 Skills 目录？</div>
+      <div className="file-block"><span>目录路径</span><code>{path}</code></div>
+    </Modal>
+  );
+}
+
+function ToolIcon({ tool }: { tool: ToolKey }) {
+  const source = toolIconSources[tool];
+  if (source) return <img src={source} alt="" aria-hidden="true" />;
+
   if (tool === "claude") {
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -2667,6 +2804,10 @@ function ToolIcon({ tool }: { tool: ToolTarget["key"] }) {
         <path d="M180 60H60V240H180V60ZM240 300H0V0H240V300Z" />
       </svg>
     );
+  }
+
+  if (tool !== "codex") {
+    return <span aria-hidden="true">{tool.slice(0, 2).toUpperCase()}</span>;
   }
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -2947,7 +3088,7 @@ function skillMatchesStatusFilter(skill: Skill, filter: string) {
 
 function skillMatchesToolProjectFilter(
   skill: Skill,
-  toolFilter: ToolTarget["key"] | "全部工具",
+  toolFilter: ToolKey | "全部工具",
   projectFilter: string
 ) {
   const hasToolFilter = toolFilter !== "全部工具";

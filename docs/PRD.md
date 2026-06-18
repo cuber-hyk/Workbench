@@ -90,7 +90,7 @@ Workbench 使用统一 Skills 根目录保存所有 Skills。该目录是 Skills
 - 扫描全局工具目录中的同名 Skill。
 - 全局工具目录中同名 Skill 与 Workbench 根目录内容一致时，自动登记为 Workbench 管理。
 - 全局工具目录中同名 Skill 与 Workbench 根目录内容不一致时，标记为冲突。
-- 冲突由用户在 `.workbench`、`.codex`、`.claude`、`.opencode` 的可用版本中选择一个唯一版本源解决。
+- 冲突由用户在 `.workbench` 和所有存在版本的全局工具目录中选择一个唯一版本源解决。
 - 解决冲突前备份被替换版本到 `~/.workbench/backups/skills/<timestamp>/<tool>/<skill>`。
 - 应用冲突解决后，选中的版本成为 Workbench 根目录中的唯一真实副本，已存在的全局工具目录统一重新同步。
 - 删除 Skill 时删除统一根目录中的 Skill、分类记录和 Workbench 管理的启用记录。
@@ -100,6 +100,9 @@ Workbench 使用统一 Skills 根目录保存所有 Skills。该目录是 Skills
 - 每个 Skill 只能属于一个分类。
 - 按分类、启用状态、启用工具和启用项目筛选 Skills。
 - 工具筛选同时包含全局启用和项目级启用。
+- 全局启用支持 Codex、Claude Code、OpenCode、DevEco Code、Hermes、Kimi Code、Pi Agent、Gemini CLI、Qwen Code、Goose、Kilo Code、Cline、Roo Code、Factory Droid、Amp、Kiro CLI 和 Junie CLI。
+- 项目级启用当前只支持 Codex、Claude Code 和 OpenCode；其他工具先作为全局 Skills 目标管理。
+- Skills 列表中的全局工具列按用户设置顺序展示前 6 个工具和 `+N` 浮层。
 - 在 Skills 列表中通过分类下拉选择已有分类或创建新分类。
 - 未分类 Skill 统一归入“未分类”。
 - “未分类”是系统分类，始终存在且不可删除。
@@ -146,6 +149,8 @@ Workbench 使用统一 Skills 根目录保存所有 Skills。该目录是 Skills
 - 打开 Workbench 根目录、SQLite 数据库所在目录和 Skills 根目录。
 - 管理 Workbench Skills 根目录。
 - 查看支持的工具及其全局 Skills 目录。
+- 调整 Skills 列表中全局工具的展示顺序。
+- 打开不存在的工具 Skills 目录时，先确认是否创建对应目录。
 - 展示 Skills 路径映射关系。
 - 管理主题偏好。
 
