@@ -6,8 +6,11 @@
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-06-18
+
 ### Added
 
+- 关闭主窗口默认隐藏到托盘并首次提示；设置页可切换为退出应用，托盘菜单支持显示 Workbench 和退出应用。
 - Skills 全局启用扩展支持 DevEco Code、Hermes、Kimi Code、Pi Agent、Gemini CLI、Qwen Code、Goose、Kilo Code、Cline、Roo Code、Factory Droid、Amp、Kiro CLI 和 Junie CLI，并在设置页支持调整全局工具展示顺序。
 - Skills 增加按启用工具和启用项目筛选；工具筛选同时覆盖全局启用和项目级启用。
 - Skills 增加分类实体表和分类管理弹窗，支持新增、重命名、删除迁移和合并分类。

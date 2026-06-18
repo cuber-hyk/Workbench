@@ -2,9 +2,57 @@ mod projects;
 mod radar;
 mod skills;
 
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::TrayIconBuilder;
+use tauri::{AppHandle, Manager};
+
 #[tauri::command]
 fn app_health() -> &'static str {
     "ok"
+}
+
+#[tauri::command]
+fn hide_main_window(app: AppHandle) -> Result<(), String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "无法获取主窗口".to_string())?;
+    window.hide().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn exit_app(app: AppHandle) {
+    app.exit(0);
+}
+
+fn show_main_window(app: &AppHandle) -> Result<(), String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "无法获取主窗口".to_string())?;
+    window.show().map_err(|error| error.to_string())?;
+    window.set_focus().map_err(|error| error.to_string())
+}
+
+fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let show = MenuItem::with_id(app, "show", "显示 Workbench", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "退出应用", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&show, &quit])?;
+    let icon = app.default_window_icon().cloned();
+    let mut tray = TrayIconBuilder::new()
+        .menu(&menu)
+        .show_menu_on_left_click(true)
+        .tooltip("Workbench App")
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            "show" => {
+                let _ = show_main_window(app);
+            }
+            "quit" => app.exit(0),
+            _ => {}
+        });
+    if let Some(icon) = icon {
+        tray = tray.icon(icon);
+    }
+    tray.build(app)?;
+    Ok(())
 }
 
 pub fn run() {
@@ -13,8 +61,11 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .setup(setup_tray)
         .invoke_handler(tauri::generate_handler![
             app_health,
+            hide_main_window,
+            exit_app,
             projects::list_projects,
             projects::launch_project,
             projects::restart_launch_session,
@@ -37,6 +88,8 @@ pub fn run() {
             radar::sync_github_stars,
             skills::get_skills_state,
             skills::set_skills_root,
+            skills::set_close_behavior,
+            skills::set_close_tray_hint_dismissed,
             skills::set_tool_target_order,
             skills::set_skill_category,
             skills::create_skill_category,

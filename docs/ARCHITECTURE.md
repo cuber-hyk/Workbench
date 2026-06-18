@@ -454,11 +454,34 @@ Workbench/
 
 - `skills_root`
 - `tool_target_order`
+- `close_behavior`
+- `close_tray_hint_dismissed`
 - `project_open_profiles_seeded`
 
 `tool_target_order` 只影响 Skills 表格和设置页中的展示顺序，不改变工具目录路径或启用数据所有权。
 
+`close_behavior` 控制主窗口关闭请求的处理方式，取值为 `exit` 或 `hide_to_tray`。默认值为 `hide_to_tray`。
+
+`close_tray_hint_dismissed` 记录隐藏到托盘首次提示是否已经确认，默认值为 `false`。
+
 ## 7. 关键流程
+
+### 7.0 关闭窗口
+
+流程：
+
+1. 前端通过 Tauri window API 监听主窗口关闭请求。
+2. 当前 `close_behavior` 为 `exit` 时，前端调用 `exit_app` 命令，后端退出进程。
+3. 当前 `close_behavior` 为 `hide_to_tray` 且 `close_tray_hint_dismissed` 为 `false` 时，前端阻止默认关闭并展示一次性托盘提示。
+4. 用户确认托盘提示后，前端调用 `set_close_tray_hint_dismissed` 写入设置，再调用 `hide_main_window` 命令隐藏主窗口。
+5. 后续关闭窗口时，前端直接调用 `hide_main_window` 命令。
+6. 托盘菜单提供“显示 Workbench”和“退出应用”，分别恢复主窗口或退出进程。
+
+边界：
+
+- 最小化按钮保持系统默认行为，不进入托盘。
+- 隐藏到托盘不启动后台任务，只保持应用进程和托盘入口。
+- 退出应用是显式进程退出，不保留窗口恢复状态。
 
 ### 7.1 保存项目
 

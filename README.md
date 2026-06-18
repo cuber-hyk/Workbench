@@ -1,68 +1,74 @@
 # Workbench App
 
-Workbench App 是一个本地优先的 AI 开发工作台，用于统一管理本地开发项目、Skills 和 AI Radar 信息。
+Workbench App 是一个本地优先的 AI 开发工作台，用于集中管理本机开发项目、Skills、资源 Radar 和常用 Agent 工具入口。
 
-项目目标是逐步构建一个独立桌面软件，作为个人 AI 开发操作台。现有项目仅作为功能与业务设计参考，不合并代码，也不组成 monorepo。
+它不是某个编辑器插件，也不是云端协作平台；它面向长期在本机维护多个项目、多个 Coding Agent 和多套 Skills 的个人开发者，目标是把分散在目录、终端、配置文件和浏览器收藏里的开发资产收拢到一个可见、可控、可恢复的桌面工作台。
 
-## 当前状态
+## 产品预览
 
-项目已完成第一阶段基础能力验证，当前进入进阶开发阶段。项目管理、Skills 管理和 AI Radar 已接入真实本地后端。
+### 项目工作台
 
-已完成：
+管理本地项目、启动配置和本次启动会话。项目启动日志保留在当前应用运行期间，适合快速查看开发服务是否正常启动。
 
-- Tauri + React + TypeScript + Vite 正式工程骨架。
-- 项目、Skills、AI Radar、设置四个模块页面。
-- 固定左侧导航与列表详情工作区。
-- 浅色和深色主题。
-- 添加项目、导入 Skills、添加 Radar 条目的 UI 弹窗。
-- 前端领域类型与 mock API adapter。
-- Tauri 桌面应用构建与启动验证。
-- Skills 统一根目录扫描、分类、ZIP / 文件夹导入。
-- Skills 全局与项目级 Auto 启用，优先 Symlink，失败时使用 Copy。
-- Skills 全局工具目录状态扫描、自动同步和 Skill 级冲突解决。
-- Skills 删除及 Workbench 受管启用清理。
-- Skills 设置与启用关系的 SQLite 持久化。
-- 项目启动项可通过 Tauri 后端在 Workbench 内创建非交互式启动会话，并在项目模块内查看本次启动日志详情。
-- 项目列表、标签、备注和启动配置的 SQLite 持久化。
-- 项目支持归档和恢复，归档只影响 Workbench 本地记录，不移动或删除项目目录。
-- AI Radar 增删改查、搜索筛选、收藏和打开链接。
-- AI Radar 的 SQLite 数据持久化。
+![项目工作台](docs/assets/readme/projects.png)
 
-项目、Skills 和 AI Radar 页面在 Tauri 桌面应用中使用真实本地数据。Web UI 预览继续使用 mock data。
+### Skills 管理
 
-## 当前模块
+以统一根目录保存 Skills 的唯一真实副本，并按工具、项目和分类管理启用状态。
 
-### 项目
+![Skills 管理](docs/assets/readme/skills.png)
 
-- 管理本地项目基本信息。
-- 记录项目路径、标签、备注和启动配置。
-- 通过按钮为所有启用启动项创建本次内嵌启动会话。
-- 在启动日志详情页中按“全部”或单个启动项查看本次输出。
-- 归档暂时不用的项目，并可随时恢复。
+## 核心能力
 
-### Skills
+### 项目管理
 
-- 使用统一 Skills 根目录保存唯一真实副本。
-- 支持分类、搜索和详情查看。
-- 支持通过系统选择器从 ZIP / 已解压文件夹导入多个 Skills。
-- 通过 Auto 同步为全局工具或指定项目启用 Skill。
-- 支持扫描全局工具目录中已有的同名 Skill；内容一致时自动登记为 Workbench 管理，内容冲突时通过选择唯一版本源解决。
-- 支持删除 Skill，并清理 Workbench 管理的启用记录和受管目标。
-- 默认统一根目录为 `~/.workbench/skills`。
+- 添加和维护本地项目路径、标签、备注和归档状态。
+- 为项目配置一个或多个启动项。
+- 通过 Workbench 创建非交互式内嵌启动会话，并查看本次启动日志。
+- 使用全局项目打开方式 Profiles，从项目列表快速打开 VS Code、PowerShell、Claude Code 等外部工具。
+- 归档项目只影响 Workbench 本地记录，不移动、不删除项目目录。
 
-### AI Radar
+### Skills 管理
 
-- 本地维护项目、资讯、论文和其他 AI 信息条目。
-- 支持搜索、筛选、收藏和详情查看。
-- 当前支持手动维护和 GitHub Stars 手动同步；更多导入来源、后台采集和自动化入口属于后续方向。
+- 使用统一 Skills 根目录保存唯一真实副本，默认路径为 `~/.workbench/skills`。
+- 扫描、搜索、分类、导入和删除 Skills。
+- 支持 ZIP 文件或已解压文件夹导入多个 Skills。
+- 通过 Auto 同步为全局工具或指定项目启用 Skill：优先 Symlink，失败时回退 Copy。
+- 扫描全局工具目录中的同名 Skill；内容一致时自动登记为 Workbench 管理，内容冲突时由用户选择唯一版本源解决。
+- 支持 Codex、Claude Code、OpenCode、DevEco Code、Hermes、Kimi Code、Pi Agent、Gemini CLI、Qwen Code、Goose、Kilo Code、Cline、Roo Code、Factory Droid、Amp、Kiro CLI 和 Junie CLI 的全局 Skills 目录管理。
+- 项目级 Skills 当前支持 Codex、Claude Code 和 OpenCode。
 
-### 设置
+### 资源 Radar
 
-- 展示本地数据目录。
-- 打开 Workbench 根目录、SQLite 数据库所在目录和 Skills 根目录。
-- 管理 Skills 根目录和工具目录。
-- 展示 Skills 路径映射。
-- 切换浅色和深色主题。
+- 本地维护项目、资讯、论文和其他开发资源。
+- 支持搜索、筛选、收藏、编辑、删除和打开链接。
+- 支持从当前 `gh` CLI 账号手动同步 GitHub Stars。
+- GitHub Stars 同步不会覆盖用户维护的分类、领域、标签、备注和收藏状态。
+- 多条手动资源匹配同一个 GitHub 仓库时进入待合并重复组，由用户选择主资源。
+
+### 设置与应用行为
+
+- 查看和打开 Workbench 本地数据目录、SQLite 数据库目录和 Skills 根目录。
+- 管理支持工具的全局 Skills 目录。
+- 调整 Skills 列表中的全局工具展示顺序。
+- 打开不存在的工具目录时，可确认创建对应目录。
+- 支持浅色和深色主题。
+- 关闭主窗口默认隐藏到系统托盘并首次提示；设置页可切换为关闭窗口时退出应用。
+
+## 数据边界
+
+Workbench 是本地优先应用。当前数据默认保存在本机：
+
+- SQLite 数据库：`~/.workbench/workbench.sqlite`
+- Workbench Skills 根目录：`~/.workbench/skills`
+
+重要边界：
+
+- 不上传项目、Skills 或资源数据。
+- 不覆盖、不合并用户已有的外部 Skills 目录内容。
+- 停用 Skill 时只移除 Workbench 记录的符号链接或完整副本。
+- 删除 Skill 不删除未被 Workbench 管理的工具目录内容。
+- 项目启动日志只保存在当前应用运行期间，不作为历史日志持久化。
 
 ## 技术栈
 
@@ -100,12 +106,6 @@ pnpm dev
 pnpm tauri:dev
 ```
 
-构建前端：
-
-```bash
-pnpm build
-```
-
 运行统一验证：
 
 ```bash
@@ -129,6 +129,12 @@ pnpm tauri build
 - `src-tauri/target/release/workbench-app.exe`
 - `src-tauri/target/release/bundle/`
 
+## 发布说明
+
+应用更新基于 GitHub Releases 和 Tauri updater。发布带自动更新能力的版本时，必须生成安装包、签名文件和 `latest.json`。
+
+签名密钥路径记录在 [AGENTS.md](AGENTS.md) 和 [应用更新能力文档](docs/capabilities/app-update.md)。不要把私钥或密码写入仓库，也不要在终端输出私钥内容。
+
 ## 项目结构
 
 ```text
@@ -137,17 +143,15 @@ Workbench/
 ├─ CONTEXT.md
 ├─ docs/
 │  ├─ ai/
-│  ├─ adr/
-│  ├─ audits/
+│  ├─ assets/
 │  ├─ capabilities/
 │  ├─ plans/
 │  ├─ ARCHITECTURE.md
 │  └─ PRD.md
 ├─ src/
 │  ├─ components/
+│  ├─ contexts/
 │  ├─ lib/
-│  │  ├─ api/
-│  │  └─ types/
 │  ├─ App.tsx
 │  ├─ main.tsx
 │  └─ styles.css
@@ -155,41 +159,16 @@ Workbench/
 │  ├─ src/
 │  ├─ Cargo.toml
 │  └─ tauri.conf.json
-├─ UI/
 ├─ DESIGN.md
 ├─ design-tokens.json
 └─ package.json
 ```
 
-- `src/`：正式 React 前端。
-- `src-tauri/`：Tauri 和 Rust 本地能力。
-- `UI/`：讨论用静态原型，不是正式构建入口。
-- `AGENTS.md`：项目级 Agent 工作规则。
-- `CONTEXT.md`：当前阶段、模块状态和关键边界。
-- `docs/PRD.md`：产品范围与验收标准。
-- `docs/ARCHITECTURE.md`：技术架构、模块边界和数据模型。
-- `docs/ai/context-map.md`：长期上下文索引。
-- `DESIGN.md`：已确认的 UI 设计规则。
-- `design-tokens.json`：设计 token 精确值。
-
-## 设计与开发原则
-
-- 本地优先。
-- 独立软件。
-- 简单优先。
-- 单一实现优先。
-- 外科手术式修改。
-- 不覆盖或删除用户已有的 Skills 内容。
-- 归档项目只更新 Workbench 数据库记录，不触碰本地项目目录。
-- Skills 默认使用 Auto 同步，优先 Symlink，权限不足时自动使用 Copy。
-- 目标位置已有内容时不覆盖；停用时只移除 Workbench 记录的链接或副本。
-- 工具目录同名 Skill 内容冲突只在用户明确选择唯一版本源后解决，替换前会备份。
-- 删除 Skill 不删除未被 Workbench 管理的工具目录内容。
-
-## 文档
+## 文档入口
 
 - [产品需求文档](docs/PRD.md)
 - [架构说明](docs/ARCHITECTURE.md)
 - [设计系统](DESIGN.md)
-- [第一阶段验证报告](docs/audits/archived/2026-06-14-first-stage-verification.md)
+- [项目上下文](CONTEXT.md)
+- [文档索引](docs/ai/context-map.md)
 - [变更记录](CHANGELOG.md)

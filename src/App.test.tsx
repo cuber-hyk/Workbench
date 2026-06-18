@@ -80,6 +80,8 @@ const projectOpenProfiles: ProjectOpenProfile[] = [
 const appSettings: AppSettings = {
   workbenchRoot: "C:\\Users\\dev\\.workbench",
   skillsRoot: "C:\\Users\\dev\\.workbench\\skills",
+  closeBehavior: "hide_to_tray",
+  closeTrayHintDismissed: false,
   projectOpenProfiles,
   toolTargets: [
     {
@@ -654,6 +656,7 @@ describe("Workbench UI interactions", () => {
         onThemeToggle={vi.fn()}
         onRootChange={vi.fn()}
         onReorderToolTargets={vi.fn()}
+        onCloseBehaviorChange={vi.fn()}
         onOpenPath={vi.fn()}
         onAddProjectOpenProfile={onAddProjectOpenProfile}
         onEditProjectOpenProfile={onEditProjectOpenProfile}
@@ -683,6 +686,7 @@ describe("Workbench UI interactions", () => {
         onThemeToggle={vi.fn()}
         onRootChange={vi.fn()}
         onReorderToolTargets={onReorderToolTargets}
+        onCloseBehaviorChange={vi.fn()}
         onOpenPath={vi.fn()}
         onAddProjectOpenProfile={vi.fn()}
         onEditProjectOpenProfile={vi.fn()}
@@ -693,6 +697,30 @@ describe("Workbench UI interactions", () => {
     await user.click(screen.getByRole("button", { name: "下移 Codex" }));
 
     expect(onReorderToolTargets).toHaveBeenCalledWith(["claude", "codex", "opencode"]);
+  });
+
+  it("updates close behavior from settings", async () => {
+    const user = userEvent.setup();
+    const onCloseBehaviorChange = vi.fn();
+    renderWithUpdateProvider(
+      <SettingsView
+        settings={skillsSettings}
+        theme="dark"
+        onOpenUpdateDetails={vi.fn()}
+        onThemeToggle={vi.fn()}
+        onRootChange={vi.fn()}
+        onReorderToolTargets={vi.fn()}
+        onCloseBehaviorChange={onCloseBehaviorChange}
+        onOpenPath={vi.fn()}
+        onAddProjectOpenProfile={vi.fn()}
+        onEditProjectOpenProfile={vi.fn()}
+        onDeleteProjectOpenProfile={vi.fn()}
+      />
+    );
+
+    await user.selectOptions(screen.getByLabelText("关闭窗口时"), "exit");
+
+    expect(onCloseBehaviorChange).toHaveBeenCalledWith("exit");
   });
 
   it("tracks active launch sessions for multiple projects at the same time", () => {
@@ -1362,7 +1390,7 @@ describe("Workbench UI interactions", () => {
     );
 
     const globalRow = screen.getByRole("group", { name: "global-codex Skill" });
-    await user.click(within(globalRow).getByRole("button", { name: "+1" }));
+    await user.click(within(globalRow).getByRole("button", { name: "+3" }));
     await user.click(within(globalRow).getByTitle("Pi Agent · 未启用"));
 
     expect(within(globalRow).getByText("Pi Agent")).toBeInTheDocument();

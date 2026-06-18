@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   Archive,
   ArchiveRestore,
@@ -51,7 +52,7 @@ import { UpdateBadge } from "./components/UpdateBadge";
 import { ActionGroup, Button, ConfirmDeleteModal, DetailHeader, FilterMore, IconButton, Modal, PageHeader, Panel, SearchInput, StatusBadge, TagList, Toolbar } from "./components/ui";
 import { useAppUpdate } from "./contexts/AppUpdateContext";
 import { workbenchApi } from "./lib/api/workbenchApi";
-import type { AppSettings, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, Project, ProjectLaunchConfig, ProjectOpenProfile, RadarCategory, RadarDuplicateGroup, RadarItem, Skill, SkillCategory, SkillVersionSource, ToolKey, ToolTarget, ViewKey } from "./lib/types/domain";
+import type { AppSettings, CloseBehavior, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, Project, ProjectLaunchConfig, ProjectOpenProfile, RadarCategory, RadarDuplicateGroup, RadarItem, Skill, SkillCategory, SkillVersionSource, ToolKey, ToolTarget, ViewKey } from "./lib/types/domain";
 
 const views: Array<{ key: ViewKey; label: string; icon: JSX.Element }> = [
   { key: "projects", label: "项目", icon: <Box size={16} /> },
@@ -110,7 +111,7 @@ export function App() {
   const [loadError, setLoadError] = useState("");
   const [toast, setToast] = useState<ToastState | null>(null);
   const toastTimerRef = useRef<number | null>(null);
-  const [activeDialog, setActiveDialog] = useState<"project" | "project-open-profile" | "project-open-profile-delete" | "skills-import" | "skill-delete" | "skill-categories" | "radar" | "radar-delete" | "app-update" | "create-directory" | null>(null);
+  const [activeDialog, setActiveDialog] = useState<"project" | "project-open-profile" | "project-open-profile-delete" | "skills-import" | "skill-delete" | "skill-categories" | "radar" | "radar-delete" | "app-update" | "create-directory" | "tray-hint" | null>(null);
   const [editingProjectId, setEditingProjectId] = useState("");
   const [editingProjectOpenProfileId, setEditingProjectOpenProfileId] = useState("");
   const [deleteProjectOpenProfileId, setDeleteProjectOpenProfileId] = useState("");
@@ -136,6 +137,20 @@ export function App() {
   const openUpdateDialog = useCallback(() => {
     setActiveDialog("app-update");
   }, []);
+
+  useEffect(() => {
+    if (!("__TAURI_INTERNALS__" in window) || !settings) return;
+    let unlisten: (() => void) | undefined;
+    void getCurrentWindow().onCloseRequested((event) => {
+      event.preventDefault();
+      void handleWindowCloseRequest();
+    }).then((listener) => {
+      unlisten = listener;
+    });
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, [settings?.closeBehavior]);
 
   useEffect(() => {
     setLoading(true);
@@ -198,6 +213,48 @@ export function App() {
     }
     setToast({ message, actionLabel: options?.actionLabel, onAction: options?.onAction });
     toastTimerRef.current = window.setTimeout(() => setToast(null), options?.duration ?? 1800);
+  }
+
+  async function executeCloseBehavior(behavior: CloseBehavior) {
+    if (behavior === "hide_to_tray") {
+      await workbenchApi.hideMainWindow();
+      return;
+    }
+    await workbenchApi.exitApp();
+  }
+
+  async function handleWindowCloseRequest() {
+    if (!settings) return;
+    if (settings.closeBehavior === "exit") {
+      try {
+        await executeCloseBehavior("exit");
+      } catch (error) {
+        showToast(String(error));
+      }
+      return;
+    }
+    if (!settings.closeTrayHintDismissed) {
+      setActiveDialog("tray-hint");
+      return;
+    }
+    try {
+      await executeCloseBehavior("hide_to_tray");
+    } catch (error) {
+      showToast(String(error));
+    }
+  }
+
+  async function confirmTrayHint() {
+    try {
+      const state = await workbenchApi.setCloseTrayHintDismissed(true);
+      setSettings(state.settings);
+      setSkills(state.skills);
+      setSkillCategories(state.categories);
+      setActiveDialog(null);
+      await executeCloseBehavior("hide_to_tray");
+    } catch (error) {
+      showToast(String(error));
+    }
   }
 
   useEffect(() => {
@@ -664,6 +721,7 @@ export function App() {
             onThemeToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
             onRootChange={(path) => void runSkillAction(() => workbenchApi.setSkillsRoot(path), "Skills 根目录已更新")}
             onReorderToolTargets={(toolKeys) => void runSkillAction(() => workbenchApi.setToolTargetOrder(toolKeys), "工具展示顺序已更新")}
+            onCloseBehaviorChange={(behavior) => void runSkillAction(() => workbenchApi.setCloseBehavior(behavior), "关闭窗口行为已更新")}
             onOpenPath={(path) => void openPathOrPromptCreate(path)}
             onAddProjectOpenProfile={() => {
               setEditingProjectOpenProfileId("");
@@ -702,6 +760,12 @@ export function App() {
         </div>
       )}
       {activeDialog === "app-update" && <AppUpdateDialog onClose={() => setActiveDialog(null)} />}
+      {activeDialog === "tray-hint" && (
+        <TrayHintDialog
+          onClose={() => setActiveDialog(null)}
+          onConfirm={() => void confirmTrayHint()}
+        />
+      )}
       {activeDialog === "create-directory" && (
         <CreateDirectoryDialog
           path={createDirectoryPath}
@@ -2532,6 +2596,7 @@ export function SettingsView({
   onThemeToggle,
   onRootChange,
   onReorderToolTargets,
+  onCloseBehaviorChange,
   onOpenPath,
   onAddProjectOpenProfile,
   onEditProjectOpenProfile,
@@ -2543,6 +2608,7 @@ export function SettingsView({
   onThemeToggle: () => void;
   onRootChange: (path: string) => void;
   onReorderToolTargets: (toolKeys: ToolKey[]) => void;
+  onCloseBehaviorChange: (behavior: CloseBehavior) => void;
   onOpenPath: (path: string) => void;
   onAddProjectOpenProfile: () => void;
   onEditProjectOpenProfile: (profile: ProjectOpenProfile) => void;
@@ -2648,6 +2714,22 @@ export function SettingsView({
           </div>
         </section>
         <section className="settings-panel">
+          <h2>应用行为</h2>
+          <p>控制关闭窗口时的处理方式。</p>
+          <div className="settings-row">
+            <span><small>关闭窗口时</small><strong>{closeBehaviorLabel(settings.closeBehavior)}</strong></span>
+            <select
+              aria-label="关闭窗口时"
+              className="settings-select"
+              value={settings.closeBehavior}
+              onChange={(event) => onCloseBehaviorChange(event.target.value as CloseBehavior)}
+            >
+              <option value="hide_to_tray">隐藏到托盘</option>
+              <option value="exit">退出应用</option>
+            </select>
+          </div>
+        </section>
+        <section className="settings-panel">
           <h2>主题背景</h2>
           <p>切换 Workbench 的浅色或深色界面。</p>
           <div className="settings-row"><span><small>当前主题</small><strong>{theme === "dark" ? "深色主题" : "浅色主题"}</strong></span><Button onClick={onThemeToggle}>切换主题</Button></div>
@@ -2662,6 +2744,11 @@ function projectOpenProfileSummary(profile: ProjectOpenProfile) {
   const command = profile.executablePath || profile.command || "未配置命令";
   const args = profile.args.length ? ` ${profile.args.join(" ")}` : "";
   return `${command}${args}`;
+}
+
+function closeBehaviorLabel(behavior: CloseBehavior) {
+  if (behavior === "exit") return "退出应用";
+  return "隐藏到托盘";
 }
 
 function ProjectOpenProfileDialog({
@@ -2761,6 +2848,36 @@ function DeleteProjectOpenProfileDialog({
       <p>删除后，该打开方式会从项目列表菜单中移除，不会卸载本机软件。</p>
       <div className="file-block"><span>命令</span><code>{projectOpenProfileSummary(profile)}</code></div>
     </ConfirmDeleteModal>
+  );
+}
+
+function TrayHintDialog({
+  onClose,
+  onConfirm
+}: {
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Modal
+      title="Workbench 将继续运行"
+      description="关闭窗口后会隐藏到系统托盘。"
+      onClose={onClose}
+      footer={
+        <>
+          <Button onClick={onClose}>取消</Button>
+          <Button variant="primary" onClick={onConfirm}>知道了</Button>
+        </>
+      }
+    >
+      <div className="tray-hint-card">
+        <span className="tray-hint-icon"><MonitorUp size={18} /></span>
+        <span>
+          <strong>可从系统托盘恢复</strong>
+          <small>右键托盘图标可重新显示 Workbench，或选择退出应用。这个提示只显示一次。</small>
+        </span>
+      </div>
+    </Modal>
   );
 }
 
