@@ -176,7 +176,7 @@ Workbench/
 - 扫描全局工具目录时识别内容一致状态和内容冲突状态。
 - 内容一致状态在扫描时自动登记为 Workbench 管理，不修改文件内容。
 - 解决内容冲突必须由用户显式触发。
-- 内容冲突按 Skill 统一解决：用户从 `.workbench`、`.codex`、`.claude`、`.opencode` 的可用版本中选择一个唯一版本源。
+- 内容冲突按 Skill 统一解决：用户从 `.workbench` 和所有存在版本的全局工具目录中选择一个唯一版本源。
 - 解决冲突前必须备份被替换版本，不自动合并目录内容。
 - 删除 Skill 只删除统一根目录内容和 Workbench 管理的启用目标，不删除未被 Workbench 管理的工具目录。
 
@@ -228,7 +228,8 @@ Workbench/
 - 扫描和解析 `SKILL.md`。
 - 系统选择器、ZIP / 文件夹导入与冲突检查。
 - SQLite 设置、分类和启用关系读写。
-- Codex、Claude Code、OpenCode 的目标路径计算。
+- 固定工具目标注册表、目标路径计算和项目级支持守卫。
+- 工具目录创建与打开。
 - Auto 同步：优先创建受管符号链接，失败时复制完整目录。
 - 检测全局工具目录中的内容一致状态和内容冲突。
 - 扫描时自动登记内容一致的全局启用，统一解决 Skill 级版本冲突并备份被替换版本。
@@ -341,11 +342,29 @@ Workbench/
 
 ### 6.5 工具目标
 
-工具目标暂不入库，由后端提供固定定义：
+工具目标由后端固定注册表定义，不把路径覆盖作为当前能力。注册表包含工具 key、展示名、全局 Skills 目录和是否支持项目级 Skills。
 
-- Codex：`~/.codex/skills`，项目目录为 `<project>/.codex/skills`。
-- Claude Code：`~/.claude/skills`，项目目录为 `<project>/.claude/skills`。
-- OpenCode：`~/.config/opencode/skills`，项目目录为 `<project>/.opencode/skills`。
+| 工具 | 全局 Skills 目录 | 项目级目录 |
+| --- | --- | --- |
+| Codex | `~/.codex/skills` | `<project>/.codex/skills` |
+| Claude Code | `~/.claude/skills` | `<project>/.claude/skills` |
+| OpenCode | `~/.config/opencode/skills` | `<project>/.opencode/skills` |
+| DevEco Code | `~/.config/deveco/skills` | 不支持 |
+| Hermes | `~/.hermes/skills` | 不支持 |
+| Kimi Code | `~/.kimi-code/skills` | 不支持 |
+| Pi Agent | `~/.pi/agent/skills` | 不支持 |
+| Gemini CLI | `~/.gemini/skills` | 不支持 |
+| Qwen Code | `~/.qwen/skills` | 不支持 |
+| Goose | `~/.agents/skills` | 不支持 |
+| Kilo Code | `~/.kilo/skills` | 不支持 |
+| Cline | `~/.cline/skills` | 不支持 |
+| Roo Code | `~/.roo/skills` | 不支持 |
+| Factory Droid | `~/.factory/skills` | 不支持 |
+| Amp | `~/.config/agents/skills` | 不支持 |
+| Kiro CLI | `~/.kiro/skills` | 不支持 |
+| Junie CLI | `~/.junie/skills` | 不支持 |
+
+项目级启用必须先通过 `supports_project_scope` 守卫。当前只有 Codex、Claude Code 和 OpenCode 支持项目级 Skills。
 
 ### 6.6 skill_enablements
 
@@ -434,7 +453,10 @@ Workbench/
 建议设置项：
 
 - `skills_root`
+- `tool_target_order`
 - `project_open_profiles_seeded`
+
+`tool_target_order` 只影响 Skills 表格和设置页中的展示顺序，不改变工具目录路径或启用数据所有权。
 
 ## 7. 关键流程
 
@@ -574,13 +596,13 @@ Workbench/
 流程：
 
 1. 用户扫描 Skills。
-2. 后端对每个 Skill 检查 Codex、Claude Code、OpenCode 的全局目标目录。
+2. 后端对每个 Skill 检查固定工具注册表中的全局目标目录。
 3. 若目标不存在，状态为未启用。
 4. 若目标由 Workbench 数据库记录管理，状态为 Workbench 管理。
 5. 若目标存在但未被 Workbench 记录管理，后端比较目标目录和统一根目录中的 Skill 内容。
 6. 内容一致时，后端自动登记为 Workbench 管理，不修改目标文件。
 7. 内容不一致时，状态为冲突，前端展示 Skill 级冲突面板。
-8. 用户从 `.workbench`、`.codex`、`.claude`、`.opencode` 的可用版本中选择一个唯一版本源。
+8. 用户从 `.workbench` 和所有存在版本的全局工具目录中选择一个唯一版本源。
 9. 后端将被替换版本备份到 `~/.workbench/backups/skills/<timestamp>/<tool>/<skill>`。
 10. 选中的版本写入 Workbench 根目录，已存在的全局工具目录统一重新同步。
 11. 冲突解决不自动合并文件。

@@ -81,6 +81,120 @@ pub struct SkillsSettings {
     pub tool_targets: Vec<ToolTarget>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ToolTargetDefinition {
+    key: &'static str,
+    name: &'static str,
+    global_path: &'static [&'static str],
+    project_path: Option<&'static [&'static str]>,
+}
+
+const TOOL_TARGET_ORDER_SETTING: &str = "tool_target_order";
+const TOOL_TARGET_DEFINITIONS: &[ToolTargetDefinition] = &[
+    ToolTargetDefinition {
+        key: "codex",
+        name: "Codex",
+        global_path: &[".codex", "skills"],
+        project_path: Some(&[".codex", "skills"]),
+    },
+    ToolTargetDefinition {
+        key: "claude",
+        name: "Claude Code",
+        global_path: &[".claude", "skills"],
+        project_path: Some(&[".claude", "skills"]),
+    },
+    ToolTargetDefinition {
+        key: "opencode",
+        name: "OpenCode",
+        global_path: &[".config", "opencode", "skills"],
+        project_path: Some(&[".opencode", "skills"]),
+    },
+    ToolTargetDefinition {
+        key: "deveco",
+        name: "DevEco Code",
+        global_path: &[".config", "deveco", "skills"],
+        project_path: None,
+    },
+    ToolTargetDefinition {
+        key: "hermes",
+        name: "Hermes",
+        global_path: &[".hermes", "skills"],
+        project_path: None,
+    },
+    ToolTargetDefinition {
+        key: "kimi",
+        name: "Kimi Code",
+        global_path: &[".kimi-code", "skills"],
+        project_path: None,
+    },
+    ToolTargetDefinition {
+        key: "pi",
+        name: "Pi Agent",
+        global_path: &[".pi", "agent", "skills"],
+        project_path: None,
+    },
+    ToolTargetDefinition {
+        key: "gemini",
+        name: "Gemini CLI",
+        global_path: &[".gemini", "skills"],
+        project_path: None,
+    },
+    ToolTargetDefinition {
+        key: "qwen",
+        name: "Qwen Code",
+        global_path: &[".qwen", "skills"],
+        project_path: None,
+    },
+    ToolTargetDefinition {
+        key: "goose",
+        name: "Goose",
+        global_path: &[".agents", "skills"],
+        project_path: None,
+    },
+    ToolTargetDefinition {
+        key: "kilo",
+        name: "Kilo Code",
+        global_path: &[".kilo", "skills"],
+        project_path: None,
+    },
+    ToolTargetDefinition {
+        key: "cline",
+        name: "Cline",
+        global_path: &[".cline", "skills"],
+        project_path: None,
+    },
+    ToolTargetDefinition {
+        key: "roo",
+        name: "Roo Code",
+        global_path: &[".roo", "skills"],
+        project_path: None,
+    },
+    ToolTargetDefinition {
+        key: "factory",
+        name: "Factory Droid",
+        global_path: &[".factory", "skills"],
+        project_path: None,
+    },
+    ToolTargetDefinition {
+        key: "amp",
+        name: "Amp",
+        global_path: &[".config", "agents", "skills"],
+        project_path: None,
+    },
+    ToolTargetDefinition {
+        key: "kiro",
+        name: "Kiro CLI",
+        global_path: &[".kiro", "skills"],
+        project_path: None,
+    },
+    ToolTargetDefinition {
+        key: "junie",
+        name: "Junie CLI",
+        global_path: &[".junie", "skills"],
+        project_path: None,
+    },
+];
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SkillCategory {
@@ -623,32 +737,85 @@ fn tool_target_path(tool: &str, project_path: Option<&str>) -> SkillResult<PathB
         Some(path) => PathBuf::from(path),
         None => dirs::home_dir().ok_or_else(|| "无法获取用户主目录".to_string())?,
     };
-    match (tool, project_path.is_some()) {
-        ("codex", false) => Ok(base.join(".codex").join("skills")),
-        ("claude", false) => Ok(base.join(".claude").join("skills")),
-        ("opencode", false) => Ok(base.join(".config").join("opencode").join("skills")),
-        ("codex", true) => Ok(base.join(".codex").join("skills")),
-        ("claude", true) => Ok(base.join(".claude").join("skills")),
-        ("opencode", true) => Ok(base.join(".opencode").join("skills")),
-        _ => Err(format!("不支持的工具: {tool}")),
-    }
+    let definition = tool_target_definition(tool)?;
+    let segments = match project_path {
+        Some(_) => definition
+            .project_path
+            .ok_or_else(|| format!("工具不支持项目级 Skills: {}", definition.name))?,
+        None => definition.global_path,
+    };
+    Ok(join_path_segments(base, segments))
 }
 
 fn tool_targets() -> SkillResult<Vec<ToolTarget>> {
-    Ok(vec![
-        target_definition("codex", "Codex")?,
-        target_definition("claude", "Claude Code")?,
-        target_definition("opencode", "OpenCode")?,
-    ])
+    TOOL_TARGET_DEFINITIONS
+        .iter()
+        .map(target_definition)
+        .collect::<SkillResult<Vec<_>>>()
 }
 
-fn target_definition(key: &str, name: &str) -> SkillResult<ToolTarget> {
-    let path = tool_target_path(key, None)?;
+fn ordered_tool_targets(connection: &Connection) -> SkillResult<Vec<ToolTarget>> {
+    let mut targets = tool_targets()?;
+    let configured_order = configured_tool_target_order(connection)?;
+    if configured_order.is_empty() {
+        return Ok(targets);
+    }
+    targets.sort_by_key(|target| {
+        configured_order
+            .iter()
+            .position(|key| key == &target.key)
+            .unwrap_or(configured_order.len() + default_tool_target_index(&target.key))
+    });
+    Ok(targets)
+}
+
+fn configured_tool_target_order(connection: &Connection) -> SkillResult<Vec<String>> {
+    let configured = connection.query_row(
+        "SELECT value FROM app_settings WHERE key = ?1",
+        [TOOL_TARGET_ORDER_SETTING],
+        |row| row.get::<_, String>(0),
+    );
+    match configured {
+        Ok(value) => {
+            let order: Vec<String> = serde_json::from_str(&value).map_err(error_message)?;
+            Ok(order
+                .into_iter()
+                .filter(|key| tool_target_definition(key).is_ok())
+                .collect())
+        }
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(Vec::new()),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+fn default_tool_target_index(key: &str) -> usize {
+    TOOL_TARGET_DEFINITIONS
+        .iter()
+        .position(|definition| definition.key == key)
+        .unwrap_or(TOOL_TARGET_DEFINITIONS.len())
+}
+
+fn tool_target_definition(key: &str) -> SkillResult<&'static ToolTargetDefinition> {
+    TOOL_TARGET_DEFINITIONS
+        .iter()
+        .find(|definition| definition.key == key)
+        .ok_or_else(|| format!("不支持的工具: {key}"))
+}
+
+fn join_path_segments(mut base: PathBuf, segments: &[&str]) -> PathBuf {
+    for segment in segments {
+        base = base.join(segment);
+    }
+    base
+}
+
+fn target_definition(definition: &ToolTargetDefinition) -> SkillResult<ToolTarget> {
+    let path = tool_target_path(definition.key, None)?;
     Ok(ToolTarget {
-        key: key.to_string(),
-        name: name.to_string(),
+        key: definition.key.to_string(),
+        name: definition.name.to_string(),
         global_skills_dir: path.to_string_lossy().to_string(),
-        supports_project_scope: true,
+        supports_project_scope: definition.project_path.is_some(),
         available: path.exists(),
     })
 }
@@ -661,7 +828,7 @@ fn current_settings() -> SkillResult<SkillsSettings> {
     Ok(SkillsSettings {
         workbench_root: workbench_root.to_string_lossy().to_string(),
         skills_root: skills_root.to_string_lossy().to_string(),
-        tool_targets: tool_targets()?,
+        tool_targets: ordered_tool_targets(&connection)?,
     })
 }
 
@@ -1108,6 +1275,39 @@ pub fn set_skills_root(path: String) -> SkillResult<SkillsState> {
 }
 
 #[tauri::command]
+pub fn set_tool_target_order(tool_keys: Vec<String>) -> SkillResult<SkillsState> {
+    let workbench_root = default_workbench_root()?;
+    let connection = open_database(&workbench_root)?;
+    let order = normalized_tool_target_order(tool_keys)?;
+    let order_json = serde_json::to_string(&order).map_err(error_message)?;
+    connection
+        .execute(
+            "INSERT INTO app_settings(key, value) VALUES(?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![TOOL_TARGET_ORDER_SETTING, order_json],
+        )
+        .map_err(error_message)?;
+    get_skills_state()
+}
+
+fn normalized_tool_target_order(tool_keys: Vec<String>) -> SkillResult<Vec<String>> {
+    let mut seen = HashSet::new();
+    let mut order = Vec::new();
+    for key in tool_keys {
+        tool_target_definition(&key)?;
+        if seen.insert(key.clone()) {
+            order.push(key);
+        }
+    }
+    for definition in TOOL_TARGET_DEFINITIONS {
+        if seen.insert(definition.key.to_string()) {
+            order.push(definition.key.to_string());
+        }
+    }
+    Ok(order)
+}
+
+#[tauri::command]
 pub fn set_skill_category(directory_name: String, category_id: String) -> SkillResult<SkillsState> {
     validate_directory_name(&directory_name)?;
     let workbench_root = default_workbench_root()?;
@@ -1428,6 +1628,16 @@ pub fn open_local_path(path: String) -> SkillResult<()> {
     Ok(())
 }
 
+#[tauri::command]
+pub fn create_and_open_directory(path: String) -> SkillResult<()> {
+    let path = PathBuf::from(path);
+    if path.exists() && !path.is_dir() {
+        return Err("目标路径已存在但不是目录".to_string());
+    }
+    fs::create_dir_all(&path).map_err(error_message)?;
+    open_local_path(path.to_string_lossy().to_string())
+}
+
 fn validate_directory_name(directory_name: &str) -> SkillResult<()> {
     let path = Path::new(directory_name);
     if directory_name.is_empty()
@@ -1500,6 +1710,59 @@ mod tests {
 
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].directory_name, "valid");
+    }
+
+    #[test]
+    fn resolves_registered_global_tool_paths() {
+        assert!(tool_target_path("deveco", None)
+            .unwrap()
+            .ends_with(Path::new(".config").join("deveco").join("skills")));
+        assert!(tool_target_path("kimi", None)
+            .unwrap()
+            .ends_with(Path::new(".kimi-code").join("skills")));
+        assert!(tool_target_path("pi", None)
+            .unwrap()
+            .ends_with(Path::new(".pi").join("agent").join("skills")));
+    }
+
+    #[test]
+    fn rejects_project_scope_for_global_only_tools() {
+        let result = tool_target_path("deveco", Some("E:\\Project"));
+
+        assert!(result.unwrap_err().contains("工具不支持项目级 Skills"));
+    }
+
+    #[test]
+    fn orders_tool_targets_from_settings_and_appends_new_defaults() {
+        let connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute(
+                "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO app_settings(key, value) VALUES(?1, ?2)",
+                params![TOOL_TARGET_ORDER_SETTING, "[\"kimi\",\"codex\"]"],
+            )
+            .unwrap();
+
+        let targets = ordered_tool_targets(&connection).unwrap();
+
+        assert_eq!(targets[0].key, "kimi");
+        assert_eq!(targets[1].key, "codex");
+        assert!(targets.iter().any(|target| target.key == "junie"));
+    }
+
+    #[test]
+    fn normalizes_tool_order_by_deduping_and_appending_defaults() {
+        let order =
+            normalized_tool_target_order(vec!["claude".into(), "codex".into(), "claude".into()])
+                .unwrap();
+
+        assert_eq!(&order[0..2], ["claude", "codex"]);
+        assert_eq!(order.len(), TOOL_TARGET_DEFINITIONS.len());
     }
 
     #[test]

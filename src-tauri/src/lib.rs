@@ -37,6 +37,7 @@ pub fn run() {
             radar::sync_github_stars,
             skills::get_skills_state,
             skills::set_skills_root,
+            skills::set_tool_target_order,
             skills::set_skill_category,
             skills::create_skill_category,
             skills::rename_skill_category,
@@ -50,7 +51,8 @@ pub fn run() {
             skills::resolve_skill_conflict,
             skills::delete_skill,
             skills::open_global_skill_target,
-            skills::open_skill_source_directory
+            skills::open_skill_source_directory,
+            skills::create_and_open_directory
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Workbench App");

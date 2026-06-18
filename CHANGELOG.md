@@ -8,11 +8,14 @@
 
 ### Added
 
+- Skills 全局启用扩展支持 DevEco Code、Hermes、Kimi Code、Pi Agent、Gemini CLI、Qwen Code、Goose、Kilo Code、Cline、Roo Code、Factory Droid、Amp、Kiro CLI 和 Junie CLI，并在设置页支持调整全局工具展示顺序。
 - Skills 增加按启用工具和启用项目筛选；工具筛选同时覆盖全局启用和项目级启用。
 - Skills 增加分类实体表和分类管理弹窗，支持新增、重命名、删除迁移和合并分类。
 
 ### Changed
 
+- Skills 列表的全局工具列改为前 6 个彩色工具图标加 `+N` 浮层，项目启用详情区仅展示支持项目级 Skills 的工具。
+- 设置页打开不存在的工具 Skills 目录时，会先确认是否创建对应目录。
 - 整合项目详情面板中的启动配置和本次启动会话摘要，以紧凑启动项列表展示配置、会话状态和单项操作。
 - 将 Skills 分类编辑从双击标签改为列表中的分类下拉，并支持直接创建新分类；详情区不再重复展示分类。
 - 将 Skills 分类元信息从文本分类迁移为 `category_id`，分类展示名统一来自 `skill_categories`。
