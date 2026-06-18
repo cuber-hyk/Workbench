@@ -306,21 +306,40 @@ Workbench/
 - `terminal` 类型通过外部终端在项目目录中启动交互式命令。
 - 打开方式不写入项目记录，删除 Profile 不影响项目数据。
 
-### 6.3 skill_metadata
+### 6.3 skill_categories
+
+保存 Workbench 内 Skills 分类实体。分类只用于本地整理，不改变 Skill 文件目录、工具目录或启用记录。
+
+| 字段 | 说明 |
+| --- | --- |
+| id | 分类 ID，主键 |
+| name | 分类名称，唯一 |
+| sort_order | 展示顺序 |
+| created_at | 创建时间 |
+| updated_at | 更新时间 |
+
+约束：
+
+- `未分类` 是系统分类，后端启动时保证存在。
+- `未分类` 不允许删除或重命名。
+- 删除或合并分类时，必须把该分类下的 Skills 迁移到另一个分类。
+
+### 6.4 skill_metadata
 
 保存扫描结果之外需要持久化的 Skill 元信息。Skill 名称、描述和路径直接从根目录扫描获得，不重复写入数据库。
 
 | 字段 | 说明 |
 | --- | --- |
 | directory_name | Skill 目录名，主键 |
-| category | 分类名称，默认 `未分类` |
+| category_id | Skill 所属分类 ID，默认 `uncategorized` |
 
 约束：
 
 - `directory_name` 在统一 Skills 根目录下唯一。
 - 每个 Skill 只能属于一个分类。
+- 分类展示名来自 `skill_categories.name`，`skill_metadata` 不保存分类名称文本。
 
-### 6.4 工具目标
+### 6.5 工具目标
 
 工具目标暂不入库，由后端提供固定定义：
 
@@ -328,7 +347,7 @@ Workbench/
 - Claude Code：`~/.claude/skills`，项目目录为 `<project>/.claude/skills`。
 - OpenCode：`~/.config/opencode/skills`，项目目录为 `<project>/.opencode/skills`。
 
-### 6.5 skill_enablements
+### 6.6 skill_enablements
 
 保存 Skill 启用关系。
 
@@ -348,7 +367,7 @@ Workbench/
 - Symlink 停用前必须确认目标指向统一根目录对应 Skill。
 - Copy 停用时允许删除数据库明确记录的完整目标副本。
 
-### 6.6 radar_items
+### 6.7 radar_items
 
 保存资源 Radar 本地条目。手动资源与 GitHub Stars 共用一张表，外部来源使用 `source + external_id` 唯一标识。
 
@@ -379,7 +398,7 @@ Workbench/
 - `url` 可为空，但有值时应符合 URL 格式。
 - 手动来源资源不允许保存与另一条手动来源资源相同的规范化 URL。
 
-### 6.6.1 radar_duplicate_groups
+### 6.7.1 radar_duplicate_groups
 
 保存 GitHub Stars 同步时发现的待处理重复组。当前阶段只处理 GitHub Stars 与手动资源之间的重复。
 
@@ -403,7 +422,7 @@ Workbench/
 
 后续导入能力可以增加 `radar_import_runs` 表记录导入批次，包括来源类型、来源路径、导入数量、跳过数量、冲突数量和导入时间。
 
-### 6.7 app_settings
+### 6.8 app_settings
 
 保存应用设置。
 
@@ -503,8 +522,8 @@ Workbench/
 2. 前端调用 `scan_skills()`。
 3. 后端检查根目录各直接子目录中的 `SKILL.md`。
 4. 后端解析 frontmatter 中的 `name` 和 `description`。
-5. 后端更新 `skills` 表。
-6. 前端刷新 Skills 列表。
+5. 后端从 `skill_metadata.category_id` 和 `skill_categories` 补齐分类 ID、分类展示名和分类列表。
+6. 前端刷新 Skills 列表和分类筛选项。
 
 ### 7.4 启用 Skill
 
@@ -538,7 +557,19 @@ Workbench/
 5. 同名目录不覆盖、不合并，返回跳过结果。
 6. 导入完成后默认不启用。
 
-### 7.7 全局启用状态扫描和冲突解决
+### 7.7 管理 Skill 分类
+
+流程：
+
+1. 用户在 Skills 页面点击“管理分类”，或在行内分类下拉中选择“新建分类”。
+2. 新增分类时，后端写入 `skill_categories`；行内新建会继续把当前 Skill 归入新分类。
+3. 重命名分类时，后端只更新 `skill_categories.name`，相关 Skills 的展示名通过 join 自动变化。
+4. 删除分类时，用户必须选择迁移目标；后端把源分类下的 `skill_metadata.category_id` 改为目标分类后删除源分类。
+5. 合并分类等价于迁移源分类下所有 Skills 到目标分类，然后删除源分类。
+6. `未分类` 由后端保证存在，不允许删除或重命名。
+7. 分类管理不改动 Skill 文件、全局工具目录、项目工具目录或启用记录。
+
+### 7.8 全局启用状态扫描和冲突解决
 
 流程：
 
@@ -554,7 +585,7 @@ Workbench/
 10. 选中的版本写入 Workbench 根目录，已存在的全局工具目录统一重新同步。
 11. 冲突解决不自动合并文件。
 
-### 7.8 删除 Skill
+### 7.9 删除 Skill
 
 流程：
 
@@ -562,11 +593,11 @@ Workbench/
 2. 前端展示删除确认弹窗。
 3. 后端读取该 Skill 的 Workbench 管理启用记录。
 4. 后端移除仍然有效的受管符号链接或完整副本。
-5. 后端删除分类记录和启用记录。
+5. 后端删除该 Skill 的分类元信息和启用记录。
 6. 后端删除统一根目录中的 Skill。
 7. 未被 Workbench 管理的外部工具目录内容保持不变。
 
-### 7.9 管理资源 Radar
+### 7.10 管理资源 Radar
 
 流程：
 
@@ -578,7 +609,7 @@ Workbench/
 
 删除条目、切换收藏状态也通过 Radar command 更新 SQLite，并返回最新条目列表。
 
-### 7.10 同步 GitHub Stars
+### 7.11 同步 GitHub Stars
 
 流程：
 
@@ -593,7 +624,7 @@ Workbench/
 9. 本次结果中缺失的已有 GitHub Star 标记为来源失效，不删除本地资源。
 10. 前端展示新增、更新、失效和未变化数量。
 
-### 7.11 合并 Radar 重复组
+### 7.12 合并 Radar 重复组
 
 流程：
 

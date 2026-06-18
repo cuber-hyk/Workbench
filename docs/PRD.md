@@ -96,11 +96,13 @@ Workbench 使用统一 Skills 根目录保存所有 Skills。该目录是 Skills
 - 删除 Skill 时删除统一根目录中的 Skill、分类记录和 Workbench 管理的启用记录。
 - 删除 Skill 时只清理 Workbench 管理的符号链接或副本，不删除未被 Workbench 管理的工具目录内容。
 - 支持自定义 Skill 分类。
+- 支持新增、重命名、删除和合并 Skill 分类；删除或合并分类时只迁移 Skills，不删除 Skill 文件。
 - 每个 Skill 只能属于一个分类。
 - 按分类、启用状态、启用工具和启用项目筛选 Skills。
 - 工具筛选同时包含全局启用和项目级启用。
 - 在 Skills 列表中通过分类下拉选择已有分类或创建新分类。
 - 未分类 Skill 统一归入“未分类”。
+- “未分类”是系统分类，始终存在且不可删除。
 - 分类只用于 Workbench 内整理，不影响文件目录和符号链接结构。
 - 从 ZIP 文件或已解压文件夹导入一个或多个 Skills。
 - 导入后的 Skills 默认不启用。

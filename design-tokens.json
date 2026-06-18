@@ -250,6 +250,18 @@
       "$type": "dimension",
       "$value": "126px"
     },
+    "skillCategoryManagerRowMinHeight": {
+      "$type": "dimension",
+      "$value": "50px"
+    },
+    "skillCategoryManagerCountColumnWidth": {
+      "$type": "dimension",
+      "$value": "92px"
+    },
+    "skillCategoryManagerActionColumnWidth": {
+      "$type": "dimension",
+      "$value": "150px"
+    },
     "projectsStatusColumnWidth": {
       "$type": "dimension",
       "$value": "88px"

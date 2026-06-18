@@ -80,6 +80,8 @@ export interface LaunchSessionSnapshot {
 export interface SkillCategory {
   id: string;
   name: string;
+  sortOrder: number;
+  skillCount: number;
 }
 
 export interface ToolTarget {
@@ -97,6 +99,7 @@ export interface Skill {
   directoryName: string;
   name: string;
   description: string;
+  categoryId: string;
   category: string;
   skillPath: string;
   enabledTools: ToolTarget["key"][];
@@ -171,6 +174,7 @@ export interface AppSettings {
 export interface SkillsState {
   settings: AppSettings;
   skills: Skill[];
+  categories: SkillCategory[];
 }
 
 export interface ImportResult {

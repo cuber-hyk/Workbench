@@ -2,9 +2,9 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { App, ModuleStateView, ProjectDialog, ProjectsView, RadarView, SettingsView, SkillsView, applyPendingLaunchEvents, markLaunchRunStopped, mergeLaunchRunSnapshots, rememberUpdateNotice, shouldShowUpdateNotice } from "./App";
+import { App, ModuleStateView, ProjectDialog, ProjectsView, RadarView, SettingsView, SkillCategoryDialog, SkillsView, applyPendingLaunchEvents, markLaunchRunStopped, mergeLaunchRunSnapshots, rememberUpdateNotice, shouldShowUpdateNotice } from "./App";
 import { AppUpdateProvider } from "./contexts/AppUpdateContext";
-import type { AppSettings, LaunchSessionEvent, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, Skill } from "./lib/types/domain";
+import type { AppSettings, LaunchSessionEvent, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, Skill, SkillCategory } from "./lib/types/domain";
 
 const activeProject: Project = {
   id: "active",
@@ -113,12 +113,21 @@ const skillsSettings: AppSettings = {
   ]
 };
 
+const skillCategoriesForView: SkillCategory[] = [
+  { id: "security", name: "安全", sortOrder: 0, skillCount: 1 },
+  { id: "testing", name: "测试", sortOrder: 1, skillCount: 1 },
+  { id: "docs", name: "文档", sortOrder: 2, skillCount: 1 },
+  { id: "writing", name: "写作", sortOrder: 3, skillCount: 1 },
+  { id: "uncategorized", name: "未分类", sortOrder: 4, skillCount: 0 }
+];
+
 const skillsForView: Skill[] = [
   {
     id: "global-codex",
     directoryName: "global-codex",
     name: "global-codex",
     description: "Global Codex skill",
+    categoryId: "security",
     category: "安全",
     skillPath: "C:\\Users\\dev\\.workbench\\skills\\global-codex\\SKILL.md",
     enabledTools: ["codex"],
@@ -135,6 +144,7 @@ const skillsForView: Skill[] = [
     directoryName: "project-claude-active",
     name: "project-claude-active",
     description: "Active project Claude skill",
+    categoryId: "testing",
     category: "测试",
     skillPath: "C:\\Users\\dev\\.workbench\\skills\\project-claude-active\\SKILL.md",
     enabledTools: [],
@@ -151,6 +161,7 @@ const skillsForView: Skill[] = [
     directoryName: "project-codex-second",
     name: "project-codex-second",
     description: "Second project Codex skill",
+    categoryId: "docs",
     category: "文档",
     skillPath: "C:\\Users\\dev\\.workbench\\skills\\project-codex-second\\SKILL.md",
     enabledTools: [],
@@ -167,6 +178,7 @@ const skillsForView: Skill[] = [
     directoryName: "disabled-skill",
     name: "disabled-skill",
     description: "Disabled skill",
+    categoryId: "writing",
     category: "写作",
     skillPath: "C:\\Users\\dev\\.workbench\\skills\\disabled-skill\\SKILL.md",
     enabledTools: [],
@@ -1234,15 +1246,18 @@ describe("Workbench UI interactions", () => {
       <SkillsView
         skills={skillsForView}
         selectedSkill={skillsForView[0]}
+        categories={skillCategoriesForView}
         settings={skillsSettings}
         projects={[activeProject, secondActiveProject]}
         onSelect={vi.fn()}
         onImport={vi.fn()}
         onRefresh={vi.fn()}
+        onManageCategories={vi.fn()}
         onToggle={vi.fn()}
         onToggleSkillGlobal={vi.fn()}
         onToggleProjectAll={vi.fn()}
         onCategorySkill={vi.fn()}
+        onCreateCategorySkill={vi.fn()}
         onResolve={vi.fn()}
         onDeleteSkill={vi.fn()}
       />
@@ -1266,32 +1281,80 @@ describe("Workbench UI interactions", () => {
   it("updates skill categories from a list selector or a new category", async () => {
     const user = userEvent.setup();
     const onCategorySkill = vi.fn();
+    const onCreateCategorySkill = vi.fn();
     render(
       <SkillsView
         skills={skillsForView}
         selectedSkill={skillsForView[0]}
+        categories={skillCategoriesForView}
         settings={skillsSettings}
         projects={[activeProject, secondActiveProject]}
         onSelect={vi.fn()}
         onImport={vi.fn()}
         onRefresh={vi.fn()}
+        onManageCategories={vi.fn()}
         onToggle={vi.fn()}
         onToggleSkillGlobal={vi.fn()}
         onToggleProjectAll={vi.fn()}
         onCategorySkill={onCategorySkill}
+        onCreateCategorySkill={onCreateCategorySkill}
         onResolve={vi.fn()}
         onDeleteSkill={vi.fn()}
       />
     );
 
     const globalRow = screen.getByRole("group", { name: "global-codex Skill" });
-    await user.selectOptions(within(globalRow).getByLabelText("global-codex 分类"), "测试");
-    expect(onCategorySkill).toHaveBeenCalledWith("global-codex", "测试");
+    await user.selectOptions(within(globalRow).getByLabelText("global-codex 分类"), "testing");
+    expect(onCategorySkill).toHaveBeenCalledWith("global-codex", "testing");
 
     await user.selectOptions(within(globalRow).getByLabelText("global-codex 分类"), "__new__");
     await user.type(within(globalRow).getByLabelText("新分类名称"), "效率");
     await user.keyboard("{Enter}");
-    expect(onCategorySkill).toHaveBeenCalledWith("global-codex", "效率");
+    expect(onCreateCategorySkill).toHaveBeenCalledWith("global-codex", "效率");
+  });
+
+  it("manages skill categories through create, rename, delete and merge actions", async () => {
+    const user = userEvent.setup();
+    const onCreate = vi.fn();
+    const onRename = vi.fn();
+    const onDelete = vi.fn();
+    const onMerge = vi.fn();
+    render(
+      <SkillCategoryDialog
+        categories={skillCategoriesForView}
+        onClose={vi.fn()}
+        onCreate={onCreate}
+        onRename={onRename}
+        onDelete={onDelete}
+        onMerge={onMerge}
+      />
+    );
+
+    await user.type(screen.getByLabelText("新分类名称"), "效率");
+    await user.click(screen.getByRole("button", { name: "新增分类" }));
+    expect(onCreate).toHaveBeenCalledWith("效率");
+
+    await user.click(screen.getByRole("button", { name: "重命名 测试" }));
+    await user.clear(screen.getByLabelText("测试 新名称"));
+    await user.type(screen.getByLabelText("测试 新名称"), "测试工具");
+    await user.keyboard("{Enter}");
+    expect(onRename).toHaveBeenCalledWith("testing", "测试工具");
+
+    await user.click(screen.getByRole("button", { name: "删除 文档" }));
+    await user.selectOptions(screen.getByLabelText("目标分类"), "testing");
+    await user.click(screen.getByRole("button", { name: "确认删除" }));
+    expect(onDelete).toHaveBeenCalledWith("docs", "testing");
+
+    const securityRow = screen.getByText("安全").closest(".category-manager-row");
+    expect(securityRow).not.toBeNull();
+    await user.click(within(securityRow as HTMLElement).getByRole("button", { name: "合并" }));
+    await user.selectOptions(screen.getByLabelText("目标分类"), "docs");
+    await user.click(screen.getByRole("button", { name: "确认合并" }));
+    expect(onMerge).toHaveBeenCalledWith("security", "docs");
+
+    expect(screen.getByText("系统")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "重命名 未分类" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "删除 未分类" })).toBeDisabled();
   });
 
   it("does not repeat the skill category in the detail panel", () => {
@@ -1299,15 +1362,18 @@ describe("Workbench UI interactions", () => {
       <SkillsView
         skills={skillsForView}
         selectedSkill={skillsForView[0]}
+        categories={skillCategoriesForView}
         settings={skillsSettings}
         projects={[activeProject, secondActiveProject]}
         onSelect={vi.fn()}
         onImport={vi.fn()}
         onRefresh={vi.fn()}
+        onManageCategories={vi.fn()}
         onToggle={vi.fn()}
         onToggleSkillGlobal={vi.fn()}
         onToggleProjectAll={vi.fn()}
         onCategorySkill={vi.fn()}
+        onCreateCategorySkill={vi.fn()}
         onResolve={vi.fn()}
         onDeleteSkill={vi.fn()}
       />

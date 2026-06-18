@@ -32,7 +32,7 @@ import { UpdateBadge } from "./components/UpdateBadge";
 import { ActionGroup, Button, ConfirmDeleteModal, DetailHeader, FilterMore, IconButton, Modal, PageHeader, Panel, SearchInput, StatusBadge, TagList, Toolbar } from "./components/ui";
 import { useAppUpdate } from "./contexts/AppUpdateContext";
 import { workbenchApi } from "./lib/api/workbenchApi";
-import type { AppSettings, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, Project, ProjectLaunchConfig, ProjectOpenProfile, RadarCategory, RadarDuplicateGroup, RadarItem, Skill, SkillVersionSource, ToolTarget, ViewKey } from "./lib/types/domain";
+import type { AppSettings, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, Project, ProjectLaunchConfig, ProjectOpenProfile, RadarCategory, RadarDuplicateGroup, RadarItem, Skill, SkillCategory, SkillVersionSource, ToolTarget, ViewKey } from "./lib/types/domain";
 
 const views: Array<{ key: ViewKey; label: string; icon: JSX.Element }> = [
   { key: "projects", label: "项目", icon: <Box size={16} /> },
@@ -58,6 +58,7 @@ export function App() {
   });
   const [projects, setProjects] = useState<Project[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
+  const [skillCategories, setSkillCategories] = useState<SkillCategory[]>([]);
   const [radarItems, setRadarItems] = useState<RadarItem[]>([]);
   const [radarDuplicateGroups, setRadarDuplicateGroups] = useState<RadarDuplicateGroup[]>([]);
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -71,7 +72,7 @@ export function App() {
   const [loadError, setLoadError] = useState("");
   const [toast, setToast] = useState<ToastState | null>(null);
   const toastTimerRef = useRef<number | null>(null);
-  const [activeDialog, setActiveDialog] = useState<"project" | "project-open-profile" | "project-open-profile-delete" | "skills-import" | "skill-delete" | "radar" | "radar-delete" | "app-update" | null>(null);
+  const [activeDialog, setActiveDialog] = useState<"project" | "project-open-profile" | "project-open-profile-delete" | "skills-import" | "skill-delete" | "skill-categories" | "radar" | "radar-delete" | "app-update" | null>(null);
   const [editingProjectId, setEditingProjectId] = useState("");
   const [editingProjectOpenProfileId, setEditingProjectOpenProfileId] = useState("");
   const [deleteProjectOpenProfileId, setDeleteProjectOpenProfileId] = useState("");
@@ -101,10 +102,13 @@ export function App() {
     setLoading(true);
     void Promise.all([
       workbenchApi.listProjects().then(setProjects),
-      workbenchApi.listSkills().then(setSkills),
+      workbenchApi.getSkillsState().then((state) => {
+        setSkills(state.skills);
+        setSkillCategories(state.categories);
+        setSettings(state.settings);
+      }),
       workbenchApi.listRadarItems().then(setRadarItems),
-      workbenchApi.listRadarDuplicateGroups().then(setRadarDuplicateGroups),
-      workbenchApi.getSettings().then(setSettings)
+      workbenchApi.listRadarDuplicateGroups().then(setRadarDuplicateGroups)
     ])
       .catch((error) => {
         const message = error instanceof Error ? error.message : String(error);
@@ -180,6 +184,7 @@ export function App() {
   async function refreshSkills() {
     const state = await workbenchApi.getSkillsState();
     setSkills(state.skills);
+    setSkillCategories(state.categories);
     setSettings(state.settings);
     if (!state.skills.some((skill) => skill.id === selectedSkillId)) {
       setSelectedSkillId(state.skills[0]?.id ?? "");
@@ -464,6 +469,7 @@ export function App() {
           <SkillsView
             skills={skills}
             selectedSkill={selectedSkill}
+            categories={skillCategories}
             settings={settings}
             projects={activeProjects}
             onSelect={setSelectedSkillId}
@@ -483,6 +489,7 @@ export function App() {
               }
             }}
             onRefresh={() => void runSkillAction(refreshSkills, "Skills 已重新扫描")}
+            onManageCategories={() => setActiveDialog("skill-categories")}
             onToggle={(tool, enabled, project) =>
               void runSkillAction(
                 () =>
@@ -528,10 +535,21 @@ export function App() {
                 enabled ? "项目工具已全部启用" : "项目工具已全部关闭"
               )
             }
-            onCategorySkill={(directoryName, category) =>
+            onCategorySkill={(directoryName, categoryId) =>
               void runSkillAction(
-                () => workbenchApi.setSkillCategory(directoryName, category),
+                () => workbenchApi.setSkillCategory(directoryName, categoryId),
                 "分类已更新"
+              )
+            }
+            onCreateCategorySkill={(directoryName, name) =>
+              void runSkillAction(
+                async () => {
+                  const state = await workbenchApi.createSkillCategory(name);
+                  const category = state.categories.find((item) => item.name === name.trim());
+                  if (!category) throw new Error("分类创建后未找到");
+                  await workbenchApi.setSkillCategory(directoryName, category.id);
+                },
+                "分类已创建"
               )
             }
             onResolve={(source) =>
@@ -664,6 +682,16 @@ export function App() {
             setDeleteSkillId("");
             void runSkillAction(() => workbenchApi.deleteSkill(target.directoryName), "Skill 已删除");
           }}
+        />
+      )}
+      {activeDialog === "skill-categories" && (
+        <SkillCategoryDialog
+          categories={skillCategories}
+          onClose={() => setActiveDialog(null)}
+          onCreate={(name) => void runSkillAction(() => workbenchApi.createSkillCategory(name), "分类已创建")}
+          onRename={(categoryId, name) => void runSkillAction(() => workbenchApi.renameSkillCategory(categoryId, name), "分类已重命名")}
+          onDelete={(categoryId, replacementCategoryId) => void runSkillAction(() => workbenchApi.deleteSkillCategory(categoryId, replacementCategoryId), "分类已删除")}
+          onMerge={(sourceCategoryId, targetCategoryId) => void runSkillAction(() => workbenchApi.mergeSkillCategory(sourceCategoryId, targetCategoryId), "分类已合并")}
         />
       )}
       {activeDialog === "project-open-profile" && settings && (
@@ -1610,29 +1638,35 @@ function formatLaunchTime(date: Date) {
 export function SkillsView({
   skills,
   selectedSkill,
+  categories: skillCategories,
   settings,
   projects,
   onSelect,
   onImport,
   onRefresh,
+  onManageCategories,
   onToggle,
   onToggleSkillGlobal,
   onToggleProjectAll,
   onCategorySkill,
+  onCreateCategorySkill,
   onResolve,
   onDeleteSkill
 }: {
   skills: Skill[];
   selectedSkill: Skill;
+  categories: SkillCategory[];
   settings: AppSettings;
   projects: Project[];
   onSelect: (id: string) => void;
   onImport: (kind: "zip" | "folder") => Promise<void>;
   onRefresh: () => void;
+  onManageCategories: () => void;
   onToggle: (tool: ToolTarget["key"], enabled: boolean, project?: Project) => void;
   onToggleSkillGlobal: (directoryName: string, tool: ToolTarget["key"], enabled: boolean) => void;
   onToggleProjectAll: (project: Project, enabled: boolean) => void;
-  onCategorySkill: (directoryName: string, category: string) => void;
+  onCategorySkill: (directoryName: string, categoryId: string) => void;
+  onCreateCategorySkill: (directoryName: string, name: string) => void;
   onResolve: (source: SkillVersionSource) => void;
   onDeleteSkill: (skillId: string) => void;
 }) {
@@ -1642,8 +1676,7 @@ export function SkillsView({
   const [toolFilter, setToolFilter] = useState<ToolTarget["key"] | "全部工具">("全部工具");
   const [projectFilter, setProjectFilter] = useState("全部项目");
   const [importMenuOpen, setImportMenuOpen] = useState(false);
-  const skillCategories = useMemo(() => Array.from(new Set(skills.map((skill) => skill.category || "未分类"))).sort(), [skills]);
-  const categories = ["全部分类", ...skillCategories];
+  const categories = ["全部分类", ...skillCategories.map((category) => category.name)];
   const visibleSkills = skills.filter((skill) => {
     const normalizedQuery = query.trim().toLowerCase();
     const matchesQuery =
@@ -1664,6 +1697,7 @@ export function SkillsView({
         actions={
           <div className="header-actions">
             <Button onClick={onRefresh}><RefreshCcw size={15} />扫描</Button>
+            <Button onClick={onManageCategories}><Settings size={15} />管理分类</Button>
             <div className="import-control">
               <Button variant="primary" onClick={() => setImportMenuOpen(!importMenuOpen)}>
                 <Download size={15} />导入 Skills<ChevronDown size={14} />
@@ -1721,9 +1755,10 @@ export function SkillsView({
               <span className="title-cell"><strong>{skill.name}</strong><small>{skill.description}</small></span>
               <SkillCategorySelect
                 skillName={skill.name}
-                category={skill.category}
+                categoryId={skill.categoryId}
                 categories={skillCategories}
-                onSave={(category) => onCategorySkill(skill.directoryName, category)}
+                onSave={(categoryId) => onCategorySkill(skill.directoryName, categoryId)}
+                onCreate={(name) => onCreateCategorySkill(skill.directoryName, name)}
               />
               <GlobalToolIcons
                 skill={skill}
@@ -1859,27 +1894,29 @@ function GlobalToolIcons({
 
 function SkillCategorySelect({
   skillName,
-  category,
+  categoryId,
   categories,
-  onSave
+  onSave,
+  onCreate
 }: {
   skillName: string;
-  category: string;
-  categories: string[];
-  onSave: (category: string) => void;
+  categoryId: string;
+  categories: SkillCategory[];
+  onSave: (categoryId: string) => void;
+  onCreate: (name: string) => void;
 }) {
   const [creating, setCreating] = useState(false);
-  const [value, setValue] = useState(category);
+  const [value, setValue] = useState("");
 
   useEffect(() => {
-    setValue(category);
+    setValue("");
     setCreating(false);
-  }, [category]);
+  }, [categoryId]);
 
   function save() {
-    const next = value.trim() || "未分类";
+    const next = value.trim();
     setCreating(false);
-    if (next !== category) onSave(next);
+    if (next) onCreate(next);
   }
 
   if (creating) {
@@ -1896,7 +1933,7 @@ function SkillCategorySelect({
           event.stopPropagation();
           if (event.key === "Enter") save();
           if (event.key === "Escape") {
-            setValue(category);
+            setValue("");
             setCreating(false);
           }
         }}
@@ -1908,7 +1945,7 @@ function SkillCategorySelect({
     <select
       className="inline-category-select"
       aria-label={`${skillName} 分类`}
-      value={category}
+      value={categoryId}
       onClick={(event) => event.stopPropagation()}
       onChange={(event) => {
         event.stopPropagation();
@@ -1917,12 +1954,147 @@ function SkillCategorySelect({
           setCreating(true);
           return;
         }
-        onSave(event.target.value || "未分类");
+        onSave(event.target.value);
       }}
     >
-      {categories.map((item) => <option key={item} value={item}>{item}</option>)}
+      {categories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
       <option value="__new__">新建分类...</option>
     </select>
+  );
+}
+
+export function SkillCategoryDialog({
+  categories,
+  onClose,
+  onCreate,
+  onRename,
+  onDelete,
+  onMerge
+}: {
+  categories: SkillCategory[];
+  onClose: () => void;
+  onCreate: (name: string) => void;
+  onRename: (categoryId: string, name: string) => void;
+  onDelete: (categoryId: string, replacementCategoryId: string) => void;
+  onMerge: (sourceCategoryId: string, targetCategoryId: string) => void;
+}) {
+  const [newName, setNewName] = useState("");
+  const [editingId, setEditingId] = useState("");
+  const [editingName, setEditingName] = useState("");
+  const [actionCategoryId, setActionCategoryId] = useState("");
+  const [actionKind, setActionKind] = useState<"delete" | "merge" | "">("");
+  const [targetCategoryId, setTargetCategoryId] = useState("uncategorized");
+  const targetOptions = categories.filter((category) => category.id !== actionCategoryId);
+
+  function submitNew(event: FormEvent) {
+    event.preventDefault();
+    const name = newName.trim();
+    if (!name) return;
+    onCreate(name);
+    setNewName("");
+  }
+
+  function startRename(category: SkillCategory) {
+    setEditingId(category.id);
+    setEditingName(category.name);
+    setActionKind("");
+    setActionCategoryId("");
+  }
+
+  function saveRename(category: SkillCategory) {
+    const name = editingName.trim();
+    setEditingId("");
+    if (name && name !== category.name) onRename(category.id, name);
+  }
+
+  function startAction(category: SkillCategory, kind: "delete" | "merge") {
+    setActionCategoryId(category.id);
+    setActionKind(kind);
+    setEditingId("");
+    setTargetCategoryId(categories.find((item) => item.id !== category.id)?.id ?? "uncategorized");
+  }
+
+  function confirmAction() {
+    if (!actionCategoryId || !targetCategoryId) return;
+    if (actionKind === "delete") onDelete(actionCategoryId, targetCategoryId);
+    if (actionKind === "merge") onMerge(actionCategoryId, targetCategoryId);
+    setActionKind("");
+    setActionCategoryId("");
+  }
+
+  const actionCategory = categories.find((category) => category.id === actionCategoryId);
+
+  return (
+    <Modal
+      title="管理分类"
+      description="分类只用于 Workbench 内整理，删除或合并分类不会删除 Skills。"
+      large
+      onClose={onClose}
+      footer={<><Button onClick={onClose}>关闭</Button></>}
+    >
+      <form className="category-create-row" onSubmit={submitNew}>
+        <input aria-label="新分类名称" value={newName} onChange={(event) => setNewName(event.target.value)} placeholder="新分类名称" />
+        <Button variant="primary" type="submit"><Plus size={14} />新增分类</Button>
+      </form>
+      {actionCategory && actionKind && (
+        <div className="category-action-panel">
+          <span>
+            <strong>{actionKind === "delete" ? "删除分类" : "合并分类"}：{actionCategory.name}</strong>
+            <small>{actionKind === "delete" ? "删除前会把该分类下的 Skills 移动到目标分类。" : "合并后源分类会删除，Skills 移动到目标分类。"}</small>
+          </span>
+          <select aria-label="目标分类" value={targetCategoryId} onChange={(event) => setTargetCategoryId(event.target.value)}>
+            {targetOptions.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+          </select>
+          <Button variant={actionKind === "delete" ? "danger" : "primary"} onClick={confirmAction}>
+            {actionKind === "delete" ? "确认删除" : "确认合并"}
+          </Button>
+        </div>
+      )}
+      <div className="category-manager-table">
+        <div className="category-manager-head">
+          <span>分类</span>
+          <span>Skills</span>
+          <span>操作</span>
+        </div>
+        {categories.map((category) => {
+          const isSystem = category.id === "uncategorized";
+          return (
+            <div className="category-manager-row" key={category.id}>
+              <span className="category-name-cell">
+                {editingId === category.id ? (
+                  <input
+                    aria-label={`${category.name} 新名称`}
+                    value={editingName}
+                    onChange={(event) => setEditingName(event.target.value)}
+                    onBlur={() => saveRename(category)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") saveRename(category);
+                      if (event.key === "Escape") setEditingId("");
+                    }}
+                    autoFocus
+                  />
+                ) : (
+                  <span className="category-title-line">
+                    <strong>{category.name}</strong>
+                    {isSystem && <em>系统</em>}
+                  </span>
+                )}
+              </span>
+              <span className="category-count-badge">{category.skillCount} 个</span>
+              <ActionGroup className="row-actions">
+                <IconButton title={`重命名 ${category.name}`} disabled={isSystem} onClick={() => startRename(category)}>
+                  <Edit3 size={14} />
+                </IconButton>
+                <Button disabled={isSystem} onClick={() => startAction(category, "merge")}>合并</Button>
+                <IconButton variant="danger" title={`删除 ${category.name}`} disabled={isSystem} onClick={() => startAction(category, "delete")}>
+                  <Trash2 size={14} />
+                </IconButton>
+              </ActionGroup>
+            </div>
+          );
+        })}
+      </div>
+    </Modal>
   );
 }
 
