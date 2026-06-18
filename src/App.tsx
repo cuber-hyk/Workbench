@@ -1940,8 +1940,8 @@ function GlobalToolIcons({
   onToggle: (tool: ToolKey, enabled: boolean) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const visibleTools = tools.slice(0, 6);
-  const hiddenTools = tools.slice(6);
+  const visibleTools = tools.slice(0, 4);
+  const hiddenTools = tools.slice(4);
   const renderToolButton = (tool: ToolTarget) => {
     const state = skill.globalToolStates.find((entry) => entry.tool === tool.key);
     const enabled = state?.status === "managed";

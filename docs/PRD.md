@@ -102,7 +102,8 @@ Workbench 使用统一 Skills 根目录保存所有 Skills。该目录是 Skills
 - 工具筛选同时包含全局启用和项目级启用。
 - 全局启用支持 Codex、Claude Code、OpenCode、DevEco Code、Hermes、Kimi Code、Pi Agent、Gemini CLI、Qwen Code、Goose、Kilo Code、Cline、Roo Code、Factory Droid、Amp、Kiro CLI 和 Junie CLI。
 - 项目级启用当前只支持 Codex、Claude Code 和 OpenCode；其他工具先作为全局 Skills 目标管理。
-- Skills 列表中的全局工具列按用户设置顺序展示前 6 个工具和 `+N` 浮层。
+- Skills 列表中的全局工具列按用户设置顺序展示前 4 个工具和 `+N` 浮层。
+- Skills 列表在默认窗口宽度下应隐藏可见滚动条，并避免产生横向滚动条。
 - 在 Skills 列表中通过分类下拉选择已有分类或创建新分类。
 - 未分类 Skill 统一归入“未分类”。
 - “未分类”是系统分类，始终存在且不可删除。
