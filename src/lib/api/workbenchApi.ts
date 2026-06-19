@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { projects, radarItems, settings, skillCategories, skills } from "./mockData";
-import type { CloseBehavior, GitHubStarsSyncResult, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, SkillVersionSource, SkillsState, ToolKey } from "../types/domain";
+import type { CloseBehavior, CustomToolTargetInput, GitHubStarsSyncResult, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, SkillVersionSource, SkillsState, ToolKey } from "../types/domain";
 
 const delay = async () => new Promise((resolve) => window.setTimeout(resolve, 80));
 const isTauri = "__TAURI_INTERNALS__" in window;
@@ -389,10 +389,76 @@ export const workbenchApi = {
     }
     return invoke<SkillsState>("set_tool_target_order", { toolKeys });
   },
+  async selectToolIconSource() {
+    if (!isTauri) {
+      await delay();
+      throw new Error("图标选择器仅在 Tauri 桌面应用中可用");
+    }
+    return invoke<string | null>("select_tool_icon_source");
+  },
+  async saveCustomToolTarget(input: CustomToolTargetInput) {
+    if (!isTauri) {
+      await delay();
+      const normalizedName = input.name.trim().toLowerCase();
+      const editingKey = input.key ?? "";
+      if (settings.toolTargets.some((tool) => tool.key !== editingKey && tool.name.trim().toLowerCase() === normalizedName)) {
+        throw new Error("工具名称已存在");
+      }
+      const generatedKey = input.key || uniqueCustomToolKey(input.name);
+      const target = {
+        key: generatedKey,
+        name: input.name,
+        globalSkillsDir: input.globalSkillsDir,
+        supportsProjectScope: false,
+        available: false,
+        source: "custom" as const,
+        iconPath: input.iconSourcePath || input.iconPath || null
+      };
+      const index = settings.toolTargets.findIndex((tool) => tool.key === generatedKey);
+      if (index >= 0) {
+        settings.toolTargets[index] = target;
+      } else {
+        settings.toolTargets.push(target);
+      }
+      return { settings, skills, categories: previewSkillCategories() };
+    }
+    return invoke<SkillsState>("save_custom_tool_target", { input });
+  },
+  async deleteCustomToolTarget(key: ToolKey) {
+    if (!isTauri) {
+      await delay();
+      const index = settings.toolTargets.findIndex((tool) => tool.key === key && tool.source === "custom");
+      if (index >= 0) settings.toolTargets.splice(index, 1);
+      skills.forEach((skill) => {
+        skill.enabledTools = skill.enabledTools.filter((tool) => tool !== key);
+        skill.enabledToolMethods = skill.enabledToolMethods.filter((entry) => entry.tool !== key);
+        skill.globalToolStates = skill.globalToolStates.filter((entry) => entry.tool !== key);
+      });
+      return { settings, skills, categories: previewSkillCategories() };
+    }
+    return invoke<SkillsState>("delete_custom_tool_target", { key });
+  },
   async openSkillSourceDirectory(directoryName: string) {
     return invoke<void>("open_skill_source_directory", { directoryName });
   }
 };
+
+function uniqueCustomToolKey(name: string) {
+  const base = (name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 32)
+    .replace(/^-+|-+$/g, "") || "custom-tool");
+  const existing = new Set(settings.toolTargets.map((tool) => tool.key));
+  if (!existing.has(base)) return base;
+  for (let index = 2; index <= 999; index += 1) {
+    const candidate = `${base}-${index}`;
+    if (!existing.has(candidate)) return candidate;
+  }
+  throw new Error("无法生成自定义工具标识");
+}
 
 function createPreviewLaunchRun(project: Project): LaunchRun {
   const id = `preview-${Date.now()}`;

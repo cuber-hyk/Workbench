@@ -101,6 +101,10 @@ Workbench 使用统一 Skills 根目录保存所有 Skills。该目录是 Skills
 - 按分类、启用状态、启用工具和启用项目筛选 Skills。
 - 工具筛选同时包含全局启用和项目级启用。
 - 全局启用支持 Codex、Claude Code、OpenCode、DevEco Code、Hermes、Kimi Code、Pi Agent、Gemini CLI、Qwen Code、Goose、Kilo Code、Cline、Roo Code、Factory Droid、Amp、Kiro CLI 和 Junie CLI。
+- 用户可以新增、编辑和删除自定义 Agent 工具；自定义工具只支持全局 Skills 目录，不支持项目级启用。
+- 自定义 Agent 工具只要求用户填写名称、全局 Skills 目录和可选图标；内部标识由 Workbench 自动生成。
+- 自定义 Agent 工具名称不能与已有工具重复。
+- 自定义工具图标由用户选择本地图标文件，保存到 `~/.workbench/tool-icons/`。
 - 项目级启用当前只支持 Codex、Claude Code 和 OpenCode；其他工具先作为全局 Skills 目标管理。
 - Skills 列表中的全局工具列按用户设置顺序展示前 4 个工具和 `+N` 浮层。
 - Skills 列表在默认窗口宽度下应隐藏可见滚动条，并避免产生横向滚动条。
@@ -151,6 +155,8 @@ Workbench 使用统一 Skills 根目录保存所有 Skills。该目录是 Skills
 - 管理 Workbench Skills 根目录。
 - 查看支持的工具及其全局 Skills 目录。
 - 调整 Skills 列表中全局工具的展示顺序。
+- 新增、编辑和删除自定义 Agent 工具。
+- 在支持的工具目录列表中展示工具图标和内置/自定义类型。
 - 打开不存在的工具 Skills 目录时，先确认是否创建对应目录。
 - 配置关闭窗口时的行为：隐藏到托盘或退出应用；默认隐藏到托盘，并在首次关闭窗口时提示可从托盘恢复或退出。
 - 展示 Skills 路径映射关系。
@@ -300,7 +306,7 @@ Workbench App 采用左侧模块导航 + 右侧工作区。
 - Copy 副本显式重新同步。
 - 批量启用、停用、设置分类和导出。
 - 更清晰的冲突对比与解决预览。
-- 工具路径覆盖和自定义工具。
+- 内置工具路径覆盖。
 - 技能组或项目模板，用于保存一组常用 Skills。
 - 在线来源导入：Git URL、压缩包 URL、skills.sh 或其他 Skills 市场。
 - Git 来源更新检查、差异预览和手动更新。

@@ -18,7 +18,14 @@
         "minWidth": 1024,
         "minHeight": 680
       }
-    ]
+    ],
+    "security": {
+      "csp": "default-src 'self' ipc: http://ipc.localhost; img-src 'self' asset: http://asset.localhost data:",
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["**/*"]
+      }
+    }
   },
   "bundle": {
     "active": true,

@@ -33,7 +33,7 @@ Tauri 负责应用窗口、系统能力调用和打包。Rust 后端不作为独
 
 - SQLite
 
-SQLite 用于保存项目、Skills 元信息、分类、启用关系、资源 Radar 条目和应用设置。
+SQLite 用于保存项目、Skills 元信息、分类、启用关系、自定义工具目标、资源 Radar 条目和应用设置。
 
 数据库文件放在 Workbench 本地数据根目录：
 
@@ -52,6 +52,7 @@ SQLite 用于保存项目、Skills 元信息、分类、启用关系、资源 Ra
 - 使用外部工具打开项目目录。
 - 扫描 `SKILL.md`。
 - 复制导入的 Skill。
+- 选择并复制自定义工具图标。
 - 创建和移除由 Workbench 管理的符号链接。
 - 为项目启用的启动项创建非交互式内嵌启动会话。
 
@@ -164,6 +165,7 @@ Workbench/
 - 管理 Skill 分类。
 - 管理 Skill 的全局工具启用关系。
 - 管理 Skill 的项目级工具启用关系。
+- 管理自定义 Agent 工具的全局 Skills 目录。
 - 从 ZIP 文件或已解压文件夹导入 Skills。
 
 关键原则：
@@ -179,6 +181,8 @@ Workbench/
 - 内容冲突按 Skill 统一解决：用户从 `.workbench` 和所有存在版本的全局工具目录中选择一个唯一版本源。
 - 解决冲突前必须备份被替换版本，不自动合并目录内容。
 - 删除 Skill 只删除统一根目录内容和 Workbench 管理的启用目标，不删除未被 Workbench 管理的工具目录。
+- 自定义工具只支持全局 Skills 目录；项目级启用必须由后端拒绝。
+- 删除自定义工具只删除 Workbench 配置、排序项和启用记录，不删除外部工具目录。
 
 ### 4.4 资源 Radar 模块
 
@@ -216,6 +220,7 @@ Workbench/
 - 查看本地数据库位置。
 - 管理 Workbench Skills 根目录。
 - 查看支持的工具及其全局 Skills 目录。
+- 新增、编辑和删除自定义 Agent 工具。
 - 展示 Skills 路径映射关系。
 - 管理主题偏好。
 
@@ -342,7 +347,7 @@ Workbench/
 
 ### 6.5 工具目标
 
-工具目标由后端固定注册表定义，不把路径覆盖作为当前能力。注册表包含工具 key、展示名、全局 Skills 目录和是否支持项目级 Skills。
+工具目标由后端内置注册表和 `custom_tool_targets` 表合并得到。内置注册表包含工具 key、展示名、全局 Skills 目录和是否支持项目级 Skills；自定义工具由用户在设置页维护，只支持全局 Skills 目录。
 
 | 工具 | 全局 Skills 目录 | 项目级目录 |
 | --- | --- | --- |
@@ -364,7 +369,29 @@ Workbench/
 | Kiro CLI | `~/.kiro/skills` | 不支持 |
 | Junie CLI | `~/.junie/skills` | 不支持 |
 
-项目级启用必须先通过 `supports_project_scope` 守卫。当前只有 Codex、Claude Code 和 OpenCode 支持项目级 Skills。
+项目级启用必须先通过 `supports_project_scope` 守卫。当前只有 Codex、Claude Code 和 OpenCode 支持项目级 Skills；自定义工具固定不支持项目级 Skills。
+
+### 6.5.1 custom_tool_targets
+
+保存用户自定义 Agent 工具目标。自定义工具只作为全局 Skills 目录参与扫描、筛选和启用。
+
+| 字段 | 说明 |
+| --- | --- |
+| key | 工具唯一标识，不能与内置工具冲突 |
+| name | 展示名 |
+| global_skills_dir | 全局 Skills 目录 |
+| icon_path | Workbench 管理的本地图标路径，可为空 |
+| created_at | 创建时间 |
+| updated_at | 更新时间 |
+
+约束：
+
+- 自定义工具 key 使用 slug 格式，并与内置工具 key 共用唯一命名空间。
+- 自定义工具 key 是后端内部标识，新增时根据工具名称自动生成；编辑工具名称时不改变 key。
+- 自定义工具名称不能与内置工具或其他自定义工具重复。
+- 自定义工具图标从用户选择的本地文件复制到 `~/.workbench/tool-icons/`。
+- 自定义工具图标通过 Tauri asset protocol 暴露给前端；加载失败时前端回退到字母图标。
+- 删除自定义工具会清理 `custom_tool_targets`、`app_settings.tool_target_order` 中的排序项和该工具相关 `skill_enablements`，不删除 `global_skills_dir` 指向的外部目录。
 
 ### 6.6 skill_enablements
 
@@ -458,7 +485,7 @@ Workbench/
 - `close_tray_hint_dismissed`
 - `project_open_profiles_seeded`
 
-`tool_target_order` 只影响 Skills 表格和设置页中的展示顺序，不改变工具目录路径或启用数据所有权。
+`tool_target_order` 只影响 Skills 表格和设置页中的展示顺序，不改变工具目录路径或启用数据所有权。删除自定义工具时，后端会从该设置中移除对应 key。
 
 `close_behavior` 控制主窗口关闭请求的处理方式，取值为 `exit` 或 `hide_to_tray`。默认值为 `hide_to_tray`。
 
@@ -580,6 +607,7 @@ Workbench/
 4. 后端检查目标路径。
 5. 若目标不存在，优先创建符号链接；失败时原子复制，并记录实际同步方式。
 6. 若目标已存在且非 Workbench 管理，返回冲突，不覆盖目标内容。
+7. 若工具是自定义工具且启用范围为项目级，后端拒绝请求。
 
 ### 7.5 停用 Skill
 
@@ -619,7 +647,7 @@ Workbench/
 流程：
 
 1. 用户扫描 Skills。
-2. 后端对每个 Skill 检查固定工具注册表中的全局目标目录。
+2. 后端对每个 Skill 检查内置工具和自定义工具的全局目标目录。
 3. 若目标不存在，状态为未启用。
 4. 若目标由 Workbench 数据库记录管理，状态为 Workbench 管理。
 5. 若目标存在但未被 Workbench 记录管理，后端比较目标目录和统一根目录中的 Skill 内容。
@@ -630,7 +658,18 @@ Workbench/
 10. 选中的版本写入 Workbench 根目录，已存在的全局工具目录统一重新同步。
 11. 冲突解决不自动合并文件。
 
-### 7.9 删除 Skill
+### 7.9 管理自定义工具
+
+流程：
+
+1. 用户在设置页点击添加或编辑自定义工具。
+2. 前端收集工具名称、全局 Skills 目录和可选图标文件；用户界面不展示内部 key。
+3. 后端校验名称和目录；新增时根据名称生成唯一内部 key，编辑时保留原 key。
+4. 用户选择图标时，后端将图标复制到 `~/.workbench/tool-icons/` 并保存 `icon_path`。
+5. 后端写入 `custom_tool_targets`，并返回合并后的 Skills 状态。
+6. 删除自定义工具时，后端删除 Workbench 配置、排序项和该工具相关启用记录，不删除外部工具目录。
+
+### 7.10 删除 Skill
 
 流程：
 
@@ -642,7 +681,7 @@ Workbench/
 6. 后端删除统一根目录中的 Skill。
 7. 未被 Workbench 管理的外部工具目录内容保持不变。
 
-### 7.10 管理资源 Radar
+### 7.11 管理资源 Radar
 
 流程：
 

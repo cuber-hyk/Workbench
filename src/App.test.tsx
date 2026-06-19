@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { App, ModuleStateView, ProjectDialog, ProjectsView, RadarView, SettingsView, SkillCategoryDialog, SkillsView, applyPendingLaunchEvents, markLaunchRunStopped, mergeLaunchRunSnapshots, rememberUpdateNotice, shouldShowUpdateNotice } from "./App";
+import { App, CustomToolDialog, ModuleStateView, ProjectDialog, ProjectsView, RadarView, SettingsView, SkillCategoryDialog, SkillsView, applyPendingLaunchEvents, markLaunchRunStopped, mergeLaunchRunSnapshots, rememberUpdateNotice, shouldShowUpdateNotice } from "./App";
 import { AppUpdateProvider } from "./contexts/AppUpdateContext";
 import type { AppSettings, LaunchSessionEvent, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, Skill, SkillCategory } from "./lib/types/domain";
 
@@ -111,6 +111,22 @@ const skillsSettings: AppSettings = {
       globalSkillsDir: "C:\\Users\\dev\\.opencode\\skills",
       supportsProjectScope: true,
       available: true
+    }
+  ]
+};
+
+const customToolSettings: AppSettings = {
+  ...skillsSettings,
+  toolTargets: [
+    ...skillsSettings.toolTargets,
+    {
+      key: "my-agent",
+      name: "My Agent",
+      globalSkillsDir: "C:\\Users\\dev\\.my-agent\\skills",
+      supportsProjectScope: false,
+      available: true,
+      source: "custom",
+      iconPath: "my-agent.svg"
     }
   ]
 };
@@ -658,6 +674,9 @@ describe("Workbench UI interactions", () => {
         onReorderToolTargets={vi.fn()}
         onCloseBehaviorChange={vi.fn()}
         onOpenPath={vi.fn()}
+        onAddCustomTool={vi.fn()}
+        onEditCustomTool={vi.fn()}
+        onDeleteCustomTool={vi.fn()}
         onAddProjectOpenProfile={onAddProjectOpenProfile}
         onEditProjectOpenProfile={onEditProjectOpenProfile}
         onDeleteProjectOpenProfile={onDeleteProjectOpenProfile}
@@ -675,6 +694,63 @@ describe("Workbench UI interactions", () => {
     expect(onDeleteProjectOpenProfile).toHaveBeenCalledWith(projectOpenProfiles[0]);
   });
 
+  it("shows custom tool actions and icon in settings", async () => {
+    const user = userEvent.setup();
+    const onEditCustomTool = vi.fn();
+    const onDeleteCustomTool = vi.fn();
+    const { container } = renderWithUpdateProvider(
+      <SettingsView
+        settings={customToolSettings}
+        theme="dark"
+        onOpenUpdateDetails={vi.fn()}
+        onThemeToggle={vi.fn()}
+        onRootChange={vi.fn()}
+        onReorderToolTargets={vi.fn()}
+        onAddCustomTool={vi.fn()}
+        onEditCustomTool={onEditCustomTool}
+        onDeleteCustomTool={onDeleteCustomTool}
+        onCloseBehaviorChange={vi.fn()}
+        onOpenPath={vi.fn()}
+        onAddProjectOpenProfile={vi.fn()}
+        onEditProjectOpenProfile={vi.fn()}
+        onDeleteProjectOpenProfile={vi.fn()}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: "编辑 My Agent" }));
+    await user.click(screen.getByRole("button", { name: "删除 My Agent" }));
+
+    expect(screen.getByText("自定义")).toBeInTheDocument();
+    const toolIconSources = Array.from(container.querySelectorAll(".settings-tool-icon img")).map((image) => image.getAttribute("src"));
+    expect(toolIconSources).toContain("my-agent.svg");
+    expect(onEditCustomTool).toHaveBeenCalledWith(customToolSettings.toolTargets[3]);
+    expect(onDeleteCustomTool).toHaveBeenCalledWith(customToolSettings.toolTargets[3]);
+  });
+
+  it("keeps custom tool internal keys hidden and shows form errors inline", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    render(
+      <CustomToolDialog
+        existingTools={skillsSettings.toolTargets}
+        onSelectDirectory={() => Promise.resolve(null)}
+        onSelectIcon={() => Promise.resolve(null)}
+        onError={vi.fn()}
+        onSubmit={onSubmit}
+        onClose={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByText("工具 Key")).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("工具名称"), "Codex");
+    await user.type(screen.getByLabelText("全局 Skills 目录"), "C:\\Users\\dev\\.codex\\skills");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(screen.getByText("工具名称已存在")).toBeInTheDocument();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
   it("reorders global tool display order from settings", async () => {
     const user = userEvent.setup();
     const onReorderToolTargets = vi.fn();
@@ -688,6 +764,9 @@ describe("Workbench UI interactions", () => {
         onReorderToolTargets={onReorderToolTargets}
         onCloseBehaviorChange={vi.fn()}
         onOpenPath={vi.fn()}
+        onAddCustomTool={vi.fn()}
+        onEditCustomTool={vi.fn()}
+        onDeleteCustomTool={vi.fn()}
         onAddProjectOpenProfile={vi.fn()}
         onEditProjectOpenProfile={vi.fn()}
         onDeleteProjectOpenProfile={vi.fn()}
@@ -712,6 +791,9 @@ describe("Workbench UI interactions", () => {
         onReorderToolTargets={vi.fn()}
         onCloseBehaviorChange={onCloseBehaviorChange}
         onOpenPath={vi.fn()}
+        onAddCustomTool={vi.fn()}
+        onEditCustomTool={vi.fn()}
+        onDeleteCustomTool={vi.fn()}
         onAddProjectOpenProfile={vi.fn()}
         onEditProjectOpenProfile={vi.fn()}
         onDeleteProjectOpenProfile={vi.fn()}

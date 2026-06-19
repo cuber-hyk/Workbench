@@ -285,6 +285,14 @@ code { font-family: Consolas, monospace; }
 .settings-row span { display: grid; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
 .settings-row small { color: var(--muted); font-size: 10px; }
 .settings-row-actions { display: flex !important; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; min-width: 132px; }
+.settings-tool-identity { display: grid !important; grid-template-columns: 30px minmax(0, 1fr); align-items: center; gap: 10px; }
+.settings-tool-icon { display: grid !important; place-items: center; width: 28px; height: 28px; border: 1px solid var(--border); border-radius: 50%; background: color-mix(in srgb, var(--panel), var(--bg) 35%); overflow: hidden; }
+.settings-tool-icon img { width: 18px; height: 18px; object-fit: contain; border-radius: 4px; }
+.settings-tool-icon span { font-size: 10px; font-weight: 800; color: var(--muted); }
+.tool-icon-preview { display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: center; gap: 10px; padding: 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); }
+.tool-icon-preview > span { display: grid; place-items: center; width: 26px; height: 26px; border: 1px solid var(--border); border-radius: 50%; overflow: hidden; }
+.tool-icon-preview img { width: 18px; height: 18px; object-fit: contain; }
+.tool-icon-preview code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
 .settings-select { min-width: 150px; min-height: 34px; padding: 0 30px 0 10px; border: 1px solid var(--border); border-radius: 5px; background: var(--panel); color: var(--text); }
 .update-settings-panel { scroll-margin: 16px; }
 .update-settings-panel:focus { outline: 2px solid var(--accent); outline-offset: 3px; }

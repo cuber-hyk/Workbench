@@ -92,6 +92,16 @@ export interface ToolTarget {
   globalSkillsDir: string;
   supportsProjectScope: boolean;
   available: boolean;
+  source?: "builtin" | "custom";
+  iconPath?: string | null;
+}
+
+export interface CustomToolTargetInput {
+  key?: ToolKey | null;
+  name: string;
+  globalSkillsDir: string;
+  iconSourcePath?: string | null;
+  iconPath?: string | null;
 }
 
 export type SkillVersionSource = "workbench" | ToolKey;

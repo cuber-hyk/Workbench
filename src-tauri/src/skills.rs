@@ -71,6 +71,25 @@ pub struct ToolTarget {
     pub global_skills_dir: String,
     pub supports_project_scope: bool,
     pub available: bool,
+    pub source: ToolTargetSource,
+    pub icon_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolTargetSource {
+    Builtin,
+    Custom,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomToolTargetInput {
+    pub key: Option<String>,
+    pub name: String,
+    pub global_skills_dir: String,
+    pub icon_source_path: Option<String>,
+    pub icon_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -577,6 +596,14 @@ fn open_database(workbench_root: &Path) -> SkillResult<Connection> {
                 sync_method TEXT NOT NULL DEFAULT 'symlink',
                 PRIMARY KEY(directory_name, tool, scope, project_path)
             );
+            CREATE TABLE IF NOT EXISTS custom_tool_targets (
+                key TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                global_skills_dir TEXT NOT NULL,
+                icon_path TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
             ",
         )
         .map_err(error_message)?;
@@ -744,29 +771,39 @@ fn configured_skills_root(connection: &Connection, workbench_root: &Path) -> Ski
 }
 
 fn tool_target_path(tool: &str, project_path: Option<&str>) -> SkillResult<PathBuf> {
-    let base = match project_path {
-        Some(path) => PathBuf::from(path),
-        None => dirs::home_dir().ok_or_else(|| "无法获取用户主目录".to_string())?,
-    };
-    let definition = tool_target_definition(tool)?;
-    let segments = match project_path {
-        Some(_) => definition
-            .project_path
-            .ok_or_else(|| format!("工具不支持项目级 Skills: {}", definition.name))?,
-        None => definition.global_path,
-    };
-    Ok(join_path_segments(base, segments))
+    if let Ok(definition) = builtin_tool_target_definition(tool) {
+        let base = match project_path {
+            Some(path) => PathBuf::from(path),
+            None => dirs::home_dir().ok_or_else(|| "无法获取用户主目录".to_string())?,
+        };
+        let segments = match project_path {
+            Some(_) => definition
+                .project_path
+                .ok_or_else(|| format!("工具不支持项目级 Skills: {}", definition.name))?,
+            None => definition.global_path,
+        };
+        return Ok(join_path_segments(base, segments));
+    }
+
+    if project_path.is_some() {
+        return Err(format!("工具不支持项目级 Skills: {tool}"));
+    }
+    let workbench_root = default_workbench_root()?;
+    let connection = open_database(&workbench_root)?;
+    custom_tool_target_path(&connection, tool)
 }
 
-fn tool_targets() -> SkillResult<Vec<ToolTarget>> {
-    TOOL_TARGET_DEFINITIONS
+fn tool_targets(connection: &Connection) -> SkillResult<Vec<ToolTarget>> {
+    let mut targets = TOOL_TARGET_DEFINITIONS
         .iter()
         .map(target_definition)
-        .collect::<SkillResult<Vec<_>>>()
+        .collect::<SkillResult<Vec<_>>>()?;
+    targets.extend(custom_tool_targets(connection)?);
+    Ok(targets)
 }
 
 fn ordered_tool_targets(connection: &Connection) -> SkillResult<Vec<ToolTarget>> {
-    let mut targets = tool_targets()?;
+    let mut targets = tool_targets(connection)?;
     let configured_order = configured_tool_target_order(connection)?;
     if configured_order.is_empty() {
         return Ok(targets);
@@ -788,10 +825,11 @@ fn configured_tool_target_order(connection: &Connection) -> SkillResult<Vec<Stri
     );
     match configured {
         Ok(value) => {
+            let allowed = available_tool_target_keys(connection)?;
             let order: Vec<String> = serde_json::from_str(&value).map_err(error_message)?;
             Ok(order
                 .into_iter()
-                .filter(|key| tool_target_definition(key).is_ok())
+                .filter(|key| allowed.contains(key))
                 .collect())
         }
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(Vec::new()),
@@ -840,11 +878,18 @@ fn default_tool_target_index(key: &str) -> usize {
         .unwrap_or(TOOL_TARGET_DEFINITIONS.len())
 }
 
-fn tool_target_definition(key: &str) -> SkillResult<&'static ToolTargetDefinition> {
+fn builtin_tool_target_definition(key: &str) -> SkillResult<&'static ToolTargetDefinition> {
     TOOL_TARGET_DEFINITIONS
         .iter()
         .find(|definition| definition.key == key)
         .ok_or_else(|| format!("不支持的工具: {key}"))
+}
+
+fn available_tool_target_keys(connection: &Connection) -> SkillResult<HashSet<String>> {
+    Ok(tool_targets(connection)?
+        .into_iter()
+        .map(|target| target.key)
+        .collect())
 }
 
 fn join_path_segments(mut base: PathBuf, segments: &[&str]) -> PathBuf {
@@ -862,7 +907,50 @@ fn target_definition(definition: &ToolTargetDefinition) -> SkillResult<ToolTarge
         global_skills_dir: path.to_string_lossy().to_string(),
         supports_project_scope: definition.project_path.is_some(),
         available: path.exists(),
+        source: ToolTargetSource::Builtin,
+        icon_path: None,
     })
+}
+
+fn custom_tool_targets(connection: &Connection) -> SkillResult<Vec<ToolTarget>> {
+    let mut statement = connection
+        .prepare(
+            "SELECT key, name, global_skills_dir, icon_path
+             FROM custom_tool_targets
+             ORDER BY created_at, name",
+        )
+        .map_err(error_message)?;
+    let rows = statement
+        .query_map([], |row| {
+            let path = row.get::<_, String>(2)?;
+            let icon_path = row.get::<_, String>(3)?;
+            Ok(ToolTarget {
+                key: row.get(0)?,
+                name: row.get(1)?,
+                available: PathBuf::from(&path).exists(),
+                global_skills_dir: path,
+                supports_project_scope: false,
+                source: ToolTargetSource::Custom,
+                icon_path: if icon_path.trim().is_empty() {
+                    None
+                } else {
+                    Some(icon_path)
+                },
+            })
+        })
+        .map_err(error_message)?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(error_message)
+}
+
+fn custom_tool_target_path(connection: &Connection, key: &str) -> SkillResult<PathBuf> {
+    connection
+        .query_row(
+            "SELECT global_skills_dir FROM custom_tool_targets WHERE key = ?1",
+            [key],
+            |row| row.get::<_, String>(0),
+        )
+        .map(PathBuf::from)
+        .map_err(|_| format!("不支持的工具: {key}"))
 }
 
 fn current_settings() -> SkillResult<SkillsSettings> {
@@ -951,7 +1039,7 @@ fn enrich_skills(
                 });
             }
         }
-        for target in tool_targets()? {
+        for target in tool_targets(connection)? {
             let managed = skill
                 .enabled_tool_methods
                 .iter()
@@ -1129,7 +1217,9 @@ fn refresh_managed_copies(
 }
 
 fn existing_global_targets(directory_name: &str) -> SkillResult<Vec<(String, PathBuf)>> {
-    tool_targets()?
+    let workbench_root = default_workbench_root()?;
+    let connection = open_database(&workbench_root)?;
+    tool_targets(&connection)?
         .into_iter()
         .map(|target| {
             Ok((
@@ -1355,11 +1445,260 @@ pub fn set_close_tray_hint_dismissed(dismissed: bool) -> SkillResult<SkillsState
     get_skills_state()
 }
 
+fn validate_custom_tool_key(key: &str) -> SkillResult<String> {
+    let trimmed = key.trim();
+    if trimmed.len() < 2 || trimmed.len() > 40 {
+        return Err("工具 Key 长度需为 2 到 40 个字符".to_string());
+    }
+    if builtin_tool_target_definition(trimmed).is_ok() {
+        return Err("工具 Key 已被内置工具占用".to_string());
+    }
+    let first = trimmed
+        .chars()
+        .next()
+        .ok_or_else(|| "工具 Key 不能为空".to_string())?;
+    if !first.is_ascii_lowercase() && !first.is_ascii_digit() {
+        return Err("工具 Key 必须以小写字母或数字开头".to_string());
+    }
+    if !trimmed.chars().all(|value| {
+        value.is_ascii_lowercase() || value.is_ascii_digit() || value == '-' || value == '_'
+    }) {
+        return Err("工具 Key 仅支持小写字母、数字、短横线和下划线".to_string());
+    }
+    Ok(trimmed.to_string())
+}
+
+fn validate_custom_tool_name(name: &str) -> SkillResult<String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("工具名称不能为空".to_string());
+    }
+    Ok(trimmed.to_string())
+}
+
+fn normalized_tool_name(name: &str) -> String {
+    name.trim().to_lowercase()
+}
+
+fn validate_custom_tool_name_unique(
+    connection: &Connection,
+    name: &str,
+    current_key: Option<&str>,
+) -> SkillResult<()> {
+    let normalized = normalized_tool_name(name);
+    if TOOL_TARGET_DEFINITIONS
+        .iter()
+        .any(|definition| normalized_tool_name(definition.name) == normalized)
+    {
+        return Err("工具名称已存在".to_string());
+    }
+    let mut statement = connection
+        .prepare("SELECT key, name FROM custom_tool_targets")
+        .map_err(error_message)?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(error_message)?;
+    for row in rows {
+        let (key, existing_name) = row.map_err(error_message)?;
+        if Some(key.as_str()) != current_key && normalized_tool_name(&existing_name) == normalized {
+            return Err("工具名称已存在".to_string());
+        }
+    }
+    Ok(())
+}
+
+fn custom_tool_key_base(name: &str) -> String {
+    let mut base = String::new();
+    let mut previous_dash = false;
+    for character in name.trim().chars() {
+        if character.is_ascii_alphanumeric() {
+            base.push(character.to_ascii_lowercase());
+            previous_dash = false;
+        } else if !previous_dash && !base.is_empty() {
+            base.push('-');
+            previous_dash = true;
+        }
+    }
+    let trimmed = base
+        .trim_matches('-')
+        .chars()
+        .take(32)
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string();
+    if trimmed.is_empty() {
+        "custom-tool".to_string()
+    } else {
+        trimmed
+    }
+}
+
+fn generate_custom_tool_key(connection: &Connection, name: &str) -> SkillResult<String> {
+    let base = custom_tool_key_base(name);
+    let existing = available_tool_target_keys(connection)?;
+    if !existing.contains(&base) && validate_custom_tool_key(&base).is_ok() {
+        return Ok(base);
+    }
+    for index in 2..=999 {
+        let candidate = format!("{base}-{index}");
+        if !existing.contains(&candidate) && validate_custom_tool_key(&candidate).is_ok() {
+            return Ok(candidate);
+        }
+    }
+    Err("无法生成自定义工具标识".to_string())
+}
+
+fn existing_custom_tool_key(connection: &Connection, key: &str) -> SkillResult<()> {
+    connection
+        .query_row(
+            "SELECT key FROM custom_tool_targets WHERE key = ?1",
+            [key],
+            |_| Ok(()),
+        )
+        .map_err(|_| "自定义工具不存在".to_string())
+}
+
+fn validate_custom_tool_dir(path: &str) -> SkillResult<String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("全局 Skills 目录不能为空".to_string());
+    }
+    let directory = PathBuf::from(trimmed);
+    if !directory.is_absolute() {
+        return Err("全局 Skills 目录必须是绝对路径".to_string());
+    }
+    Ok(directory.to_string_lossy().to_string())
+}
+
+fn copy_custom_tool_icon(workbench_root: &Path, key: &str, source: &str) -> SkillResult<String> {
+    let source_path = PathBuf::from(source.trim());
+    if !source_path.is_file() {
+        return Err("图标文件不存在".to_string());
+    }
+    let extension = source_path
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.to_ascii_lowercase())
+        .ok_or_else(|| "图标文件缺少扩展名".to_string())?;
+    if !matches!(
+        extension.as_str(),
+        "png" | "jpg" | "jpeg" | "webp" | "ico" | "svg"
+    ) {
+        return Err("图标仅支持 png、jpg、webp、ico 或 svg".to_string());
+    }
+    let icon_dir = workbench_root.join("tool-icons");
+    fs::create_dir_all(&icon_dir).map_err(error_message)?;
+    let target = icon_dir.join(format!("{key}.{extension}"));
+    if source_path != target {
+        fs::copy(&source_path, &target).map_err(error_message)?;
+    }
+    Ok(target.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub async fn select_tool_icon_source<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+) -> SkillResult<Option<String>> {
+    Ok(app
+        .dialog()
+        .file()
+        .add_filter("Image", &["png", "jpg", "jpeg", "webp", "ico", "svg"])
+        .blocking_pick_file()
+        .map(|path| path.to_string()))
+}
+
+#[tauri::command]
+pub fn save_custom_tool_target(input: CustomToolTargetInput) -> SkillResult<SkillsState> {
+    let name = validate_custom_tool_name(&input.name)?;
+    let global_skills_dir = validate_custom_tool_dir(&input.global_skills_dir)?;
+    let workbench_root = default_workbench_root()?;
+    let connection = open_database(&workbench_root)?;
+    let existing_key = input
+        .key
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(validate_custom_tool_key)
+        .transpose()?;
+    if let Some(key) = existing_key.as_deref() {
+        existing_custom_tool_key(&connection, key)?;
+    }
+    validate_custom_tool_name_unique(&connection, &name, existing_key.as_deref())?;
+    let key = match existing_key {
+        Some(key) => key,
+        None => generate_custom_tool_key(&connection, &name)?,
+    };
+    let icon_path = match input
+        .icon_source_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        Some(source) => copy_custom_tool_icon(&workbench_root, &key, source)?,
+        None => input.icon_path.unwrap_or_default().trim().to_string(),
+    };
+
+    connection
+        .execute(
+            "INSERT INTO custom_tool_targets(key, name, global_skills_dir, icon_path)
+             VALUES(?1, ?2, ?3, ?4)
+             ON CONFLICT(key) DO UPDATE SET
+                name = excluded.name,
+                global_skills_dir = excluded.global_skills_dir,
+                icon_path = excluded.icon_path,
+                updated_at = CURRENT_TIMESTAMP",
+            params![key, name, global_skills_dir, icon_path],
+        )
+        .map_err(error_message)?;
+    get_skills_state()
+}
+
+#[tauri::command]
+pub fn delete_custom_tool_target(key: String) -> SkillResult<SkillsState> {
+    let key = validate_custom_tool_key(&key)?;
+    let workbench_root = default_workbench_root()?;
+    let connection = open_database(&workbench_root)?;
+    let icon_path = connection
+        .query_row(
+            "SELECT icon_path FROM custom_tool_targets WHERE key = ?1",
+            [&key],
+            |row| row.get::<_, String>(0),
+        )
+        .map_err(|_| "自定义工具不存在".to_string())?;
+
+    connection
+        .execute("DELETE FROM skill_enablements WHERE tool = ?1", [&key])
+        .map_err(error_message)?;
+    connection
+        .execute("DELETE FROM custom_tool_targets WHERE key = ?1", [&key])
+        .map_err(error_message)?;
+
+    let order = configured_tool_target_order(&connection)?;
+    let order_json = serde_json::to_string(&order).map_err(error_message)?;
+    connection
+        .execute(
+            "INSERT INTO app_settings(key, value) VALUES(?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![TOOL_TARGET_ORDER_SETTING, order_json],
+        )
+        .map_err(error_message)?;
+
+    let icon = PathBuf::from(icon_path);
+    let managed_icon_dir = workbench_root.join("tool-icons");
+    if icon.starts_with(&managed_icon_dir) && icon.is_file() {
+        let _ = fs::remove_file(icon);
+    }
+
+    get_skills_state()
+}
+
 #[tauri::command]
 pub fn set_tool_target_order(tool_keys: Vec<String>) -> SkillResult<SkillsState> {
     let workbench_root = default_workbench_root()?;
     let connection = open_database(&workbench_root)?;
-    let order = normalized_tool_target_order(tool_keys)?;
+    let order = normalized_tool_target_order(&connection, tool_keys)?;
     let order_json = serde_json::to_string(&order).map_err(error_message)?;
     connection
         .execute(
@@ -1371,18 +1710,25 @@ pub fn set_tool_target_order(tool_keys: Vec<String>) -> SkillResult<SkillsState>
     get_skills_state()
 }
 
-fn normalized_tool_target_order(tool_keys: Vec<String>) -> SkillResult<Vec<String>> {
+fn normalized_tool_target_order(
+    connection: &Connection,
+    tool_keys: Vec<String>,
+) -> SkillResult<Vec<String>> {
+    let targets = tool_targets(connection)?;
+    let allowed: HashSet<String> = targets.iter().map(|target| target.key.clone()).collect();
     let mut seen = HashSet::new();
     let mut order = Vec::new();
     for key in tool_keys {
-        tool_target_definition(&key)?;
+        if !allowed.contains(&key) {
+            return Err(format!("不支持的工具: {key}"));
+        }
         if seen.insert(key.clone()) {
             order.push(key);
         }
     }
-    for definition in TOOL_TARGET_DEFINITIONS {
-        if seen.insert(definition.key.to_string()) {
-            order.push(definition.key.to_string());
+    for target in targets {
+        if seen.insert(target.key.clone()) {
+            order.push(target.key);
         }
     }
     Ok(order)
@@ -1758,6 +2104,30 @@ mod tests {
     use std::fs;
     use tempfile::tempdir;
 
+    fn in_memory_settings_connection() -> Connection {
+        let connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute(
+                "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "CREATE TABLE custom_tool_targets (
+                    key TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    global_skills_dir TEXT NOT NULL,
+                    icon_path TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )",
+                [],
+            )
+            .unwrap();
+        connection
+    }
+
     #[test]
     fn parses_skill_frontmatter_name_and_description() {
         let markdown = "---\nname: example-skill\ndescription: Example description\n---\n# Body";
@@ -1815,13 +2185,7 @@ mod tests {
 
     #[test]
     fn orders_tool_targets_from_settings_and_appends_new_defaults() {
-        let connection = Connection::open_in_memory().unwrap();
-        connection
-            .execute(
-                "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
-                [],
-            )
-            .unwrap();
+        let connection = in_memory_settings_connection();
         connection
             .execute(
                 "INSERT INTO app_settings(key, value) VALUES(?1, ?2)",
@@ -1838,12 +2202,71 @@ mod tests {
 
     #[test]
     fn normalizes_tool_order_by_deduping_and_appending_defaults() {
-        let order =
-            normalized_tool_target_order(vec!["claude".into(), "codex".into(), "claude".into()])
-                .unwrap();
+        let connection = in_memory_settings_connection();
+        let order = normalized_tool_target_order(
+            &connection,
+            vec!["claude".into(), "codex".into(), "claude".into()],
+        )
+        .unwrap();
 
         assert_eq!(&order[0..2], ["claude", "codex"]);
         assert_eq!(order.len(), TOOL_TARGET_DEFINITIONS.len());
+    }
+
+    #[test]
+    fn includes_custom_tool_targets_in_ordering() {
+        let connection = in_memory_settings_connection();
+        connection
+            .execute(
+                "INSERT INTO custom_tool_targets(key, name, global_skills_dir, icon_path)
+                 VALUES('my-agent', 'My Agent', 'C:\\Users\\dev\\.my-agent\\skills', '')",
+                [],
+            )
+            .unwrap();
+
+        let order = normalized_tool_target_order(&connection, vec!["my-agent".into()]).unwrap();
+        let targets = ordered_tool_targets(&connection).unwrap();
+
+        assert_eq!(order[0], "my-agent");
+        assert!(targets.iter().any(|target| {
+            target.key == "my-agent"
+                && target.name == "My Agent"
+                && target.source == ToolTargetSource::Custom
+        }));
+    }
+
+    #[test]
+    fn generates_custom_tool_key_from_name() {
+        let connection = in_memory_settings_connection();
+
+        let english = generate_custom_tool_key(&connection, "My Agent").unwrap();
+        let chinese = generate_custom_tool_key(&connection, "通义灵码").unwrap();
+
+        assert_eq!(english, "my-agent");
+        assert_eq!(chinese, "custom-tool");
+    }
+
+    #[test]
+    fn custom_tool_names_must_be_unique() {
+        let connection = in_memory_settings_connection();
+        connection
+            .execute(
+                "INSERT INTO custom_tool_targets(key, name, global_skills_dir, icon_path)
+                 VALUES('my-agent', 'My Agent', 'C:\\Users\\dev\\.my-agent\\skills', '')",
+                [],
+            )
+            .unwrap();
+
+        let duplicate_custom =
+            validate_custom_tool_name_unique(&connection, " my agent ", None).unwrap_err();
+        let duplicate_builtin =
+            validate_custom_tool_name_unique(&connection, "Codex", None).unwrap_err();
+        let same_tool_edit =
+            validate_custom_tool_name_unique(&connection, "My Agent", Some("my-agent"));
+
+        assert_eq!(duplicate_custom, "工具名称已存在");
+        assert_eq!(duplicate_builtin, "工具名称已存在");
+        assert!(same_tool_edit.is_ok());
     }
 
     #[test]
