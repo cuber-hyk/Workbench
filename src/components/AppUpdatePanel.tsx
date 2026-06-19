@@ -108,7 +108,11 @@ export function AppUpdateDialog({ onClose }: { onClose: () => void }) {
               <small>更新说明</small>
               {updateInfo.date && <small>{formatUpdateDate(updateInfo.date)}</small>}
             </span>
-            <p>{updateInfo.body}</p>
+            <ul className="update-release-note-list">
+              {formatReleaseNotes(updateInfo.body).map((item, index) => (
+                <li key={`${index}-${item}`}>{item}</li>
+              ))}
+            </ul>
           </div>
         )}
 
@@ -159,6 +163,27 @@ function latestVersionFallback(status: string) {
     default:
       return "尚未发现更新";
   }
+}
+
+export function formatReleaseNotes(body: string) {
+  const lines = body
+    .replace(/\r/g, "")
+    .split(/\n+/)
+    .map((line) => stripReleaseNoteMarker(line.trim()))
+    .filter(Boolean);
+
+  if (lines.length > 1) return lines;
+
+  const source = lines[0] ?? body.trim();
+  return source
+    .split(/(?<=[。；;])\s*/)
+    .map((item) => stripReleaseNoteMarker(item.trim()))
+    .filter(Boolean);
+}
+
+function stripReleaseNoteMarker(line: string) {
+  if (/^#+\s+/.test(line)) return "";
+  return line.replace(/^([-*•]|\d+[.)、])\s+/, "");
 }
 
 function formatUpdateDate(date: string) {

@@ -805,14 +805,50 @@ fn expanded_workdir(project_path: &Path, profile: &ProjectOpenProfile) -> Projec
 }
 
 fn terminal_command_line(project_path: &Path, profile: &ProjectOpenProfile) -> String {
-    let program = profile_program(profile);
-    let mut parts = vec![quote_powershell_arg(&program)];
+    let mut parts = terminal_command_parts(profile);
     parts.extend(
         expanded_args(project_path, &profile.args)
             .iter()
             .map(|arg| quote_powershell_arg(arg)),
     );
     format!("& {}", parts.join(" "))
+}
+
+fn terminal_command_parts(profile: &ProjectOpenProfile) -> Vec<String> {
+    let program = profile_program(profile);
+    if !profile.executable_path.trim().is_empty() {
+        return vec![quote_powershell_arg(&program)];
+    }
+    split_command_line(&program)
+        .iter()
+        .map(|part| quote_powershell_arg(part))
+        .collect()
+}
+
+fn split_command_line(command: &str) -> Vec<String> {
+    let mut parts = Vec::new();
+    let mut current = String::new();
+    let mut quote: Option<char> = None;
+
+    for character in command.chars() {
+        match (quote, character) {
+            (Some(active), value) if value == active => quote = None,
+            (None, '\'' | '"') => quote = Some(character),
+            (None, value) if value.is_whitespace() => {
+                if !current.is_empty() {
+                    parts.push(current);
+                    current = String::new();
+                }
+            }
+            _ => current.push(character),
+        }
+    }
+
+    if !current.is_empty() {
+        parts.push(current);
+    }
+
+    parts
 }
 
 fn quote_powershell_arg(value: &str) -> String {
@@ -1672,6 +1708,54 @@ mod tests {
 
         assert_eq!(args[0], "--reuse-window");
         assert_eq!(args[1], dir.path().to_string_lossy().to_string());
+    }
+
+    #[test]
+    fn terminal_command_line_splits_inline_command_arguments() {
+        let dir = tempdir().unwrap();
+        let profile = ProjectOpenProfile {
+            id: "deveco".to_string(),
+            name: "DevEco".to_string(),
+            kind: ProjectOpenProfileKind::Terminal,
+            command: "deveco -c --skip-agreement".to_string(),
+            executable_path: String::new(),
+            args: vec!["{projectPath}".to_string()],
+            workdir: "{projectPath}".to_string(),
+            enabled: true,
+            sort_order: 0,
+        };
+
+        assert_eq!(
+            terminal_command_line(dir.path(), &profile),
+            format!(
+                "& 'deveco' '-c' '--skip-agreement' '{}'",
+                dir.path().to_string_lossy()
+            )
+        );
+    }
+
+    #[test]
+    fn terminal_command_line_keeps_executable_path_as_program() {
+        let dir = tempdir().unwrap();
+        let profile = ProjectOpenProfile {
+            id: "custom".to_string(),
+            name: "Custom".to_string(),
+            kind: ProjectOpenProfileKind::Terminal,
+            command: "ignored --flag".to_string(),
+            executable_path: "C:\\Program Files\\DevEco\\deveco.exe".to_string(),
+            args: vec!["--skip-agreement".to_string(), "{projectPath}".to_string()],
+            workdir: "{projectPath}".to_string(),
+            enabled: true,
+            sort_order: 0,
+        };
+
+        assert_eq!(
+            terminal_command_line(dir.path(), &profile),
+            format!(
+                "& 'C:\\Program Files\\DevEco\\deveco.exe' '--skip-agreement' '{}'",
+                dir.path().to_string_lossy()
+            )
+        );
     }
 
     #[test]

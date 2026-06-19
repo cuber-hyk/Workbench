@@ -2819,10 +2819,10 @@ function ProjectOpenProfileDialog({
             onError(error instanceof Error ? error.message : String(error));
           }
         }}><FolderOpen size={15} /></IconButton></span></label>
-        <label className="full">参数<textarea rows={3} value={argsText} onChange={(event) => setArgsText(event.target.value)} placeholder="每行一个参数，例如 {projectPath}" /></label>
-        <label>工作目录<input value={workdir} onChange={(event) => setWorkdir(event.target.value)} placeholder="{projectPath}" /></label>
+        <label className="full">参数<textarea rows={3} value={argsText} onChange={(event) => setArgsText(event.target.value)} placeholder={"每行一个参数，例如：\n-c\n--skip-agreement"} /></label>
+        <label>工作目录<input value={workdir} onChange={(event) => setWorkdir(event.target.value)} placeholder="留空默认使用项目目录；可填写 {projectPath}\\subdir" /></label>
         <label className="checkbox-row"><input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />启用此打开方式</label>
-        <div className="notice full">支持占位符 <code>{"{projectPath}"}</code>。Claude Code 等交互式 CLI 会在外部终端中打开，不进入项目启动日志。</div>
+        <div className="notice full">命令会在“工作目录”中启动。<code>{"{projectPath}"}</code> 表示当前项目路径；只有工具要求项目路径作为参数时，才在参数中填写它。</div>
       </form>
     </Modal>
   );

@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AppUpdateDialog, AppUpdatePanel } from "./AppUpdatePanel";
+import { AppUpdateDialog, AppUpdatePanel, formatReleaseNotes } from "./AppUpdatePanel";
 import { UpdateBadge } from "./UpdateBadge";
 
 const updateState = vi.hoisted(() => ({
@@ -104,6 +104,30 @@ describe("app update UI", () => {
     expect(screen.getByRole("button", { name: "检查更新" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "稍后" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /下载并安装/ })).toBeInTheDocument();
+  });
+
+  it("formats single-paragraph release notes into scannable points", () => {
+    const notes = formatReleaseNotes("新增更新提示。优化更新说明排版；修复终端打开方式。");
+
+    expect(notes).toEqual(["新增更新提示。", "优化更新说明排版；", "修复终端打开方式。"]);
+  });
+
+  it("renders release notes as a list in the update dialog", () => {
+    updateState.value = {
+      ...updateState.value,
+      status: "available",
+      hasUpdate: true,
+      updateInfo: {
+        currentVersion: "0.1.0",
+        latestVersion: "0.2.0",
+        body: "新增更新提示。优化更新说明排版；修复终端打开方式。"
+      }
+    };
+
+    render(<AppUpdateDialog onClose={vi.fn()} />);
+
+    expect(screen.getAllByRole("listitem")).toHaveLength(3);
+    expect(screen.getByText("优化更新说明排版；")).toBeInTheDocument();
   });
 
   it("shows download progress while updating", () => {
