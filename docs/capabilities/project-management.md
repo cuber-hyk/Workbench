@@ -2,7 +2,7 @@
 artifact_type: capability
 status: current
 created: 2026-06-16
-updated: 2026-06-16
+updated: 2026-06-19
 source_of_truth: src-tauri/src/projects.rs
 adr: docs/adr/2026-06-16-project-open-profiles.md
 ---
@@ -44,7 +44,9 @@ adr: docs/adr/2026-06-16-project-open-profiles.md
 - `app` 类型不会继承 Workbench 的 stdout / stderr，避免外部 GUI 工具的运行时 warning 打到 Workbench 控制台。
 - `terminal` 类型通过外部终端启动交互式命令。
 - `executablePath` 有值时优先使用它；否则从 PATH 解析 `command`。
+- `terminal` 类型的 `command` 可以包含内联参数，例如 `deveco -c --skip-agreement`；保存到 `args` 的参数会继续追加在后面。
 - `args` 和 `workdir` 支持 `{projectPath}` 占位符。
+- `workdir` 留空时按 `{projectPath}` 处理；只有外部工具要求项目路径作为参数时，才需要在 `args` 中填写 `{projectPath}`。
 - Claude Code 等交互式 CLI 必须通过外部终端打开，不进入 Workbench 内嵌启动日志。
 - Workbench 不捕获外部工具输出，不持久化外部工具运行状态，不管理外部工具生命周期。
 
