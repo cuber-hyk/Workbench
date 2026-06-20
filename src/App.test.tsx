@@ -1,11 +1,11 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { App, CustomToolDialog, ModuleStateView, ProjectDialog, ProjectsView, RadarView, SettingsView, SkillCategoryDialog, SkillsView, applyPendingLaunchEvents, markLaunchRunStopped, mergeLaunchRunSnapshots, rememberUpdateNotice, shouldShowUpdateNotice } from "./App";
 import { AppUpdateProvider } from "./contexts/AppUpdateContext";
 import { workbenchApi } from "./lib/api/workbenchApi";
-import type { AppSettings, LaunchSessionEvent, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, Skill, SkillCategory } from "./lib/types/domain";
+import type { AppSettings, LaunchSessionEvent, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, Skill, SkillCategory, SkillMarketItem, SkillsState } from "./lib/types/domain";
 
 const activeProject: Project = {
   id: "active",
@@ -245,6 +245,51 @@ const skillsForView: Skill[] = [
     enabledProjects: []
   }
 ];
+
+function testMarketItems(): SkillMarketItem[] {
+  return [
+    {
+      source: "vercel-labs/next-skills",
+      skillId: "next-upgrade",
+      name: "next-upgrade",
+      description: "Upgrade Next.js following official migration guides.",
+      installs: 24209,
+      official: true,
+      installedDirectoryName: null,
+      updateStatus: "not_installed",
+      installable: true
+    },
+    {
+      source: "github/awesome-copilot",
+      skillId: "excalidraw-diagram-generator",
+      name: "excalidraw-diagram-generator",
+      description: "Generate Excalidraw diagrams from natural language descriptions.",
+      installs: 24385,
+      official: true,
+      installedDirectoryName: "excalidraw-diagram-generator",
+      updateStatus: "update_available",
+      installable: true
+    }
+  ];
+}
+
+function installedSkillsState(): SkillsState {
+  return {
+    settings: skillsSettings,
+    skills: [
+      ...skillsForView,
+      {
+        ...skillsForView[0],
+        id: "next-upgrade",
+        directoryName: "next-upgrade",
+        name: "next-upgrade",
+        description: "Upgrade Next.js following official migration guides.",
+        skillPath: "C:\\Users\\dev\\.workbench\\skills\\next-upgrade\\SKILL.md"
+      }
+    ],
+    categories: skillCategoriesForView
+  };
+}
 
 function renderWithUpdateProvider(ui: ReactElement) {
   return render(<AppUpdateProvider>{ui}</AppUpdateProvider>);
@@ -1668,6 +1713,11 @@ describe("Workbench UI interactions", () => {
         onSelect={vi.fn()}
         onImport={vi.fn()}
         onRefresh={onRefresh}
+        onInstallMarketSkill={(item) => {
+          void workbenchApi.installSkillFromMarket(item.source, item.skillId, (progress) => {
+            progressValues.push(progress);
+          }).then(() => onRefresh());
+        }}
         onManageCategories={vi.fn()}
         onToggle={vi.fn()}
         onToggleSkillGlobal={vi.fn()}
@@ -1691,6 +1741,83 @@ describe("Workbench UI interactions", () => {
       expect(onRefresh).toHaveBeenCalled();
     });
     installSkill.mockRestore();
+  });
+
+  it("keeps market install progress after switching Skills subviews", async () => {
+    const user = userEvent.setup();
+    let reportProgress: ((progress: number) => void) | undefined;
+    let finishInstall: (() => void) | undefined;
+    const listMarket = vi.spyOn(workbenchApi, "listSkillMarket").mockResolvedValue(testMarketItems());
+    const installSkill = vi.spyOn(workbenchApi, "installSkillFromMarket").mockImplementation((_source, _skillId, onProgress) => {
+      reportProgress = onProgress;
+      return new Promise<SkillsState>((resolve) => {
+        finishInstall = () => resolve(installedSkillsState());
+      });
+    });
+
+    try {
+      renderWithUpdateProvider(<App />);
+      const navigation = await screen.findByRole("navigation", { name: "主导航" });
+      await user.click(within(navigation).getByRole("button", { name: "Skills" }));
+      await user.click(await screen.findByRole("button", { name: "技能市场" }));
+      await user.click(await screen.findByRole("button", { name: "安装" }));
+
+      act(() => {
+        reportProgress?.(55);
+      });
+      expect(await screen.findByRole("button", { name: "安装中 55%" })).toBeDisabled();
+
+      await user.click(screen.getByRole("button", { name: "本地 Skills" }));
+      await user.click(screen.getByRole("button", { name: "技能市场" }));
+
+      expect(await screen.findByRole("button", { name: "安装中 55%" })).toBeDisabled();
+
+      await act(async () => {
+        finishInstall?.();
+      });
+    } finally {
+      listMarket.mockRestore();
+      installSkill.mockRestore();
+    }
+  });
+
+  it("keeps market install progress after leaving and returning to the Skills page", async () => {
+    const user = userEvent.setup();
+    let reportProgress: ((progress: number) => void) | undefined;
+    let finishInstall: (() => void) | undefined;
+    const listMarket = vi.spyOn(workbenchApi, "listSkillMarket").mockResolvedValue(testMarketItems());
+    const installSkill = vi.spyOn(workbenchApi, "installSkillFromMarket").mockImplementation((_source, _skillId, onProgress) => {
+      reportProgress = onProgress;
+      return new Promise<SkillsState>((resolve) => {
+        finishInstall = () => resolve(installedSkillsState());
+      });
+    });
+
+    try {
+      renderWithUpdateProvider(<App />);
+      const navigation = await screen.findByRole("navigation", { name: "主导航" });
+      await user.click(within(navigation).getByRole("button", { name: "Skills" }));
+      await user.click(await screen.findByRole("button", { name: "技能市场" }));
+      await user.click(await screen.findByRole("button", { name: "安装" }));
+
+      act(() => {
+        reportProgress?.(55);
+      });
+      expect(await screen.findByRole("button", { name: "安装中 55%" })).toBeDisabled();
+
+      await user.click(within(navigation).getByRole("button", { name: "项目" }));
+      await user.click(within(navigation).getByRole("button", { name: "Skills" }));
+      await user.click(screen.getByRole("button", { name: "技能市场" }));
+
+      expect(await screen.findByRole("button", { name: "安装中 55%" })).toBeDisabled();
+
+      await act(async () => {
+        finishInstall?.();
+      });
+    } finally {
+      listMarket.mockRestore();
+      installSkill.mockRestore();
+    }
   });
 
   it("supports selected batch updates for skills.sh installed skills", async () => {
