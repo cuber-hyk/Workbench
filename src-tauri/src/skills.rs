@@ -1,12 +1,14 @@
+use regex::Regex;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
 use std::hash::{Hash, Hasher};
-use std::io;
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use tauri::{AppHandle, Emitter};
 use tauri_plugin_dialog::DialogExt;
 use tempfile::tempdir;
 use walkdir::WalkDir;
@@ -15,6 +17,9 @@ use zip::ZipArchive;
 type SkillResult<T> = Result<T, String>;
 const UNCATEGORIZED_CATEGORY_ID: &str = "uncategorized";
 const UNCATEGORIZED_CATEGORY_NAME: &str = "未分类";
+const MARKET_DOWNLOAD_LIMIT_BYTES: u64 = 100 * 1024 * 1024;
+const MARKET_EXTRACT_LIMIT_BYTES: u64 = 500 * 1024 * 1024;
+const MARKET_ARCHIVE_ENTRY_LIMIT: usize = 20_000;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -256,6 +261,83 @@ pub enum ImportStatus {
     Imported,
     Conflict,
     Invalid,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillMarketItem {
+    pub source: String,
+    pub skill_id: String,
+    pub name: String,
+    pub description: String,
+    pub installs: i64,
+    pub official: bool,
+    pub installed_directory_name: Option<String>,
+    pub update_status: SkillUpdateState,
+    pub installable: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillMarketDetail {
+    pub item: SkillMarketItem,
+    pub repository_url: String,
+    pub install_command: String,
+    pub skill_markdown_preview: String,
+    pub security_note: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillSourceRecord {
+    pub directory_name: String,
+    pub source: String,
+    pub package_slug: String,
+    pub repo_url: String,
+    pub skill_path: String,
+    pub installed_ref: String,
+    pub installed_hash: String,
+    pub remote_ref: String,
+    pub last_checked_at: String,
+    pub installed_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillUpdateStatus {
+    pub source: SkillSourceRecord,
+    pub name: String,
+    pub description: String,
+    pub status: SkillUpdateState,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SkillUpdateState {
+    NotInstalled,
+    Installed,
+    UpToDate,
+    UpdateAvailable,
+    CheckFailed,
+    Unsupported,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillUpdateResult {
+    pub directory_name: String,
+    pub status: SkillUpdateState,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SkillInstallProgress {
+    source: String,
+    skill_id: String,
+    progress: u8,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -608,6 +690,7 @@ fn open_database(workbench_root: &Path) -> SkillResult<Connection> {
         )
         .map_err(error_message)?;
     ensure_skill_category_schema(&connection)?;
+    ensure_skill_source_schema(&connection)?;
     let has_sync_method = connection
         .prepare("PRAGMA table_info(skill_enablements)")
         .map_err(error_message)?
@@ -624,6 +707,28 @@ fn open_database(workbench_root: &Path) -> SkillResult<Connection> {
             .map_err(error_message)?;
     }
     Ok(connection)
+}
+
+fn ensure_skill_source_schema(connection: &Connection) -> SkillResult<()> {
+    connection
+        .execute(
+            "CREATE TABLE IF NOT EXISTS skill_sources (
+                directory_name TEXT PRIMARY KEY,
+                source TEXT NOT NULL,
+                package_slug TEXT NOT NULL,
+                repo_url TEXT NOT NULL,
+                skill_path TEXT NOT NULL,
+                installed_ref TEXT NOT NULL,
+                installed_hash TEXT NOT NULL,
+                remote_ref TEXT NOT NULL,
+                last_checked_at TEXT NOT NULL DEFAULT '',
+                installed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )",
+            [],
+        )
+        .map_err(error_message)?;
+    Ok(())
 }
 
 fn ensure_skill_category_schema(connection: &Connection) -> SkillResult<()> {
@@ -1314,6 +1419,15 @@ pub fn delete_skill(directory_name: String) -> SkillResult<SkillsState> {
         return Err("统一根目录中不存在该 Skill".to_string());
     }
     let connection = open_database(&workbench_root)?;
+    delete_skill_in(&connection, &source, &directory_name)?;
+    get_skills_state()
+}
+
+fn delete_skill_in(
+    connection: &Connection,
+    source: &Path,
+    directory_name: &str,
+) -> SkillResult<()> {
     let mut statement = connection
         .prepare(
             "SELECT link_path, sync_method FROM skill_enablements
@@ -1329,8 +1443,8 @@ pub fn delete_skill(directory_name: String) -> SkillResult<SkillsState> {
         let (link_path, method) = row.map_err(error_message)?;
         let target = Path::new(&link_path);
         let method = parse_sync_method(&method)?;
-        if managed_target_is_active(&source, target, method) {
-            remove_managed_target(&source, target, method)?;
+        if managed_target_is_active(source, target, method) {
+            remove_managed_target(source, target, method)?;
         }
     }
     connection
@@ -1345,8 +1459,14 @@ pub fn delete_skill(directory_name: String) -> SkillResult<SkillsState> {
             [&directory_name],
         )
         .map_err(error_message)?;
-    remove_existing_target(&source)?;
-    get_skills_state()
+    connection
+        .execute(
+            "DELETE FROM skill_sources WHERE directory_name = ?1",
+            [&directory_name],
+        )
+        .map_err(error_message)?;
+    remove_existing_target(source)?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -1910,6 +2030,620 @@ fn discover_skill_sources(source: &Path) -> SkillResult<Vec<PathBuf>> {
     Ok(candidates)
 }
 
+fn http_get_text(url: &str) -> SkillResult<String> {
+    ureq::get(url)
+        .set("User-Agent", "Workbench-App/0.1")
+        .call()
+        .map_err(|error| format!("请求远程来源失败: {error}"))?
+        .into_string()
+        .map_err(error_message)
+}
+
+fn decode_next_payload(html: &str) -> String {
+    html.replace("\\\"", "\"")
+        .replace("\\n", "\n")
+        .replace("\\u0026", "&")
+        .replace("\\u003c", "<")
+        .replace("\\u003e", ">")
+}
+
+fn parse_market_items(html: &str) -> SkillResult<Vec<SkillMarketItem>> {
+    let decoded = decode_next_payload(html);
+    let pattern = Regex::new(
+        r#"\{"source":"([^"]+)","skillId":"([^"]+)","name":"([^"]+)","installs":([0-9]+)(?:,"weeklyInstalls":\[[^\]]*\])?(?:,"isOfficial":(true|false))?"#,
+    )
+    .map_err(error_message)?;
+    let mut seen = HashSet::new();
+    let mut items = Vec::new();
+    for captures in pattern.captures_iter(&decoded) {
+        let source = captures
+            .get(1)
+            .map(|value| value.as_str())
+            .unwrap_or_default();
+        let skill_id = captures
+            .get(2)
+            .map(|value| value.as_str())
+            .unwrap_or_default();
+        if !seen.insert(format!("{source}/{skill_id}")) {
+            continue;
+        }
+        let installs = captures
+            .get(4)
+            .and_then(|value| value.as_str().parse::<i64>().ok())
+            .unwrap_or(0);
+        let official = captures
+            .get(5)
+            .map(|value| value.as_str() == "true")
+            .unwrap_or(false);
+        items.push(SkillMarketItem {
+            source: source.to_string(),
+            skill_id: skill_id.to_string(),
+            name: captures
+                .get(3)
+                .map(|value| value.as_str().to_string())
+                .unwrap_or_else(|| skill_id.to_string()),
+            description: String::new(),
+            installs,
+            official,
+            installed_directory_name: None,
+            update_status: SkillUpdateState::NotInstalled,
+            installable: github_source(source),
+        });
+    }
+    if items.is_empty() {
+        return Err("无法从 skills.sh 页面解析市场列表".to_string());
+    }
+    Ok(items)
+}
+
+fn parse_skill_detail(source: &str, skill_id: &str, html: &str) -> SkillMarketDetail {
+    let decoded = decode_next_payload(html);
+    let description = capture_first(
+        &decoded,
+        r#""@type":"SoftwareApplication","name":"[^"]+","description":"([^"]*)""#,
+    )
+    .or_else(|| capture_first(&decoded, r#""description","content":"([^"]*)""#))
+    .unwrap_or_default();
+    let installs = capture_first(&decoded, r#""userInteractionCount":([0-9]+)"#)
+        .and_then(|value| value.parse::<i64>().ok())
+        .unwrap_or(0);
+    let preview = capture_first(&decoded, r#""previewHtml":"(.*?)","restHtml""#)
+        .map(|value| strip_html(&value))
+        .unwrap_or_default();
+    let item = SkillMarketItem {
+        source: source.to_string(),
+        skill_id: skill_id.to_string(),
+        name: skill_id.to_string(),
+        description,
+        installs,
+        official: decoded.contains("Verified organization on GitHub"),
+        installed_directory_name: None,
+        update_status: SkillUpdateState::NotInstalled,
+        installable: github_source(source),
+    };
+    SkillMarketDetail {
+        item,
+        repository_url: github_repository_url(source).unwrap_or_default(),
+        install_command: if github_source(source) {
+            format!("npx skills add https://github.com/{source} --skill {skill_id}")
+        } else {
+            format!("npx skills add {source} --skill {skill_id}")
+        },
+        skill_markdown_preview: preview,
+        security_note: "skills.sh 会展示安全审计信息，但 Workbench 安装前仍只做结构校验，不保证第三方 Skill 安全。".to_string(),
+    }
+}
+
+fn capture_first(input: &str, pattern: &str) -> Option<String> {
+    Regex::new(pattern)
+        .ok()?
+        .captures(input)?
+        .get(1)
+        .map(|value| value.as_str().replace("\\\"", "\""))
+}
+
+fn strip_html(value: &str) -> String {
+    let decoded = value
+        .replace("\\n", "\n")
+        .replace("\\\"", "\"")
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">");
+    let without_html = Regex::new(r"<[^>]+>")
+        .map(|pattern| pattern.replace_all(&decoded, "").to_string())
+        .unwrap_or(decoded);
+    without_html
+        .lines()
+        .filter(|line| {
+            let trimmed = line.trim();
+            !(trimmed.starts_with('$')
+                && trimmed.len() > 1
+                && trimmed[1..]
+                    .chars()
+                    .all(|character| character.is_ascii_alphanumeric()))
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string()
+}
+
+fn github_source(source: &str) -> bool {
+    let parts: Vec<_> = source.split('/').collect();
+    parts.len() == 2
+        && parts
+            .iter()
+            .all(|part| !part.is_empty() && !part.contains('.') && !part.contains('\\'))
+}
+
+fn github_repository_url(source: &str) -> Option<String> {
+    github_source(source).then(|| format!("https://github.com/{source}"))
+}
+
+fn enrich_market_items(connection: &Connection, items: &mut [SkillMarketItem]) -> SkillResult<()> {
+    let sources = list_skill_source_records(connection)?;
+    for item in items {
+        if let Some(source) = sources
+            .iter()
+            .find(|source| source.package_slug == format!("{}/{}", item.source, item.skill_id))
+        {
+            item.installed_directory_name = Some(source.directory_name.clone());
+            item.update_status = SkillUpdateState::Installed;
+        }
+    }
+    Ok(())
+}
+
+fn list_skill_source_records(connection: &Connection) -> SkillResult<Vec<SkillSourceRecord>> {
+    let mut statement = connection
+        .prepare(
+            "SELECT directory_name, source, package_slug, repo_url, skill_path, installed_ref,
+                    installed_hash, remote_ref, last_checked_at, installed_at, updated_at
+             FROM skill_sources
+             ORDER BY directory_name",
+        )
+        .map_err(error_message)?;
+    let records = statement
+        .query_map([], |row| {
+            Ok(SkillSourceRecord {
+                directory_name: row.get(0)?,
+                source: row.get(1)?,
+                package_slug: row.get(2)?,
+                repo_url: row.get(3)?,
+                skill_path: row.get(4)?,
+                installed_ref: row.get(5)?,
+                installed_hash: row.get(6)?,
+                remote_ref: row.get(7)?,
+                last_checked_at: row.get(8)?,
+                installed_at: row.get(9)?,
+                updated_at: row.get(10)?,
+            })
+        })
+        .map_err(error_message)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(error_message)?;
+    Ok(records)
+}
+
+fn upsert_skill_source_record(
+    connection: &Connection,
+    record: &SkillSourceRecord,
+) -> SkillResult<()> {
+    connection
+        .execute(
+            "INSERT INTO skill_sources(
+                directory_name, source, package_slug, repo_url, skill_path, installed_ref,
+                installed_hash, remote_ref, last_checked_at, installed_at, updated_at
+             )
+             VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+             ON CONFLICT(directory_name) DO UPDATE SET
+                source = excluded.source,
+                package_slug = excluded.package_slug,
+                repo_url = excluded.repo_url,
+                skill_path = excluded.skill_path,
+                installed_ref = excluded.installed_ref,
+                installed_hash = excluded.installed_hash,
+                remote_ref = excluded.remote_ref,
+                last_checked_at = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP",
+            params![
+                record.directory_name,
+                record.source,
+                record.package_slug,
+                record.repo_url,
+                record.skill_path,
+                record.installed_ref,
+                record.installed_hash,
+                record.remote_ref
+            ],
+        )
+        .map_err(error_message)?;
+    Ok(())
+}
+
+fn source_record_for_directory(
+    connection: &Connection,
+    directory_name: &str,
+) -> SkillResult<SkillSourceRecord> {
+    connection
+        .query_row(
+            "SELECT directory_name, source, package_slug, repo_url, skill_path, installed_ref,
+                    installed_hash, remote_ref, last_checked_at, installed_at, updated_at
+             FROM skill_sources WHERE directory_name = ?1",
+            [directory_name],
+            |row| {
+                Ok(SkillSourceRecord {
+                    directory_name: row.get(0)?,
+                    source: row.get(1)?,
+                    package_slug: row.get(2)?,
+                    repo_url: row.get(3)?,
+                    skill_path: row.get(4)?,
+                    installed_ref: row.get(5)?,
+                    installed_hash: row.get(6)?,
+                    remote_ref: row.get(7)?,
+                    last_checked_at: row.get(8)?,
+                    installed_at: row.get(9)?,
+                    updated_at: row.get(10)?,
+                })
+            },
+        )
+        .map_err(error_message)
+}
+
+fn download_github_skill(
+    source: &str,
+    skill_id: &str,
+) -> SkillResult<(tempfile::TempDir, PathBuf, String, String)> {
+    download_github_skill_with_progress(source, skill_id, &|_| {})
+}
+
+fn download_github_skill_with_progress(
+    source: &str,
+    skill_id: &str,
+    on_progress: &dyn Fn(u8),
+) -> SkillResult<(tempfile::TempDir, PathBuf, String, String)> {
+    if !github_source(source) {
+        return Err("当前仅支持 GitHub owner/repo 格式的 skills.sh 来源".to_string());
+    }
+    on_progress(12);
+    let temporary = tempdir().map_err(error_message)?;
+    let archive_path = temporary.path().join("source.zip");
+    let mut downloaded = false;
+    let mut last_download_error = None;
+    let agent = ureq::AgentBuilder::new()
+        .timeout_connect(Duration::from_secs(10))
+        .timeout_read(Duration::from_secs(30))
+        .timeout_write(Duration::from_secs(10))
+        .build();
+    for branch in ["main", "master"] {
+        let url = format!("https://codeload.github.com/{source}/zip/refs/heads/{branch}");
+        match agent
+            .get(&url)
+            .set("User-Agent", "Workbench-App/0.1")
+            .call()
+        {
+            Ok(response) => {
+                if response
+                    .header("Content-Length")
+                    .and_then(|value| value.parse::<u64>().ok())
+                    .is_some_and(|size| size > MARKET_DOWNLOAD_LIMIT_BYTES)
+                {
+                    return Err("GitHub 仓库压缩包超过 100 MiB，安装已停止".to_string());
+                }
+                on_progress(28);
+                let mut reader = response.into_reader().take(MARKET_DOWNLOAD_LIMIT_BYTES + 1);
+                let mut file = fs::File::create(&archive_path).map_err(error_message)?;
+                let downloaded_bytes = io::copy(&mut reader, &mut file).map_err(error_message)?;
+                if downloaded_bytes > MARKET_DOWNLOAD_LIMIT_BYTES {
+                    return Err("GitHub 仓库压缩包超过 100 MiB，安装已停止".to_string());
+                }
+                downloaded = true;
+                break;
+            }
+            Err(error) => last_download_error = Some(error.to_string()),
+        }
+    }
+    if !downloaded {
+        return Err(format!(
+            "无法下载 GitHub 仓库压缩包：{}",
+            last_download_error.unwrap_or_else(|| "网络请求失败".to_string())
+        ));
+    }
+    on_progress(55);
+    let extract_root = temporary.path().join("repo");
+    fs::create_dir_all(&extract_root).map_err(error_message)?;
+    let zip_file = fs::File::open(&archive_path).map_err(error_message)?;
+    let mut archive = ZipArchive::new(zip_file).map_err(error_message)?;
+    if archive.len() > MARKET_ARCHIVE_ENTRY_LIMIT {
+        return Err("GitHub 仓库文件数量超过限制，安装已停止".to_string());
+    }
+    let mut extracted_bytes = 0u64;
+    for index in 0..archive.len() {
+        extracted_bytes = extracted_bytes
+            .checked_add(archive.by_index(index).map_err(error_message)?.size())
+            .ok_or_else(|| "GitHub 仓库解压大小无效".to_string())?;
+        if extracted_bytes > MARKET_EXTRACT_LIMIT_BYTES {
+            return Err("GitHub 仓库解压后超过 500 MiB，安装已停止".to_string());
+        }
+    }
+    archive.extract(&extract_root).map_err(error_message)?;
+    on_progress(72);
+    let candidates = discover_skill_sources(&extract_root)?;
+    let skill = candidates
+        .into_iter()
+        .find(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .map(|name| name.eq_ignore_ascii_case(skill_id))
+                .unwrap_or(false)
+        })
+        .ok_or_else(|| format!("仓库中未找到 Skill: {skill_id}"))?;
+    let relative = skill
+        .strip_prefix(&extract_root)
+        .unwrap_or(&skill)
+        .to_string_lossy()
+        .to_string();
+    let hash = directory_content_hash(&skill)?;
+    on_progress(84);
+    Ok((temporary, skill, relative, hash))
+}
+
+fn directory_content_hash(root: &Path) -> SkillResult<String> {
+    let mut entries = Vec::new();
+    for entry in WalkDir::new(root).into_iter().filter_map(Result::ok) {
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let relative = entry
+            .path()
+            .strip_prefix(root)
+            .map_err(error_message)?
+            .to_string_lossy()
+            .replace('\\', "/");
+        let bytes = fs::read(entry.path()).map_err(error_message)?;
+        entries.push((relative, bytes));
+    }
+    entries.sort_by(|left, right| left.0.cmp(&right.0));
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    for (relative, bytes) in entries {
+        relative.hash(&mut hasher);
+        bytes.hash(&mut hasher);
+    }
+    Ok(format!("{:016x}", hasher.finish()))
+}
+
+fn source_backup_path(workbench_root: &Path, directory_name: &str) -> SkillResult<PathBuf> {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(error_message)?
+        .as_secs();
+    Ok(workbench_root
+        .join("backups")
+        .join("skills")
+        .join(timestamp.to_string())
+        .join("skills-sh")
+        .join(directory_name))
+}
+
+#[tauri::command]
+pub fn list_skill_market(query: Option<String>) -> SkillResult<Vec<SkillMarketItem>> {
+    let workbench_root = default_workbench_root()?;
+    let connection = open_database(&workbench_root)?;
+    let html = http_get_text("https://www.skills.sh")?;
+    let mut items = parse_market_items(&html)?;
+    enrich_market_items(&connection, &mut items)?;
+    let normalized = query.unwrap_or_default().trim().to_lowercase();
+    if !normalized.is_empty() {
+        items.retain(|item| {
+            item.name.to_lowercase().contains(&normalized)
+                || item.skill_id.to_lowercase().contains(&normalized)
+                || item.source.to_lowercase().contains(&normalized)
+        });
+    }
+    Ok(items)
+}
+
+#[tauri::command]
+pub fn get_skill_market_detail(source: String, skill_id: String) -> SkillResult<SkillMarketDetail> {
+    let encoded_url = format!("https://www.skills.sh/{source}/{skill_id}");
+    let html = http_get_text(&encoded_url)?;
+    let workbench_root = default_workbench_root()?;
+    let connection = open_database(&workbench_root)?;
+    let mut detail = parse_skill_detail(&source, &skill_id, &html);
+    enrich_market_items(&connection, std::slice::from_mut(&mut detail.item))?;
+    Ok(detail)
+}
+
+fn install_skill_from_market_sync(
+    source: String,
+    skill_id: String,
+    on_progress: &dyn Fn(u8),
+) -> SkillResult<SkillsState> {
+    validate_directory_name(&skill_id)?;
+    on_progress(8);
+    let settings = current_settings()?;
+    let target_root = PathBuf::from(&settings.skills_root);
+    let target = target_root.join(&skill_id);
+    if target.exists() {
+        return Err("统一根目录中已存在同名 Skill，安装已停止".to_string());
+    }
+    let (_temporary, skill_source, relative, hash) =
+        download_github_skill_with_progress(&source, &skill_id, on_progress)?;
+    copy_to_new_target(&skill_source, &target)?;
+    on_progress(92);
+    let workbench_root = PathBuf::from(&settings.workbench_root);
+    let connection = open_database(&workbench_root)?;
+    let record = SkillSourceRecord {
+        directory_name: skill_id.clone(),
+        source: "skills_sh".to_string(),
+        package_slug: format!("{source}/{skill_id}"),
+        repo_url: github_repository_url(&source).unwrap_or_default(),
+        skill_path: relative,
+        installed_ref: hash.clone(),
+        installed_hash: hash.clone(),
+        remote_ref: hash,
+        last_checked_at: String::new(),
+        installed_at: String::new(),
+        updated_at: String::new(),
+    };
+    upsert_skill_source_record(&connection, &record)?;
+    on_progress(97);
+    let state = get_skills_state()?;
+    on_progress(100);
+    Ok(state)
+}
+
+#[tauri::command]
+pub async fn install_skill_from_market(
+    app: AppHandle,
+    source: String,
+    skill_id: String,
+) -> SkillResult<SkillsState> {
+    let progress_source = source.clone();
+    let progress_skill_id = skill_id.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        install_skill_from_market_sync(source, skill_id, &|progress| {
+            let _ = app.emit(
+                "skill-install-progress",
+                SkillInstallProgress {
+                    source: progress_source.clone(),
+                    skill_id: progress_skill_id.clone(),
+                    progress,
+                },
+            );
+        })
+    })
+    .await
+    .map_err(error_message)?
+}
+
+#[tauri::command]
+pub fn list_skill_updates() -> SkillResult<Vec<SkillUpdateStatus>> {
+    let workbench_root = default_workbench_root()?;
+    let connection = open_database(&workbench_root)?;
+    let records = list_skill_source_records(&connection)?;
+    let settings = current_settings()?;
+    Ok(records
+        .into_iter()
+        .map(|record| {
+            let skill_path = PathBuf::from(&settings.skills_root)
+                .join(&record.directory_name)
+                .join("SKILL.md");
+            let metadata = fs::read_to_string(skill_path)
+                .map(|markdown| parse_skill_markdown(&markdown, &record.directory_name))
+                .unwrap_or_else(|_| SkillMetadata {
+                    name: record.directory_name.clone(),
+                    description: String::new(),
+                });
+            SkillUpdateStatus {
+                source: record,
+                name: metadata.name,
+                description: metadata.description,
+                status: SkillUpdateState::Installed,
+                message: "尚未检查".to_string(),
+            }
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub fn check_skill_updates() -> SkillResult<Vec<SkillUpdateStatus>> {
+    let workbench_root = default_workbench_root()?;
+    let connection = open_database(&workbench_root)?;
+    let mut results = Vec::new();
+    for record in list_skill_source_records(&connection)? {
+        let mut status = SkillUpdateState::CheckFailed;
+        let mut message = "检查失败".to_string();
+        let mut next_record = record.clone();
+        if let Some((source, skill_id)) = record.package_slug.rsplit_once('/') {
+            match download_github_skill(source, skill_id) {
+                Ok((_temporary, _skill_source, _relative, hash)) => {
+                    next_record.remote_ref = hash.clone();
+                    status = if hash == record.installed_hash {
+                        SkillUpdateState::UpToDate
+                    } else {
+                        SkillUpdateState::UpdateAvailable
+                    };
+                    message = if status == SkillUpdateState::UpToDate {
+                        "已是最新".to_string()
+                    } else {
+                        "发现可更新版本".to_string()
+                    };
+                    upsert_skill_source_record(&connection, &next_record)?;
+                }
+                Err(error) => {
+                    message = error;
+                }
+            }
+        }
+        results.push(SkillUpdateStatus {
+            name: next_record.directory_name.clone(),
+            description: String::new(),
+            source: next_record,
+            status,
+            message,
+        });
+    }
+    Ok(results)
+}
+
+#[tauri::command]
+pub fn update_skill_from_market(directory_name: String) -> SkillResult<SkillUpdateResult> {
+    validate_directory_name(&directory_name)?;
+    let settings = current_settings()?;
+    let workbench_root = PathBuf::from(&settings.workbench_root);
+    let connection = open_database(&workbench_root)?;
+    let record = source_record_for_directory(&connection, &directory_name)?;
+    let (source, skill_id) = record
+        .package_slug
+        .rsplit_once('/')
+        .ok_or_else(|| "来源记录无效".to_string())?;
+    let (_temporary, remote_skill, relative, hash) = download_github_skill(source, skill_id)?;
+    if hash == record.installed_hash {
+        return Ok(SkillUpdateResult {
+            directory_name,
+            status: SkillUpdateState::UpToDate,
+            message: "已是最新".to_string(),
+        });
+    }
+    let target = PathBuf::from(&settings.skills_root).join(&record.directory_name);
+    if !target.is_dir() {
+        return Err("本地 Skill 目录不存在，无法更新".to_string());
+    }
+    let backup = source_backup_path(&workbench_root, &record.directory_name)?;
+    copy_path_to_backup(&target, &backup)?;
+    replace_directory_from(&remote_skill, &target)?;
+    let next_record = SkillSourceRecord {
+        installed_ref: hash.clone(),
+        installed_hash: hash.clone(),
+        remote_ref: hash,
+        skill_path: relative,
+        ..record
+    };
+    upsert_skill_source_record(&connection, &next_record)?;
+    Ok(SkillUpdateResult {
+        directory_name: next_record.directory_name,
+        status: SkillUpdateState::UpToDate,
+        message: format!("已更新，旧版本已备份到 {}", backup.to_string_lossy()),
+    })
+}
+
+#[tauri::command]
+pub fn update_market_skills(directory_names: Vec<String>) -> SkillResult<Vec<SkillUpdateResult>> {
+    let mut results = Vec::new();
+    for directory_name in directory_names {
+        match update_skill_from_market(directory_name.clone()) {
+            Ok(result) => results.push(result),
+            Err(error) => results.push(SkillUpdateResult {
+                directory_name,
+                status: SkillUpdateState::CheckFailed,
+                message: error,
+            }),
+        }
+    }
+    Ok(results)
+}
+
 #[tauri::command]
 pub fn set_skill_enabled(
     directory_name: String,
@@ -2161,6 +2895,69 @@ mod tests {
 
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].directory_name, "valid");
+    }
+
+    #[test]
+    fn parses_skills_sh_market_items_from_embedded_page_data() {
+        let html = r#"
+            <script>
+              self.__next_f.push([1,"{\"source\":\"vercel-labs/next-skills\",\"skillId\":\"next-upgrade\",\"name\":\"next-upgrade\",\"installs\":24209,\"weeklyInstalls\":[1,2],\"isOfficial\":true}"]);
+              self.__next_f.push([1,"{\"source\":\"skills.volces.com\",\"skillId\":\"byted-web-search\",\"name\":\"byted-web-search\",\"installs\":25028}"]);
+            </script>
+        "#;
+
+        let items = parse_market_items(html).unwrap();
+
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].source, "vercel-labs/next-skills");
+        assert_eq!(items[0].skill_id, "next-upgrade");
+        assert!(items[0].official);
+        assert!(items[0].installable);
+        assert_eq!(items[1].update_status, SkillUpdateState::NotInstalled);
+        assert!(!items[1].installable);
+    }
+
+    #[test]
+    fn strips_next_payload_tokens_from_skill_preview() {
+        let preview = strip_html("<p>Useful skill</p>\n$2b\n<p>More detail</p>");
+
+        assert_eq!(preview, "Useful skill\nMore detail");
+    }
+
+    #[test]
+    fn rejects_market_skill_ids_that_escape_the_skills_root() {
+        assert!(validate_directory_name("../outside").is_err());
+        assert!(validate_directory_name("nested/skill").is_err());
+        assert!(validate_directory_name("market-skill").is_ok());
+    }
+
+    #[test]
+    fn persists_skills_sh_source_records_for_update_checks() {
+        let connection = Connection::open_in_memory().unwrap();
+        ensure_skill_source_schema(&connection).unwrap();
+        let record = SkillSourceRecord {
+            directory_name: "next-upgrade".to_string(),
+            source: "skills_sh".to_string(),
+            package_slug: "vercel-labs/next-skills/next-upgrade".to_string(),
+            repo_url: "https://github.com/vercel-labs/next-skills".to_string(),
+            skill_path: "next-upgrade".to_string(),
+            installed_ref: "main".to_string(),
+            installed_hash: "local-1".to_string(),
+            remote_ref: "local-1".to_string(),
+            last_checked_at: String::new(),
+            installed_at: String::new(),
+            updated_at: String::new(),
+        };
+
+        upsert_skill_source_record(&connection, &record).unwrap();
+        let records = list_skill_source_records(&connection).unwrap();
+
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].directory_name, "next-upgrade");
+        assert_eq!(
+            records[0].repo_url,
+            "https://github.com/vercel-labs/next-skills"
+        );
     }
 
     #[test]
@@ -2557,6 +3354,68 @@ mod tests {
 
         assert!(source.exists());
         assert!(!target.exists());
+    }
+
+    #[test]
+    fn deleting_market_skill_removes_source_managed_targets_and_source_record_only() {
+        let root = tempdir().unwrap();
+        let workbench_root = root.path().join("workbench");
+        let source = root.path().join("skills").join("market-skill");
+        let managed_target = root.path().join("tool").join("market-skill");
+        let unmanaged_target = root.path().join("external").join("market-skill");
+        fs::create_dir_all(&source).unwrap();
+        fs::create_dir_all(&managed_target).unwrap();
+        fs::create_dir_all(&unmanaged_target).unwrap();
+        fs::write(source.join("SKILL.md"), "source").unwrap();
+        fs::write(managed_target.join("SKILL.md"), "managed").unwrap();
+        fs::write(unmanaged_target.join("SKILL.md"), "unmanaged").unwrap();
+
+        let connection = open_database(&workbench_root).unwrap();
+        connection
+            .execute(
+                "INSERT INTO skill_enablements(directory_name, tool, scope, project_name, project_path, link_path, sync_method)
+                 VALUES('market-skill', 'codex', 'global', '', '', ?1, 'copy')",
+                [managed_target.to_string_lossy().to_string()],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO skill_sources(
+                    directory_name, source, package_slug, repo_url, skill_path,
+                    installed_ref, installed_hash, remote_ref
+                 )
+                 VALUES('market-skill', 'skills_sh', 'owner/repo/market-skill',
+                    'https://github.com/owner/repo', 'skills/market-skill',
+                    'abc', 'abc', 'abc')",
+                [],
+            )
+            .unwrap();
+
+        delete_skill_in(&connection, &source, "market-skill").unwrap();
+
+        assert!(!source.exists());
+        assert!(!managed_target.exists());
+        assert!(unmanaged_target.exists());
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT COUNT(*) FROM skill_sources WHERE directory_name = 'market-skill'",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT COUNT(*) FROM skill_enablements WHERE directory_name = 'market-skill'",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            0
+        );
     }
 
     #[test]

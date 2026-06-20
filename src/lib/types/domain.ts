@@ -129,6 +129,62 @@ export interface Skill {
   }>;
 }
 
+export type SkillUpdateState = "not_installed" | "installed" | "up_to_date" | "update_available" | "check_failed" | "unsupported";
+
+export interface SkillMarketItem {
+  source: string;
+  skillId: string;
+  name: string;
+  description: string;
+  installs: number;
+  official: boolean;
+  installedDirectoryName?: string | null;
+  updateStatus: SkillUpdateState;
+  installable: boolean;
+}
+
+export interface SkillMarketDetail {
+  item: SkillMarketItem;
+  repositoryUrl: string;
+  installCommand: string;
+  skillMarkdownPreview: string;
+  securityNote: string;
+}
+
+export interface SkillInstallProgress {
+  source: string;
+  skillId: string;
+  progress: number;
+}
+
+export interface SkillSourceRecord {
+  directoryName: string;
+  source: string;
+  packageSlug: string;
+  repoUrl: string;
+  skillPath: string;
+  installedRef: string;
+  installedHash: string;
+  remoteRef: string;
+  lastCheckedAt: string;
+  installedAt: string;
+  updatedAt: string;
+}
+
+export interface SkillUpdateStatus {
+  source: SkillSourceRecord;
+  name: string;
+  description: string;
+  status: SkillUpdateState;
+  message: string;
+}
+
+export interface SkillUpdateResult {
+  directoryName: string;
+  status: SkillUpdateState;
+  message: string;
+}
+
 export type RadarCategory = "项目" | "资讯" | "论文" | "其他";
 export type RadarSource = "manual" | "github_star";
 

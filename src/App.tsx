@@ -8,8 +8,13 @@ import {
   ArrowDown,
   ArrowLeft,
   ArrowUp,
+  ArrowUpCircle,
+  Ban,
   Box,
   ChevronDown,
+  CircleAlert,
+  CircleCheck,
+  CircleDashed,
   CircleDot,
   Download,
   Edit3,
@@ -19,6 +24,7 @@ import {
   MonitorUp,
   Moon,
   Pause,
+  PackagePlus,
   Play,
   Plus,
   RefreshCcw,
@@ -53,7 +59,7 @@ import { UpdateBadge } from "./components/UpdateBadge";
 import { ActionGroup, Button, ConfirmDeleteModal, DetailHeader, FilterMore, IconButton, Modal, PageHeader, Panel, SearchInput, StatusBadge, TagList, Toolbar } from "./components/ui";
 import { useAppUpdate } from "./contexts/AppUpdateContext";
 import { workbenchApi } from "./lib/api/workbenchApi";
-import type { AppSettings, CloseBehavior, CustomToolTargetInput, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, Project, ProjectLaunchConfig, ProjectOpenProfile, RadarCategory, RadarDuplicateGroup, RadarItem, Skill, SkillCategory, SkillVersionSource, ToolKey, ToolTarget, ViewKey } from "./lib/types/domain";
+import type { AppSettings, CloseBehavior, CustomToolTargetInput, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, Project, ProjectLaunchConfig, ProjectOpenProfile, RadarCategory, RadarDuplicateGroup, RadarItem, Skill, SkillCategory, SkillMarketDetail, SkillMarketItem, SkillUpdateResult, SkillUpdateState, SkillUpdateStatus, SkillVersionSource, ToolKey, ToolTarget, ViewKey } from "./lib/types/domain";
 
 const views: Array<{ key: ViewKey; label: string; icon: JSX.Element }> = [
   { key: "projects", label: "项目", icon: <Box size={16} /> },
@@ -64,6 +70,7 @@ const views: Array<{ key: ViewKey; label: string; icon: JSX.Element }> = [
 
 const radarDomains = ["未分类", "Skills", "Agent", "RAG", "AI 基础", "开发工具", "文档工具", "算法与数据结构", "教程与资源", "前端开发", "Android 开发", "桌面应用", "音视频工具", "安全与网络", "其他"];
 const updateNoticeStorageKey = "workbench-update-notice-version";
+let skillMarketRuntimeCache: { items: SkillMarketItem[]; updatedAt: number } | null = null;
 const toolIconSources: Record<string, string> = {
   codex: codexIcon,
   claude: claudeCodeIcon,
@@ -1852,7 +1859,7 @@ export function SkillsView({
   projects: Project[];
   onSelect: (id: string) => void;
   onImport: (kind: "zip" | "folder") => Promise<void>;
-  onRefresh: () => void;
+  onRefresh: () => void | Promise<void>;
   onManageCategories: () => void;
   onToggle: (tool: ToolKey, enabled: boolean, project?: Project) => void;
   onToggleSkillGlobal: (directoryName: string, tool: ToolKey, enabled: boolean) => void;
@@ -1862,12 +1869,29 @@ export function SkillsView({
   onResolve: (source: SkillVersionSource) => void;
   onDeleteSkill: (skillId: string) => void;
 }) {
+  const [activeSkillsTab, setActiveSkillsTab] = useState<"local" | "market" | "updates">("local");
   const [query, setQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("全部分类");
   const [statusFilter, setStatusFilter] = useState("全部状态");
   const [toolFilter, setToolFilter] = useState<ToolKey | "全部工具">("全部工具");
   const [projectFilter, setProjectFilter] = useState("全部项目");
   const [importMenuOpen, setImportMenuOpen] = useState(false);
+  const [marketQuery, setMarketQuery] = useState("");
+  const [marketStatusFilter, setMarketStatusFilter] = useState<"全部状态" | "未安装" | "已安装" | "可更新" | "不可安装">("全部状态");
+  const [marketItems, setMarketItems] = useState<SkillMarketItem[]>([]);
+  const [selectedMarketKey, setSelectedMarketKey] = useState("");
+  const [marketDetail, setMarketDetail] = useState<SkillMarketDetail | null>(null);
+  const [marketLoading, setMarketLoading] = useState(false);
+  const [marketError, setMarketError] = useState("");
+  const [installingMarketKey, setInstallingMarketKey] = useState("");
+  const [installingMarketProgress, setInstallingMarketProgress] = useState(0);
+  const [uninstallingMarketKey, setUninstallingMarketKey] = useState("");
+  const [deletingMarketItem, setDeletingMarketItem] = useState<SkillMarketItem | null>(null);
+  const [updateStatuses, setUpdateStatuses] = useState<SkillUpdateStatus[]>([]);
+  const [selectedUpdateNames, setSelectedUpdateNames] = useState<string[]>([]);
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
+  const [updatingNames, setUpdatingNames] = useState<string[]>([]);
+  const [updateResults, setUpdateResults] = useState<SkillUpdateResult[]>([]);
   const categories = ["全部分类", ...skillCategories.map((category) => category.name)];
   const projectToolTargets = settings.toolTargets.filter((tool) => tool.supportsProjectScope);
   const visibleSkills = skills.filter((skill) => {
@@ -1881,13 +1905,165 @@ export function SkillsView({
     const matchesToolProject = skillMatchesToolProjectFilter(skill, toolFilter, projectFilter);
     return matchesQuery && matchesCategory && matchesStatus && matchesToolProject;
   });
+  const visibleMarketItems = marketItems.filter((item) => {
+    const normalizedQuery = marketQuery.trim().toLowerCase();
+    const matchesQuery =
+      !normalizedQuery ||
+      item.name.toLowerCase().includes(normalizedQuery) ||
+      item.skillId.toLowerCase().includes(normalizedQuery) ||
+      item.source.toLowerCase().includes(normalizedQuery);
+    const matchesStatus =
+      marketStatusFilter === "全部状态" ||
+      (marketStatusFilter === "未安装" && !item.installedDirectoryName && item.installable) ||
+      (marketStatusFilter === "已安装" && Boolean(item.installedDirectoryName)) ||
+      (marketStatusFilter === "可更新" && item.updateStatus === "update_available") ||
+      (marketStatusFilter === "不可安装" && !item.installable);
+    return matchesQuery && matchesStatus;
+  });
+  const selectedMarketItem = visibleMarketItems.find((item) => `${item.source}/${item.skillId}` === selectedMarketKey) ?? visibleMarketItems[0];
+  const marketStats = buildMarketStats(marketItems);
+  const updateableStatuses = updateStatuses.filter((status) => status.status === "update_available");
+  const selectedUpdateableNames = selectedUpdateNames.filter((directoryName) =>
+    updateableStatuses.some((status) => status.source.directoryName === directoryName)
+  );
+
+  useEffect(() => {
+    if (activeSkillsTab !== "market" || marketItems.length > 0 || marketLoading) return;
+    void loadMarketItems();
+  }, [activeSkillsTab]);
+
+  useEffect(() => {
+    if (activeSkillsTab !== "updates" || updateStatuses.length > 0 || checkingUpdates) return;
+    void loadSkillUpdates(false);
+  }, [activeSkillsTab]);
+
+  useEffect(() => {
+    if (!selectedMarketItem) {
+      setMarketDetail(null);
+      return;
+    }
+    const key = `${selectedMarketItem.source}/${selectedMarketItem.skillId}`;
+    if (marketDetail && `${marketDetail.item.source}/${marketDetail.item.skillId}` === key) return;
+    void loadMarketDetail(selectedMarketItem);
+  }, [selectedMarketItem?.source, selectedMarketItem?.skillId]);
+
+  async function loadMarketItems(query = marketQuery, force = false) {
+    if (skillMarketRuntimeCache && !force) {
+      setMarketItems(skillMarketRuntimeCache.items);
+      setSelectedMarketKey((current) => current || (skillMarketRuntimeCache?.items[0] ? `${skillMarketRuntimeCache.items[0].source}/${skillMarketRuntimeCache.items[0].skillId}` : ""));
+      return;
+    }
+    setMarketLoading(true);
+    setMarketError("");
+    try {
+      const items = await workbenchApi.listSkillMarket(query);
+      setMarketItems(items);
+      if (!query.trim()) {
+        skillMarketRuntimeCache = { items, updatedAt: Date.now() };
+      }
+      setSelectedMarketKey((current) => current || (items[0] ? `${items[0].source}/${items[0].skillId}` : ""));
+    } catch (error) {
+      setMarketError(String(error));
+    } finally {
+      setMarketLoading(false);
+    }
+  }
+
+  async function loadMarketDetail(item: SkillMarketItem) {
+    setMarketError("");
+    try {
+      setMarketDetail(await workbenchApi.getSkillMarketDetail(item.source, item.skillId));
+    } catch (error) {
+      setMarketDetail(null);
+      setMarketError(String(error));
+    }
+  }
+
+  async function installMarketSkill(item: SkillMarketItem) {
+    const key = `${item.source}/${item.skillId}`;
+    setInstallingMarketKey(key);
+    setInstallingMarketProgress(8);
+    setMarketError("");
+    try {
+      await workbenchApi.installSkillFromMarket(item.source, item.skillId, setInstallingMarketProgress);
+      setInstallingMarketProgress(100);
+      skillMarketRuntimeCache = null;
+      await loadMarketItems("", true);
+      await onRefresh();
+    } catch (error) {
+      setMarketError(String(error));
+    } finally {
+      window.setTimeout(() => {
+        setInstallingMarketKey("");
+        setInstallingMarketProgress(0);
+      }, 320);
+    }
+  }
+
+  async function uninstallMarketSkill(item: SkillMarketItem) {
+    const directoryName = item.installedDirectoryName || item.skillId;
+    const key = `${item.source}/${item.skillId}`;
+    setUninstallingMarketKey(key);
+    setMarketError("");
+    try {
+      await workbenchApi.deleteSkill(directoryName);
+      skillMarketRuntimeCache = null;
+      setSelectedUpdateNames((current) => current.filter((name) => name !== directoryName));
+      await loadMarketItems("", true);
+      await loadSkillUpdates(false);
+      await onRefresh();
+    } catch (error) {
+      setMarketError(String(error));
+    } finally {
+      setUninstallingMarketKey("");
+    }
+  }
+
+  async function loadSkillUpdates(checkRemote: boolean) {
+    setCheckingUpdates(true);
+    try {
+      const statuses = checkRemote ? await workbenchApi.checkSkillUpdates() : await workbenchApi.listSkillUpdates();
+      setUpdateStatuses(statuses);
+      setSelectedUpdateNames((current) =>
+        current.filter((directoryName) => statuses.some((status) => status.source.directoryName === directoryName))
+      );
+    } finally {
+      setCheckingUpdates(false);
+    }
+  }
+
+  async function updateSelectedSkills(directoryNames: string[]) {
+    const targets = directoryNames.filter((directoryName) =>
+      updateStatuses.some((status) => status.source.directoryName === directoryName && status.status === "update_available")
+    );
+    if (targets.length === 0) return;
+    setUpdatingNames(targets);
+    try {
+      const results = await workbenchApi.updateMarketSkills(targets);
+      setUpdateResults(results);
+      await loadSkillUpdates(false);
+      await onRefresh();
+      setSelectedUpdateNames([]);
+    } finally {
+      setUpdatingNames([]);
+    }
+  }
 
   return (
     <section className="view">
-      <PageHeader
-        title="Skills"
-        description={`统一根目录 · ${skills.length} 个 Skills`}
-        actions={
+      <header className="skills-header">
+        <div className="skills-title">
+          <h1>Skills</h1>
+          <p>统一根目录 · {skills.length} 个 Skills</p>
+        </div>
+        <div className="skills-subnav" role="tablist" aria-label="Skills 子视图">
+          <button className={activeSkillsTab === "local" ? "active" : ""} onClick={() => setActiveSkillsTab("local")}>本地 Skills</button>
+          <button className={activeSkillsTab === "market" ? "active" : ""} onClick={() => setActiveSkillsTab("market")}>技能市场</button>
+          <button className={activeSkillsTab === "updates" ? "active" : ""} onClick={() => setActiveSkillsTab("updates")}>
+            更新{updateableStatuses.length > 0 ? ` ${updateableStatuses.length}` : ""}
+          </button>
+        </div>
+        <div className="skills-header-actions">
           <div className="header-actions">
             <Button onClick={onRefresh}><RefreshCcw size={15} />扫描</Button>
             <Button onClick={onManageCategories}><Settings size={15} />管理分类</Button>
@@ -1903,35 +2079,37 @@ export function SkillsView({
               )}
             </div>
           </div>
-        }
-      />
-      <div className="root-bar">
-        <span><strong>统一根目录</strong>{settings.skillsRoot}</span>
-        <Button onClick={() => void workbenchApi.openLocalPath(settings.skillsRoot)}><FolderOpen size={15} />打开目录</Button>
-      </div>
-      <Toolbar>
-        <SearchInput placeholder="搜索名称或描述" value={query} onChange={(event) => setQuery(event.target.value)} />
-        <select aria-label="按分类筛选 Skills" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
-          {categories.map((category) => <option key={category}>{category}</option>)}
-        </select>
-        <select aria-label="按状态筛选 Skills" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-          <option>全部状态</option>
-          <option>已启用</option>
-          <option>内容冲突</option>
-          <option>未启用</option>
-        </select>
-        <select aria-label="按启用项目筛选 Skills" value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)}>
-          <option value="全部项目">全部项目</option>
-          {projects.map((project) => <option key={project.path} value={project.path}>{project.name}</option>)}
-        </select>
-        <select aria-label="按启用工具筛选 Skills" value={toolFilter} onChange={(event) => setToolFilter(event.target.value as ToolKey | "全部工具")}>
-          <option value="全部工具">全部工具</option>
-          {settings.toolTargets.map((tool) => <option key={tool.key} value={tool.key}>{tool.name}</option>)}
-        </select>
-      </Toolbar>
-      <div className="split-layout skills-layout">
+        </div>
+      </header>
+      {activeSkillsTab === "local" && (
+        <>
+          <div className="root-bar">
+            <span><strong>统一根目录</strong>{settings.skillsRoot}</span>
+            <Button onClick={() => void workbenchApi.openLocalPath(settings.skillsRoot)}><FolderOpen size={15} />打开目录</Button>
+          </div>
+          <Toolbar>
+            <SearchInput placeholder="搜索名称或描述" value={query} onChange={(event) => setQuery(event.target.value)} />
+            <select aria-label="按分类筛选 Skills" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
+              {categories.map((category) => <option key={category}>{category}</option>)}
+            </select>
+            <select aria-label="按状态筛选 Skills" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+              <option>全部状态</option>
+              <option>已启用</option>
+              <option>内容冲突</option>
+              <option>未启用</option>
+            </select>
+            <select aria-label="按启用项目筛选 Skills" value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)}>
+              <option value="全部项目">全部项目</option>
+              {projects.map((project) => <option key={project.path} value={project.path}>{project.name}</option>)}
+            </select>
+            <select aria-label="按启用工具筛选 Skills" value={toolFilter} onChange={(event) => setToolFilter(event.target.value as ToolKey | "全部工具")}>
+              <option value="全部工具">全部工具</option>
+              {settings.toolTargets.map((tool) => <option key={tool.key} value={tool.key}>{tool.name}</option>)}
+            </select>
+          </Toolbar>
+          <div className="split-layout skills-layout">
         <Panel className="list-panel">
-          <div className="table-head skills-grid"><span>Skill</span><span>分类</span><span>全局启用</span><span>项目启用</span><span>操作</span></div>
+          <div className="table-head skills-grid"><span>Skill</span><span>分类</span><span>全局启用</span><span>项目启用</span><span className="table-action-heading">操作</span></div>
           {visibleSkills.map((skill) => (
             <div
               key={skill.id}
@@ -1959,7 +2137,7 @@ export function SkillsView({
                 onToggle={(tool, enabled) => onToggleSkillGlobal(skill.directoryName, tool, enabled)}
               />
               <span>{skill.enabledProjects.length ? `${skill.enabledProjects.length} 个项目` : "未启用"}</span>
-              <ActionGroup className="row-actions">
+              <ActionGroup align="start" className="row-actions table-actions">
                 <IconButton
                   title="打开 SKILL.md"
                   onClick={(event) => {
@@ -2031,8 +2209,420 @@ export function SkillsView({
           <div className="file-block"><span>SKILL.md</span><code>{selectedSkill.skillPath}</code></div>
         </Panel>
       </div>
+        </>
+      )}
+      {activeSkillsTab === "market" && (
+        <SkillsMarketView
+          items={visibleMarketItems}
+          selectedItem={selectedMarketItem}
+          detail={marketDetail}
+          query={marketQuery}
+          statusFilter={marketStatusFilter}
+          stats={marketStats}
+          currentCount={visibleMarketItems.length}
+          loading={marketLoading}
+          error={marketError}
+          installingKey={installingMarketKey}
+          installingProgress={installingMarketProgress}
+          uninstallingKey={uninstallingMarketKey}
+          onQueryChange={setMarketQuery}
+          onStatusFilterChange={setMarketStatusFilter}
+          onRefresh={() => void loadMarketItems("", true)}
+          onSearch={() => void loadMarketItems(marketQuery)}
+          onSelect={(item) => setSelectedMarketKey(`${item.source}/${item.skillId}`)}
+          onInstall={(item) => void installMarketSkill(item)}
+          onUninstall={setDeletingMarketItem}
+          onOpenSource={(url) => void workbenchApi.openRadarLink(url)}
+        />
+      )}
+      {activeSkillsTab === "updates" && (
+        <SkillUpdatesView
+          statuses={updateStatuses}
+          selectedNames={selectedUpdateNames}
+          checking={checkingUpdates}
+          updatingNames={updatingNames}
+          results={updateResults}
+          onCheck={() => void loadSkillUpdates(true)}
+          onSelectNames={setSelectedUpdateNames}
+          onUpdateSelected={() => void updateSelectedSkills(selectedUpdateableNames)}
+          onUpdateAll={() => void updateSelectedSkills(updateableStatuses.map((status) => status.source.directoryName))}
+          onUpdateOne={(directoryName) => void updateSelectedSkills([directoryName])}
+        />
+      )}
+      {deletingMarketItem && (
+        <DeleteMarketSkillDialog
+          item={deletingMarketItem}
+          onClose={() => setDeletingMarketItem(null)}
+          onConfirm={() => {
+            const target = deletingMarketItem;
+            setDeletingMarketItem(null);
+            void uninstallMarketSkill(target);
+          }}
+        />
+      )}
     </section>
   );
+}
+
+function SkillStatusIndicator({ status, label }: { status: SkillUpdateState; label?: string }) {
+  const presentation = {
+    not_installed: { icon: CircleDashed, tone: "neutral", label: "未安装" },
+    installed: { icon: CircleCheck, tone: "success", label: "已安装" },
+    up_to_date: { icon: CircleCheck, tone: "success", label: "已是最新" },
+    update_available: { icon: ArrowUpCircle, tone: "attention", label: "可更新" },
+    check_failed: { icon: CircleAlert, tone: "danger", label: "检查失败" },
+    unsupported: { icon: Ban, tone: "warning", label: "不支持" }
+  }[status];
+  const Icon = presentation.icon;
+  const text = label ?? presentation.label;
+  return (
+    <span className={`skill-status-indicator ${presentation.tone}`} aria-label={text}>
+      <Icon size={14} aria-hidden="true" />
+      <span>{text}</span>
+    </span>
+  );
+}
+
+function MarketListSkeleton() {
+  return (
+    <div className="market-skeleton-list" aria-label="正在加载 skills.sh 市场" aria-busy="true">
+      {Array.from({ length: 6 }, (_, index) => (
+        <div className="table-row market-grid market-skeleton-row" key={index} aria-hidden="true">
+          <span className="skeleton-stack"><i className="skeleton skeleton-title" /><i className="skeleton skeleton-subtitle" /></span>
+          <i className="skeleton skeleton-source" />
+          <i className="skeleton skeleton-status" />
+          <i className="skeleton skeleton-download" />
+          <i className="skeleton skeleton-action" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MarketDetailSkeleton() {
+  return (
+    <div className="market-detail-skeleton" aria-label="正在加载 Skill 详情" aria-busy="true">
+      <i className="skeleton skeleton-kicker" />
+      <i className="skeleton skeleton-detail-title" />
+      <div className="skeleton-divider" />
+      <i className="skeleton skeleton-detail-line wide" />
+      <i className="skeleton skeleton-detail-line" />
+      <div className="skeleton-detail-grid">
+        {Array.from({ length: 5 }, (_, index) => <i className="skeleton skeleton-detail-meta" key={index} />)}
+      </div>
+      <i className="skeleton skeleton-warning" />
+      <i className="skeleton skeleton-preview" />
+    </div>
+  );
+}
+
+function SkillsMarketView({
+  items,
+  selectedItem,
+  detail,
+  query,
+  statusFilter,
+  stats,
+  currentCount,
+  loading,
+  error,
+  installingKey,
+  installingProgress,
+  uninstallingKey,
+  onQueryChange,
+  onStatusFilterChange,
+  onRefresh,
+  onSearch,
+  onSelect,
+  onInstall,
+  onUninstall,
+  onOpenSource
+}: {
+  items: SkillMarketItem[];
+  selectedItem: SkillMarketItem | undefined;
+  detail: SkillMarketDetail | null;
+  query: string;
+  statusFilter: "全部状态" | "未安装" | "已安装" | "可更新" | "不可安装";
+  stats: ReturnType<typeof buildMarketStats>;
+  currentCount: number;
+  loading: boolean;
+  error: string;
+  installingKey: string;
+  installingProgress: number;
+  uninstallingKey: string;
+  onQueryChange: (query: string) => void;
+  onStatusFilterChange: (status: "全部状态" | "未安装" | "已安装" | "可更新" | "不可安装") => void;
+  onRefresh: () => void;
+  onSearch: () => void;
+  onSelect: (item: SkillMarketItem) => void;
+  onInstall: (item: SkillMarketItem) => void;
+  onUninstall: (item: SkillMarketItem) => void;
+  onOpenSource: (url: string) => void;
+}) {
+  const selectedKey = selectedItem ? `${selectedItem.source}/${selectedItem.skillId}` : "";
+  const repositoryUrl = selectedItem ? detail?.repositoryUrl || marketRepositoryUrl(selectedItem) : "";
+  return (
+    <>
+      <Toolbar>
+        <SearchInput
+          placeholder="搜索 skills.sh"
+          value={query}
+          onChange={(event) => onQueryChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") onSearch();
+          }}
+        />
+        <select aria-label="按市场状态筛选" value={statusFilter} onChange={(event) => onStatusFilterChange(event.target.value as typeof statusFilter)}>
+          <option>全部状态</option>
+          <option>未安装</option>
+          <option>已安装</option>
+          <option>可更新</option>
+          <option>不可安装</option>
+        </select>
+        <Button onClick={onRefresh}><RefreshCcw size={15} />刷新市场</Button>
+      </Toolbar>
+      {error && (
+        <div className="warning market-error" role="alert">
+          <span>{error}</span>
+          <Button onClick={onRefresh}><RefreshCcw size={14} />重试</Button>
+        </div>
+      )}
+      <div className="market-stats" aria-label="技能市场统计">
+        {[
+          [stats.total, "全部"],
+          [stats.installed, "已安装"],
+          [stats.notInstalled, "未安装"],
+          [stats.updateAvailable, "可更新"],
+          [stats.unsupported, "不支持"],
+          [currentCount, "当前结果"]
+        ].map(([value, label]) => (
+          <span key={label}>
+            <strong>{loading && items.length === 0 ? <i className="skeleton skeleton-stat" /> : value}</strong>
+            <small>{label}</small>
+          </span>
+        ))}
+      </div>
+      <div className="split-layout skills-layout">
+        <Panel className="list-panel">
+          <div className="table-head market-grid"><span>远程 Skill</span><span>来源</span><span>状态</span><span>下载</span><span className="table-action-heading">操作</span></div>
+          {loading && items.length === 0 && <MarketListSkeleton />}
+          {!loading && items.map((item) => {
+            const key = `${item.source}/${item.skillId}`;
+            const installing = installingKey === key;
+            const uninstalling = uninstallingKey === key;
+            return (
+              <div
+                className={`table-row market-grid ${selectedKey === key ? "selected" : ""}`}
+                key={key}
+                role="button"
+                tabIndex={0}
+                onClick={() => onSelect(item)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") onSelect(item);
+                }}
+              >
+                <span className="title-cell"><strong>{item.name}</strong><small>{item.description || item.skillId}</small></span>
+                <span className="path">{item.source}</span>
+                <SkillStatusIndicator status={marketItemStatus(item)} />
+                <span>{formatInstallCount(item.installs)}</span>
+                <span className="row-actions table-actions install-action">
+                  {installing ? (
+                    <Button disabled><RefreshCcw className="spin" size={14} />安装中 {installingProgress}%</Button>
+                  ) : item.installedDirectoryName ? (
+                    <Button
+                      variant="danger"
+                      disabled={Boolean(installingKey) || uninstalling}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onUninstall(item);
+                      }}
+                    >
+                      <Trash2 size={14} />{uninstalling ? "卸载中" : "卸载"}
+                    </Button>
+                  ) : !item.installable ? (
+                    <SkillStatusIndicator status="unsupported" />
+                  ) : (
+                    <Button
+                      disabled={Boolean(installingKey)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onInstall(item);
+                      }}
+                    >
+                      <PackagePlus size={14} />安装
+                    </Button>
+                  )}
+                  {installing && <i style={{ width: `${installingProgress}%` }} />}
+                </span>
+              </div>
+            );
+          })}
+        </Panel>
+        <Panel className="detail-panel market-detail-panel">
+          {loading && items.length === 0 ? (
+            <MarketDetailSkeleton />
+          ) : selectedItem ? (
+            <>
+              <div className="market-detail-hero">
+                <div>
+                  <span className="market-detail-kicker">skills.sh</span>
+                  <DetailHeader title={selectedItem.name} actions={repositoryUrl ? <IconButton title="打开来源仓库" onClick={() => onOpenSource(repositoryUrl)}><ExternalLink size={14} /></IconButton> : undefined} />
+                </div>
+              </div>
+              <p className="market-detail-description">{detail?.item.description || selectedItem.description || "暂无远程描述。"}</p>
+              <dl className="market-detail-list">
+                <div><dt>安装状态</dt><dd><SkillStatusIndicator status={marketItemStatus(selectedItem)} /></dd></div>
+                <div><dt>skills.sh 包</dt><dd><code>{selectedItem.source}/{selectedItem.skillId}</code></dd></div>
+                <div><dt>Skill ID</dt><dd><code>{selectedItem.skillId}</code></dd></div>
+                <div><dt>来源仓库</dt><dd><code>{repositoryUrl || "非 GitHub 来源，暂不支持 Workbench 自管安装"}</code></dd></div>
+                <div><dt>参考命令</dt><dd><code>{detail?.installCommand || `npx skills add ${selectedItem.source} --skill ${selectedItem.skillId}`}</code></dd></div>
+              </dl>
+              <div className="warning market-detail-warning">{detail?.securityNote || "安装前请确认第三方 Skill 来源可信。Workbench 只做结构校验和备份，不做安全担保。"}</div>
+              {detail?.skillMarkdownPreview && <div className="market-preview"><h3>SKILL.md 预览</h3><p>{detail.skillMarkdownPreview}</p></div>}
+            </>
+          ) : (
+            <div className="notice compact-empty">暂无市场条目。</div>
+          )}
+        </Panel>
+      </div>
+    </>
+  );
+}
+
+function SkillUpdatesView({
+  statuses,
+  selectedNames,
+  checking,
+  updatingNames,
+  results,
+  onCheck,
+  onSelectNames,
+  onUpdateSelected,
+  onUpdateAll,
+  onUpdateOne
+}: {
+  statuses: SkillUpdateStatus[];
+  selectedNames: string[];
+  checking: boolean;
+  updatingNames: string[];
+  results: SkillUpdateResult[];
+  onCheck: () => void;
+  onSelectNames: (names: string[]) => void;
+  onUpdateSelected: () => void;
+  onUpdateAll: () => void;
+  onUpdateOne: (directoryName: string) => void;
+}) {
+  const updateable = statuses.filter((status) => status.status === "update_available");
+  const selectedUpdateable = selectedNames.filter((directoryName) =>
+    updateable.some((status) => status.source.directoryName === directoryName)
+  );
+  const allUpdateableSelected = updateable.length > 0 && updateable.every((status) => selectedNames.includes(status.source.directoryName));
+  function toggleUpdateSelection(directoryName: string, checked: boolean) {
+    onSelectNames(
+      checked
+        ? Array.from(new Set([...selectedNames, directoryName]))
+        : selectedNames.filter((name) => name !== directoryName)
+    );
+  }
+  return (
+    <>
+      <div className="bulk-bar">
+        <span><strong>更新检查</strong><small>仅管理从 skills.sh 安装的 Skill。更新前会备份统一根目录中的旧版本。</small></span>
+        <div className="bulk-actions">
+          <Button onClick={onCheck}><RefreshCcw size={15} />{checking ? "检查中" : "检查全部"}</Button>
+          <Button variant="primary" disabled={selectedUpdateable.length === 0 || updatingNames.length > 0} onClick={onUpdateSelected}>更新选中项</Button>
+          <Button disabled={updateable.length === 0 || updatingNames.length > 0} onClick={onUpdateAll}>更新全部可更新项</Button>
+        </div>
+      </div>
+      <div className="split-layout skills-layout">
+        <Panel className="list-panel">
+          <div className="table-head update-grid">
+            <span><input type="checkbox" aria-label="选择全部可更新项" checked={allUpdateableSelected} disabled={updateable.length === 0 || updatingNames.length > 0} onClick={(event) => event.stopPropagation()} onChange={(event) => onSelectNames(event.target.checked ? updateable.map((status) => status.source.directoryName) : [])} /></span>
+            <span>Skill</span><span>本地版本</span><span>远端状态</span><span>最近检查</span><span className="table-action-heading">操作</span>
+          </div>
+          {statuses.length === 0 && <div className="notice compact-empty">暂无 skills.sh 来源 Skill。</div>}
+          {statuses.map((status) => {
+            const directoryName = status.source.directoryName;
+            const checked = selectedNames.includes(directoryName);
+            const updateableStatus = status.status === "update_available";
+            return (
+              <div className="table-row update-grid" key={directoryName}>
+                <span><input type="checkbox" aria-label={`选择 ${directoryName}`} disabled={!updateableStatus || updatingNames.length > 0} checked={updateableStatus && checked} onClick={(event) => event.stopPropagation()} onChange={(event) => toggleUpdateSelection(directoryName, event.target.checked)} /></span>
+                <span className="title-cell"><strong>{status.name}</strong><small>{status.source.packageSlug}</small></span>
+                <span className="path">{status.source.installedHash}</span>
+                <SkillStatusIndicator status={status.status} label={updateStatusLabel(status.status)} />
+                <span>{status.source.lastCheckedAt || "未检查"}</span>
+                <span className="row-actions table-actions">
+                  <Button disabled={!updateableStatus || updatingNames.includes(directoryName)} onClick={() => onUpdateOne(directoryName)}>
+                    {updatingNames.includes(directoryName) ? "更新中" : "更新"}
+                  </Button>
+                </span>
+              </div>
+            );
+          })}
+        </Panel>
+        <Panel className="detail-panel">
+          <DetailHeader title="批量更新确认" />
+          <p className="description">已选择 {selectedUpdateable.length} 个可更新 Skill。批量更新逐项执行，单项失败会保留旧版本并继续处理其他项。</p>
+          <div className="warning">更新不会自动启用到任何 Agent 工具目录；已启用的 Copy 副本也不会在本次自动重同步。</div>
+          {results.length > 0 && (
+            <div className="update-result-list">
+              <h3>最近结果</h3>
+              {results.map((result) => (
+                <div key={result.directoryName}><strong>{result.directoryName}</strong><small>{result.message}</small></div>
+              ))}
+            </div>
+          )}
+        </Panel>
+      </div>
+    </>
+  );
+}
+
+function marketItemStatus(item: SkillMarketItem): SkillUpdateState {
+  if (!item.installable) return "unsupported";
+  if (item.updateStatus === "update_available") return "update_available";
+  if (item.installedDirectoryName) return "installed";
+  return "not_installed";
+}
+
+function marketRepositoryUrl(item: SkillMarketItem) {
+  return item.installable ? `https://github.com/${item.source}` : "";
+}
+
+function buildMarketStats(items: SkillMarketItem[]) {
+  return items.reduce(
+    (stats, item) => {
+      stats.total += 1;
+      if (!item.installable) {
+        stats.unsupported += 1;
+      } else if (item.updateStatus === "update_available") {
+        stats.updateAvailable += 1;
+        stats.installed += 1;
+      } else if (item.installedDirectoryName) {
+        stats.installed += 1;
+      } else {
+        stats.notInstalled += 1;
+      }
+      return stats;
+    },
+    { total: 0, installed: 0, notInstalled: 0, updateAvailable: 0, unsupported: 0 }
+  );
+}
+
+function updateStatusLabel(status: SkillUpdateState) {
+  if (status === "update_available") return "可更新";
+  if (status === "up_to_date") return "已是最新";
+  if (status === "check_failed") return "检查失败";
+  if (status === "unsupported") return "不支持";
+  if (status === "installed") return "未检查";
+  return "未安装";
+}
+
+function formatInstallCount(value: number) {
+  if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
+  if (value >= 1000) return `${(value / 1000).toFixed(1)}K`;
+  return String(value);
 }
 
 function SwitchControl({
@@ -3359,6 +3949,38 @@ function DeleteSkillDialog({
       <div className="file-block">
         <span>目录</span>
         <code>{skill.skillPath.replace(/[\\/][^\\/]+$/, "")}</code>
+      </div>
+      <div className="warning">不会删除未被 Workbench 管理的外部工具目录内容。</div>
+    </ConfirmDeleteModal>
+  );
+}
+
+function DeleteMarketSkillDialog({
+  item,
+  onClose,
+  onConfirm
+}: {
+  item: SkillMarketItem;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const directoryName = item.installedDirectoryName || item.skillId;
+  return (
+    <ConfirmDeleteModal
+      title="卸载市场 Skill"
+      description={`确认卸载 ${item.name}`}
+      onClose={onClose}
+      onConfirm={onConfirm}
+      confirmLabel="卸载 Skill"
+    >
+      <p>将删除 Workbench 统一根目录中的源 Skill，并清理 Workbench 管理的全局和项目启用副本或符号链接。</p>
+      <div className="file-block">
+        <span>Skill</span>
+        <code>{directoryName}</code>
+      </div>
+      <div className="file-block">
+        <span>skills.sh 包</span>
+        <code>{item.source}/{item.skillId}</code>
       </div>
       <div className="warning">不会删除未被 Workbench 管理的外部工具目录内容。</div>
     </ConfirmDeleteModal>
