@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { projects, radarItems, settings, skillCategories, skills } from "./mockData";
-import type { CloseBehavior, CustomToolTargetInput, GitHubStarsSyncResult, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, SkillVersionSource, SkillsState, ToolKey } from "../types/domain";
+import type { CloseBehavior, CustomToolTargetInput, GitHubStarsSyncResult, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, SkillInstallProgress, SkillMarketDetail, SkillMarketItem, SkillUpdateResult, SkillUpdateStatus, SkillVersionSource, SkillsState, ToolKey } from "../types/domain";
 
 const delay = async () => new Promise((resolve) => window.setTimeout(resolve, 80));
 const isTauri = "__TAURI_INTERNALS__" in window;
@@ -24,6 +24,64 @@ function previewSkillCategories() {
     }))
     .sort((left, right) => left.sortOrder - right.sortOrder || left.name.localeCompare(right.name));
 }
+
+const previewMarketItems: SkillMarketItem[] = [
+  {
+    source: "vercel-labs/next-skills",
+    skillId: "next-upgrade",
+    name: "next-upgrade",
+    description: "Upgrade Next.js following official migration guides.",
+    installs: 24209,
+    official: true,
+    installedDirectoryName: null,
+    updateStatus: "not_installed",
+    installable: true
+  },
+  {
+    source: "github/awesome-copilot",
+    skillId: "excalidraw-diagram-generator",
+    name: "excalidraw-diagram-generator",
+    description: "Generate Excalidraw diagrams from natural language descriptions.",
+    installs: 24385,
+    official: true,
+    installedDirectoryName: "excalidraw-diagram-generator",
+    updateStatus: "update_available",
+    installable: true
+  },
+  {
+    source: "skills.volces.com",
+    skillId: "byted-web-search",
+    name: "byted-web-search",
+    description: "Non-GitHub source shown as unavailable for Workbench-managed install.",
+    installs: 25028,
+    official: false,
+    installedDirectoryName: null,
+    updateStatus: "unsupported",
+    installable: false
+  }
+];
+
+const previewUpdateStatuses: SkillUpdateStatus[] = [
+  {
+    name: "excalidraw-diagram-generator",
+    description: "Generate Excalidraw diagrams from natural language descriptions.",
+    status: "update_available",
+    message: "发现可更新版本",
+    source: {
+      directoryName: "excalidraw-diagram-generator",
+      source: "skills_sh",
+      packageSlug: "github/awesome-copilot/excalidraw-diagram-generator",
+      repoUrl: "https://github.com/github/awesome-copilot",
+      skillPath: "skills/excalidraw-diagram-generator",
+      installedRef: "local-a84c2b7",
+      installedHash: "local-a84c2b7",
+      remoteRef: "remote-f03a112",
+      lastCheckedAt: "刚刚",
+      installedAt: "2026-06-18",
+      updatedAt: "2026-06-18"
+    }
+  }
+];
 
 export const workbenchApi = {
   async health() {
@@ -220,6 +278,93 @@ export const workbenchApi = {
   async getSkillsState() {
     return skillsState();
   },
+  async listSkillMarket(query?: string) {
+    if (!isTauri) {
+      await delay();
+      const normalized = (query ?? "").trim().toLowerCase();
+      return previewMarketItems.filter((item) =>
+        !normalized ||
+        item.name.toLowerCase().includes(normalized) ||
+        item.skillId.toLowerCase().includes(normalized) ||
+        item.source.toLowerCase().includes(normalized)
+      );
+    }
+    return invoke<SkillMarketItem[]>("list_skill_market", { query: query || null });
+  },
+  async getSkillMarketDetail(source: string, skillId: string) {
+    if (!isTauri) {
+      await delay();
+      const item = previewMarketItems.find((candidate) => candidate.source === source && candidate.skillId === skillId) ?? previewMarketItems[0];
+      return {
+        item,
+        repositoryUrl: item.source.includes("/") && !item.source.includes(".") ? `https://github.com/${item.source}` : "",
+        installCommand: `npx skills add https://github.com/${item.source} --skill ${item.skillId}`,
+        skillMarkdownPreview: item.description,
+        securityNote: "预览数据：正式安装前 Workbench 会下载并校验 SKILL.md。"
+      } satisfies SkillMarketDetail;
+    }
+    return invoke<SkillMarketDetail>("get_skill_market_detail", { source, skillId });
+  },
+  async installSkillFromMarket(source: string, skillId: string, onProgress?: (progress: number) => void) {
+    if (!isTauri) {
+      for (const progress of [8, 28, 55, 72, 84, 92, 97, 100]) {
+        onProgress?.(progress);
+        await delay();
+      }
+      const item = previewMarketItems.find((candidate) => candidate.source === source && candidate.skillId === skillId);
+      if (item) {
+        item.installedDirectoryName = skillId;
+        item.updateStatus = "installed";
+      }
+      return skillsState();
+    }
+    const unlisten = await listen<SkillInstallProgress>("skill-install-progress", (event) => {
+      if (event.payload.source === source && event.payload.skillId === skillId) {
+        onProgress?.(event.payload.progress);
+      }
+    });
+    try {
+      return await invoke<SkillsState>("install_skill_from_market", { source, skillId });
+    } finally {
+      unlisten();
+    }
+  },
+  async listSkillUpdates() {
+    if (!isTauri) {
+      await delay();
+      return previewUpdateStatuses;
+    }
+    return invoke<SkillUpdateStatus[]>("list_skill_updates");
+  },
+  async checkSkillUpdates() {
+    if (!isTauri) {
+      await delay();
+      return previewUpdateStatuses;
+    }
+    return invoke<SkillUpdateStatus[]>("check_skill_updates");
+  },
+  async updateSkillFromMarket(directoryName: string) {
+    if (!isTauri) {
+      await delay();
+      return {
+        directoryName,
+        status: "up_to_date",
+        message: "预览更新完成"
+      } satisfies SkillUpdateResult;
+    }
+    return invoke<SkillUpdateResult>("update_skill_from_market", { directoryName });
+  },
+  async updateMarketSkills(directoryNames: string[]) {
+    if (!isTauri) {
+      await delay();
+      return directoryNames.map((directoryName) => ({
+        directoryName,
+        status: "up_to_date" as const,
+        message: "预览更新完成"
+      }));
+    }
+    return invoke<SkillUpdateResult[]>("update_market_skills", { directoryNames });
+  },
   async setSkillsRoot(path: string) {
     return invoke<SkillsState>("set_skills_root", { path });
   },
@@ -327,6 +472,16 @@ export const workbenchApi = {
     return invoke<SkillsState>("resolve_skill_conflict", { directoryName, source });
   },
   async deleteSkill(directoryName: string) {
+    if (!isTauri) {
+      await delay();
+      for (const item of previewMarketItems) {
+        if (item.installedDirectoryName === directoryName || item.skillId === directoryName) {
+          item.installedDirectoryName = null;
+          item.updateStatus = "not_installed";
+        }
+      }
+      return skillsState();
+    }
     return invoke<SkillsState>("delete_skill", { directoryName });
   },
   async setSkillEnabled(

@@ -167,6 +167,8 @@ Workbench/
 - 管理 Skill 的项目级工具启用关系。
 - 管理自定义 Agent 工具的全局 Skills 目录。
 - 从 ZIP 文件或已解压文件夹导入 Skills。
+- 从 `skills.sh` 浏览、安装和卸载 GitHub 来源 Skills。
+- 检查并更新由 Workbench 从 `skills.sh` 安装的 Skills。
 
 关键原则：
 
@@ -180,9 +182,12 @@ Workbench/
 - 解决内容冲突必须由用户显式触发。
 - 内容冲突按 Skill 统一解决：用户从 `.workbench` 和所有存在版本的全局工具目录中选择一个唯一版本源。
 - 解决冲突前必须备份被替换版本，不自动合并目录内容。
-- 删除 Skill 只删除统一根目录内容和 Workbench 管理的启用目标，不删除未被 Workbench 管理的工具目录。
+- 删除或市场卸载 Skill 只删除统一根目录内容和 Workbench 管理的启用目标，不删除未被 Workbench 管理的工具目录。
 - 自定义工具只支持全局 Skills 目录；项目级启用必须由后端拒绝。
 - 删除自定义工具只删除 Workbench 配置、排序项和启用记录，不删除外部工具目录。
+- `skills.sh` 安装和更新由 Workbench 自行下载 GitHub 仓库内容，不调用 `npx skills` 作为核心路径。
+- 从 `skills.sh` 安装或更新后默认不自动启用到任何 Agent 工具目录。
+- 非 GitHub 来源的 `skills.sh` 条目暂不支持 Workbench 自管安装。
 
 ### 4.4 资源 Radar 模块
 
@@ -240,6 +245,7 @@ Workbench/
 - 扫描时自动登记内容一致的全局启用，统一解决 Skill 级版本冲突并备份被替换版本。
 - 创建、检测和移除受管符号链接或副本。
 - 删除统一根目录中的 Skill 并清理对应 Workbench 管理记录。
+- `skills.sh` 市场列表、详情、安装、卸载、更新检查、单项更新和批量更新。
 - 打开本地文件或目录。
 
 当前 Skills 后端仍保持单文件模块；进阶开发中当模块职责产生实际维护压力时，再按 commands、database、sync、importer 和 filesystem 边界拆分。
@@ -392,6 +398,34 @@ Workbench/
 - 自定义工具图标从用户选择的本地文件复制到 `~/.workbench/tool-icons/`。
 - 自定义工具图标通过 Tauri asset protocol 暴露给前端；加载失败时前端回退到字母图标。
 - 删除自定义工具会清理 `custom_tool_targets`、`app_settings.tool_target_order` 中的排序项和该工具相关 `skill_enablements`，不删除 `global_skills_dir` 指向的外部目录。
+
+### 6.5.2 skill_sources
+
+保存由 Workbench 管理的远程 Skill 来源记录。当前只写入 `skills_sh` 来源，用于市场状态、更新检查和更新执行。
+
+| 字段 | 说明 |
+| --- | --- |
+| directory_name | 统一 Skills 根目录下的 Skill 目录名，主键 |
+| source | 来源类型，当前为 `skills_sh` |
+| package_slug | `skills.sh` 包标识 |
+| repo_url | GitHub 仓库 URL |
+| skill_path | 仓库内 Skill 目录路径 |
+| installed_ref | 安装时使用的远端分支或引用 |
+| installed_hash | 安装后本地内容 hash |
+| remote_ref | 最近一次检查得到的远端内容 hash |
+| last_checked_at | 最近检查时间 |
+| installed_at | 安装时间 |
+| updated_at | 来源记录更新时间 |
+
+约束：
+
+- `skill_sources` 只描述 Workbench 从市场安装的 Skill，不参与本地 ZIP / 文件夹导入。
+- 删除或市场卸载对应 Skill 时必须同步删除 `skill_sources` 记录。
+- 更新检查通过重新下载远端 GitHub Skill 并计算内容 hash 判断是否变化。
+- 内容 hash 用于本地更新检测，不作为安全校验或可信签名。
+- 远端下载设置连接和读取超时，并限制压缩包大小、解压大小和仓库文件数量。
+- 更新执行前会把统一根目录中的旧版本备份到 `~/.workbench/backups/skills/market/<timestamp>/<skill>`。
+- 更新成功只替换统一 Skills 根目录内容，不自动重同步已启用的 Copy 副本。
 
 ### 6.6 skill_enablements
 
@@ -630,6 +664,39 @@ Workbench/
 5. 同名目录不覆盖、不合并，返回跳过结果。
 6. 导入完成后默认不启用。
 
+### 7.6.1 从 skills.sh 安装、卸载和更新 Skills
+
+安装流程：
+
+1. 用户在 Skills 模块切换到 `技能市场`。
+2. 前端优先复用当前应用进程内的市场列表缓存；首次进入、手动刷新或安装完成后调用 `list_skill_market` 获取最新条目，并调用 `get_skill_market_detail` 查看详情。
+3. 用户点击安装时，前端调用异步 `install_skill_from_market`，后端在 blocking worker 中下载对应 GitHub 仓库内容，定位包含 `SKILL.md` 的 Skill 目录。
+4. 后端通过 `skill-install-progress` 事件回传阶段进度；前端用百分比展示安装反馈。
+5. 后端将 Skill 复制到统一 Skills 根目录，同名目录已存在时失败并提示。
+6. 后端写入 `skill_sources` 来源记录。
+7. 前端刷新本地 Skills 状态；安装后的 Skill 默认不启用到任何 Agent 工具目录。
+
+卸载流程：
+
+1. 用户在市场列表已安装条目的操作列点击“卸载”。
+2. 前端展示删除确认弹窗。
+3. 后端复用统一 Skill 删除流程，删除统一根目录中的源 Skill、清理 Workbench 管理的启用副本或符号链接。
+4. 后端删除该 Skill 的 `skill_sources` 来源记录。
+5. 前端刷新本地 Skills、市场状态和更新列表。
+
+更新流程：
+
+1. 用户切换到 `更新` 子视图。
+2. 前端调用 `list_skill_updates` 展示已记录的 `skills.sh` 来源 Skill。
+3. 用户点击检查全部时，后端重新下载远端 Skill 并计算内容 hash。
+4. hash 不一致时标记为可更新。
+5. 前端只允许勾选状态为可更新的条目；已是最新、检查失败和更新执行中的条目不可勾选。
+6. 用户可执行单项更新、选中批量更新或更新全部可更新项。
+6. 每个更新项替换前先备份统一根目录旧版本；单项失败会返回该项错误并继续处理其他项。
+7. 更新完成后刷新本地 Skills 状态和来源记录。
+
+前端市场缓存只在当前应用进程内有效，不写入 SQLite 或磁盘；“刷新市场”始终绕过缓存。安装百分比由后端阶段事件驱动，只表达流程阶段，不代表已下载字节比例。
+
 ### 7.7 管理 Skill 分类
 
 流程：
@@ -673,11 +740,11 @@ Workbench/
 
 流程：
 
-1. 用户在 Skills 表格操作列点击删除图标。
+1. 用户在 Skills 表格操作列点击删除图标，或在技能市场已安装条目操作列点击“卸载”。
 2. 前端展示删除确认弹窗。
 3. 后端读取该 Skill 的 Workbench 管理启用记录。
 4. 后端移除仍然有效的受管符号链接或完整副本。
-5. 后端删除该 Skill 的分类元信息和启用记录。
+5. 后端删除该 Skill 的分类元信息、启用记录和市场来源记录。
 6. 后端删除统一根目录中的 Skill。
 7. 未被 Workbench 管理的外部工具目录内容保持不变。
 

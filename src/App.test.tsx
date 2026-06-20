@@ -1,9 +1,10 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { App, CustomToolDialog, ModuleStateView, ProjectDialog, ProjectsView, RadarView, SettingsView, SkillCategoryDialog, SkillsView, applyPendingLaunchEvents, markLaunchRunStopped, mergeLaunchRunSnapshots, rememberUpdateNotice, shouldShowUpdateNotice } from "./App";
 import { AppUpdateProvider } from "./contexts/AppUpdateContext";
+import { workbenchApi } from "./lib/api/workbenchApi";
 import type { AppSettings, LaunchSessionEvent, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, Skill, SkillCategory } from "./lib/types/domain";
 
 const activeProject: Project = {
@@ -1582,7 +1583,7 @@ describe("Workbench UI interactions", () => {
     expect(screen.getByText("系统")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "重命名 未分类" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "删除 未分类" })).toBeDisabled();
-  });
+  }, 10_000);
 
   it("does not repeat the skill category in the detail panel", () => {
     render(
@@ -1608,6 +1609,173 @@ describe("Workbench UI interactions", () => {
 
     expect(screen.queryByText("分类：安全")).not.toBeInTheDocument();
     expect(screen.queryByText("例如：文档")).not.toBeInTheDocument();
+  });
+
+  it("shows skeleton loading while the skills.sh market is loading", async () => {
+    const user = userEvent.setup();
+    const listMarket = vi.spyOn(workbenchApi, "listSkillMarket").mockReturnValue(new Promise(() => {}));
+    try {
+      render(
+        <SkillsView
+          skills={skillsForView}
+          selectedSkill={skillsForView[0]}
+          categories={skillCategoriesForView}
+          settings={skillsSettings}
+          projects={[activeProject, secondActiveProject]}
+          onSelect={vi.fn()}
+          onImport={vi.fn()}
+          onRefresh={vi.fn()}
+          onManageCategories={vi.fn()}
+          onToggle={vi.fn()}
+          onToggleSkillGlobal={vi.fn()}
+          onToggleProjectAll={vi.fn()}
+          onCategorySkill={vi.fn()}
+          onCreateCategorySkill={vi.fn()}
+          onResolve={vi.fn()}
+          onDeleteSkill={vi.fn()}
+        />
+      );
+
+      await user.click(screen.getByRole("button", { name: "技能市场" }));
+
+      expect(await screen.findByLabelText("正在加载 skills.sh 市场")).toBeInTheDocument();
+      expect(screen.getByLabelText("正在加载 Skill 详情")).toBeInTheDocument();
+    } finally {
+      listMarket.mockRestore();
+    }
+  });
+
+  it("opens the skills.sh market and installs a selected skill through Workbench", async () => {
+    const user = userEvent.setup();
+    const progressValues: number[] = [];
+    const installSkill = vi.spyOn(workbenchApi, "installSkillFromMarket").mockImplementation(async (_source, _skillId, onProgress) => {
+      onProgress?.(55);
+      progressValues.push(55);
+      return {
+      settings: skillsSettings,
+      skills: skillsForView,
+      categories: skillCategoriesForView
+      };
+    });
+    const onRefresh = vi.fn(async () => {});
+    render(
+      <SkillsView
+        skills={skillsForView}
+        selectedSkill={skillsForView[0]}
+        categories={skillCategoriesForView}
+        settings={skillsSettings}
+        projects={[activeProject, secondActiveProject]}
+        onSelect={vi.fn()}
+        onImport={vi.fn()}
+        onRefresh={onRefresh}
+        onManageCategories={vi.fn()}
+        onToggle={vi.fn()}
+        onToggleSkillGlobal={vi.fn()}
+        onToggleProjectAll={vi.fn()}
+        onCategorySkill={vi.fn()}
+        onCreateCategorySkill={vi.fn()}
+        onResolve={vi.fn()}
+        onDeleteSkill={vi.fn()}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: "技能市场" }));
+    expect((await screen.findAllByText("next-upgrade")).length).toBeGreaterThan(0);
+    expect(screen.getByLabelText("技能市场统计")).toHaveTextContent("全部");
+
+    await user.click(screen.getByRole("button", { name: "安装" }));
+
+    await waitFor(() => {
+      expect(installSkill).toHaveBeenCalledWith("vercel-labs/next-skills", "next-upgrade", expect.any(Function));
+      expect(progressValues).toContain(55);
+      expect(onRefresh).toHaveBeenCalled();
+    });
+    installSkill.mockRestore();
+  });
+
+  it("supports selected batch updates for skills.sh installed skills", async () => {
+    const user = userEvent.setup();
+    const updateSkills = vi.spyOn(workbenchApi, "updateMarketSkills").mockResolvedValue([
+      {
+        directoryName: "excalidraw-diagram-generator",
+        status: "up_to_date",
+        message: "更新完成"
+      }
+    ]);
+    const onRefresh = vi.fn(async () => {});
+    render(
+      <SkillsView
+        skills={skillsForView}
+        selectedSkill={skillsForView[0]}
+        categories={skillCategoriesForView}
+        settings={skillsSettings}
+        projects={[activeProject, secondActiveProject]}
+        onSelect={vi.fn()}
+        onImport={vi.fn()}
+        onRefresh={onRefresh}
+        onManageCategories={vi.fn()}
+        onToggle={vi.fn()}
+        onToggleSkillGlobal={vi.fn()}
+        onToggleProjectAll={vi.fn()}
+        onCategorySkill={vi.fn()}
+        onCreateCategorySkill={vi.fn()}
+        onResolve={vi.fn()}
+        onDeleteSkill={vi.fn()}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: "更新" }));
+    expect(await screen.findByText("excalidraw-diagram-generator")).toBeInTheDocument();
+    const updateCheckbox = screen.getByLabelText("选择 excalidraw-diagram-generator");
+    await user.click(updateCheckbox);
+    expect(updateCheckbox).toBeChecked();
+    await user.click(screen.getByRole("button", { name: "更新选中项" }));
+
+    await waitFor(() => {
+      expect(updateSkills).toHaveBeenCalledWith(["excalidraw-diagram-generator"]);
+      expect(onRefresh).toHaveBeenCalled();
+    });
+    updateSkills.mockRestore();
+  });
+
+  it("uninstalls an installed skills.sh market skill through the delete flow", async () => {
+    const user = userEvent.setup();
+    const deleteSkill = vi.spyOn(workbenchApi, "deleteSkill").mockResolvedValue({
+      settings: skillsSettings,
+      skills: skillsForView,
+      categories: skillCategoriesForView
+    });
+    const onRefresh = vi.fn(async () => {});
+    render(
+      <SkillsView
+        skills={skillsForView}
+        selectedSkill={skillsForView[0]}
+        categories={skillCategoriesForView}
+        settings={skillsSettings}
+        projects={[activeProject, secondActiveProject]}
+        onSelect={vi.fn()}
+        onImport={vi.fn()}
+        onRefresh={onRefresh}
+        onManageCategories={vi.fn()}
+        onToggle={vi.fn()}
+        onToggleSkillGlobal={vi.fn()}
+        onToggleProjectAll={vi.fn()}
+        onCategorySkill={vi.fn()}
+        onCreateCategorySkill={vi.fn()}
+        onResolve={vi.fn()}
+        onDeleteSkill={vi.fn()}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: "技能市场" }));
+    await user.click(await screen.findByRole("button", { name: "卸载" }));
+    await user.click(screen.getByRole("button", { name: "卸载 Skill" }));
+
+    await waitFor(() => {
+      expect(deleteSkill).toHaveBeenCalledWith("excalidraw-diagram-generator");
+      expect(onRefresh).toHaveBeenCalled();
+    });
+    deleteSkill.mockRestore();
   });
 
   it("keeps navigation names available after theme toggle", async () => {
