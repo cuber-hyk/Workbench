@@ -1,6 +1,23 @@
-import { ArrowUpCircle, RefreshCcw, RotateCcw } from "lucide-react";
+import { ArrowUpCircle, CheckCircle2, PlusCircle, RefreshCcw, RotateCcw, ShieldCheck, Sparkles, Wrench } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useAppUpdate } from "../contexts/AppUpdateContext";
 import { Button, IconButton, Modal, StatusBadge } from "./ui";
+
+type ReleaseNoteSectionKey = "added" | "changed" | "fixed" | "security" | "other";
+
+interface ReleaseNoteSection {
+  key: ReleaseNoteSectionKey;
+  title: string;
+  items: string[];
+}
+
+const releaseSectionMeta: Record<ReleaseNoteSectionKey, { title: string; label: string; className: string; Icon: LucideIcon }> = {
+  added: { title: "新增功能", label: "新增", className: "added", Icon: PlusCircle },
+  changed: { title: "体验优化", label: "优化", className: "changed", Icon: Sparkles },
+  fixed: { title: "问题修复", label: "修复", className: "fixed", Icon: Wrench },
+  security: { title: "安全改进", label: "安全", className: "security", Icon: ShieldCheck },
+  other: { title: "更新说明", label: "说明", className: "other", Icon: CheckCircle2 }
+};
 
 export function AppUpdatePanel({
   onOpenDetails
@@ -54,12 +71,14 @@ export function AppUpdateDialog({ onClose }: { onClose: () => void }) {
   const checking = status === "checking";
   const downloading = status === "downloading";
   const canInstall = status === "available" && updateInfo;
+  const releaseNotes = parseReleaseNotes(updateInfo?.body ?? "");
 
   return (
     <Modal
-      title="软件更新"
+      title={status === "available" ? "发现新版本" : "软件更新"}
       description={dialogDescription(status)}
       onClose={onClose}
+      large
       actions={
         status !== "downloading" && status !== "ready-to-restart" ? (
           <IconButton title={checking ? "检查中" : "检查更新"} onClick={() => void checkUpdate()} disabled={checking}>
@@ -69,6 +88,7 @@ export function AppUpdateDialog({ onClose }: { onClose: () => void }) {
       }
       footer={
         <span className="update-dialog-footer-actions">
+          <Button onClick={onClose}>稍后</Button>
           {canInstall && (
             <Button variant="primary" onClick={() => void downloadAndInstall()} disabled={downloading}>
               <ArrowUpCircle size={15} />
@@ -91,28 +111,51 @@ export function AppUpdateDialog({ onClose }: { onClose: () => void }) {
       }
     >
       <div className="update-dialog-body">
-        <div className="update-dialog-head">
-          <span>
+        <div className="update-version-summary">
+          <div>
             <small>当前版本</small>
             <strong>{currentVersion || "读取中"}</strong>
-          </span>
-          <span>
+          </div>
+          <div>
             <small>最新版本</small>
-            <strong>{updateInfo?.latestVersion ?? latestVersionFallback(status)}</strong>
-          </span>
+            <strong>{updateInfo?.latestVersion ? `Workbench v${updateInfo.latestVersion}` : latestVersionFallback(status)}</strong>
+            {updateInfo?.date && <small>{formatUpdateDate(updateInfo.date)}</small>}
+          </div>
+          {releaseNotes.sections.length > 0 && (
+            <div className="update-note-counts" aria-label="更新分类统计">
+              {releaseNotes.sections.map((section) => {
+                const meta = releaseSectionMeta[section.key];
+                return <i key={section.key} className={meta.className}>{meta.label} {section.items.length}</i>;
+              })}
+            </div>
+          )}
         </div>
 
         {updateInfo?.body && (
           <div className="update-release-notes">
             <span className="update-release-notes-title">
-              <small>更新说明</small>
-              {updateInfo.date && <small>{formatUpdateDate(updateInfo.date)}</small>}
+              <strong>{releaseNotes.versionTitle || "更新说明"}</strong>
+              <small>结构化更新说明</small>
             </span>
-            <ul className="update-release-note-list">
-              {formatReleaseNotes(updateInfo.body).map((item, index) => (
-                <li key={`${index}-${item}`}>{item}</li>
-              ))}
-            </ul>
+            <div className="update-release-section-list">
+              {releaseNotes.sections.map((section) => {
+                const meta = releaseSectionMeta[section.key];
+                const Icon = meta.Icon;
+                return (
+                  <section key={section.key} className={`update-release-section ${meta.className}`}>
+                    <h3>
+                      <span><Icon size={15} /></span>
+                      {meta.title}
+                    </h3>
+                    <ul className="update-release-note-list">
+                      {section.items.map((item, index) => (
+                        <li key={`${section.key}-${index}-${item}`}>{item}</li>
+                      ))}
+                    </ul>
+                  </section>
+                );
+              })}
+            </div>
           </div>
         )}
 
@@ -166,24 +209,84 @@ function latestVersionFallback(status: string) {
 }
 
 export function formatReleaseNotes(body: string) {
-  const lines = body
-    .replace(/\r/g, "")
-    .split(/\n+/)
-    .map((line) => stripReleaseNoteMarker(line.trim()))
-    .filter(Boolean);
+  return parseReleaseNotes(body).sections.flatMap((section) => section.items);
+}
 
-  if (lines.length > 1) return lines;
+export function parseReleaseNotes(body: string): { versionTitle: string; sections: ReleaseNoteSection[] } {
+  const normalized = body.replace(/\r/g, "").trim();
+  if (!normalized) return { versionTitle: "", sections: [] };
 
-  const source = lines[0] ?? body.trim();
-  return source
-    .split(/(?<=[。；;])\s*/)
-    .map((item) => stripReleaseNoteMarker(item.trim()))
-    .filter(Boolean);
+  const sections: ReleaseNoteSection[] = [];
+  let versionTitle = "";
+  let current: ReleaseNoteSection | null = null;
+
+  for (const rawLine of normalized.split("\n")) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    const heading = line.match(/^(#{1,6})\s+(.+)$/);
+    if (heading) {
+      const depth = heading[1].length;
+      const text = stripInlineMarkdown(heading[2]);
+      if (depth <= 2 && !versionTitle) {
+        versionTitle = text;
+        continue;
+      }
+
+      current = createReleaseNoteSection(text);
+      sections.push(current);
+      continue;
+    }
+
+    const item = stripReleaseNoteMarker(line);
+    if (!item) continue;
+
+    if (!current) {
+      current = createReleaseNoteSection("Other");
+      sections.push(current);
+    }
+
+    const splitItems = sections.length === 1 && current.items.length === 0 && !/^([-*•]|\d+[.)、])\s+/.test(line)
+      ? splitSentenceNotes(item)
+      : [item];
+    current.items.push(...splitItems);
+  }
+
+  const nonEmptySections = sections.filter((section) => section.items.length > 0);
+  return { versionTitle, sections: nonEmptySections };
+}
+
+function createReleaseNoteSection(title: string): ReleaseNoteSection {
+  const key = releaseSectionKey(title);
+  return {
+    key,
+    title: releaseSectionMeta[key].title,
+    items: []
+  };
+}
+
+function releaseSectionKey(title: string): ReleaseNoteSectionKey {
+  const normalized = title.toLowerCase();
+  if (normalized.includes("added") || normalized.includes("新增")) return "added";
+  if (normalized.includes("changed") || normalized.includes("优化") || normalized.includes("变更") || normalized.includes("改进")) return "changed";
+  if (normalized.includes("fixed") || normalized.includes("修复")) return "fixed";
+  if (normalized.includes("security") || normalized.includes("安全")) return "security";
+  return "other";
 }
 
 function stripReleaseNoteMarker(line: string) {
-  if (/^#+\s+/.test(line)) return "";
-  return line.replace(/^([-*•]|\d+[.)、])\s+/, "");
+  return stripInlineMarkdown(line.replace(/^([-*•]|\d+[.)、])\s+/, "")).trim();
+}
+
+function splitSentenceNotes(source: string) {
+  return source
+    .split(/(?<=[。；;])\s*/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function stripInlineMarkdown(source: string) {
+  return source.replace(/`([^`]+)`/g, "$1").replace(/\*\*([^*]+)\*\*/g, "$1").trim();
 }
 
 function formatUpdateDate(date: string) {

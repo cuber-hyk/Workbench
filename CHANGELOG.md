@@ -10,6 +10,8 @@
 
 ### Changed
 
+- 更新弹窗改为结构化展示 Release Notes，按新增、优化、修复和安全分类显示统计、图标分组和固定底部操作，避免直接暴露 Markdown 原文。
+
 ### Fixed
 
 ### Security

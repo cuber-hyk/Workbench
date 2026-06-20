@@ -381,17 +381,33 @@ code { font-family: Consolas, monospace; }
 .update-version-grid div, .update-release-notes { display: grid; gap: 5px; min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: 6px; background: color-mix(in srgb, var(--panel), var(--bg) 35%); }
 .update-version-grid small, .update-release-notes small { color: var(--muted); font-size: 10px; }
 .update-version-grid strong { min-width: 0; overflow-wrap: anywhere; font-size: 15px; }
-.update-release-notes { margin-top: 12px; }
-.update-release-notes-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.update-release-note-list { display: grid; gap: 8px; margin: 0; padding-left: 18px; }
-.update-release-note-list li { line-height: 1.55; overflow-wrap: anywhere; }
 .update-action-row .settings-row-actions { flex-wrap: wrap; }
 .update-dialog-body { display: grid; gap: 12px; }
-.update-dialog-footer-actions { display: flex; justify-content: flex-end; width: 100%; }
-.update-dialog-head { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.update-dialog-head span, .update-progress-panel { display: grid; gap: 5px; min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: 6px; background: color-mix(in srgb, var(--panel), var(--bg) 35%); }
-.update-dialog-head small, .update-progress-meta small { color: var(--muted); font-size: 10px; }
-.update-dialog-head strong { overflow-wrap: anywhere; font-size: 15px; }
+.update-dialog-footer-actions { display: flex; justify-content: flex-end; gap: 8px; width: 100%; }
+.update-version-summary { display: grid; grid-template-columns: minmax(140px, .8fr) minmax(180px, 1fr) auto; align-items: stretch; gap: 10px; }
+.update-version-summary > div { display: grid; gap: 5px; min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: 6px; background: color-mix(in srgb, var(--panel), var(--bg) 35%); }
+.update-version-summary small, .update-progress-meta small { color: var(--muted); font-size: 10px; }
+.update-version-summary strong { overflow-wrap: anywhere; font-size: 15px; }
+.update-note-counts { display: grid !important; grid-template-columns: repeat(2, max-content); align-content: center; gap: 7px !important; }
+.update-note-counts i { display: inline-flex; align-items: center; justify-content: center; min-height: 22px; padding: 0 8px; border-radius: 999px; font-size: 10px; font-style: normal; font-weight: 800; white-space: nowrap; }
+.update-note-counts .added { color: #25d0ba; background: rgba(37, 208, 186, .13); }
+.update-note-counts .changed { color: #8ab4ff; background: rgba(92, 147, 255, .14); }
+.update-note-counts .fixed { color: #f8c66a; background: rgba(248, 198, 106, .15); }
+.update-note-counts .security { color: #ff9d8a; background: rgba(255, 157, 138, .14); }
+.update-release-notes { gap: 12px; max-height: min(54dvh, 520px); overflow: auto; }
+.update-release-notes-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.update-release-notes-title strong { min-width: 0; overflow-wrap: anywhere; font-size: 15px; }
+.update-release-section-list { display: grid; gap: 10px; }
+.update-release-section { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: 7px; background: color-mix(in srgb, var(--panel), var(--bg) 18%); }
+.update-release-section h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; }
+.update-release-section h3 span { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: color-mix(in srgb, var(--accent-soft), transparent 36%); }
+.update-release-section.added h3 span { color: #25d0ba; background: rgba(37, 208, 186, .13); }
+.update-release-section.changed h3 span { color: #8ab4ff; background: rgba(92, 147, 255, .14); }
+.update-release-section.fixed h3 span { color: #f8c66a; background: rgba(248, 198, 106, .15); }
+.update-release-section.security h3 span { color: #ff9d8a; background: rgba(255, 157, 138, .14); }
+.update-release-note-list { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.update-release-note-list li { position: relative; padding-left: 14px; line-height: 1.55; overflow-wrap: anywhere; }
+.update-release-note-list li::before { position: absolute; top: .68em; left: 0; width: 5px; height: 5px; border-radius: 50%; background: var(--muted); content: ""; }
 .update-progress-meta { display: grid; gap: 4px; }
 .update-progress-bar { height: 8px; overflow: hidden; border-radius: 999px; background: var(--border); }
 .update-progress-bar i { display: block; height: 100%; min-width: 8%; border-radius: inherit; background: var(--accent); transition: width .18s ease; }
@@ -492,4 +508,6 @@ body[data-theme="dark"] .warning { color: #ffd58a; background: #3b2f18; }
   .skills-header-actions { grid-column: 2; grid-row: 1; }
   .skills-subnav { grid-column: 1 / -1; justify-self: center; }
   .market-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .update-version-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .update-note-counts { grid-column: 1 / -1; grid-template-columns: repeat(4, max-content); }
 }

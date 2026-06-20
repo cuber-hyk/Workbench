@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AppUpdateDialog, AppUpdatePanel, formatReleaseNotes } from "./AppUpdatePanel";
+import { AppUpdateDialog, AppUpdatePanel, formatReleaseNotes, parseReleaseNotes } from "./AppUpdatePanel";
 import { UpdateBadge } from "./UpdateBadge";
 
 const updateState = vi.hoisted(() => ({
@@ -97,12 +97,12 @@ describe("app update UI", () => {
 
     render(<AppUpdateDialog onClose={vi.fn()} />);
 
-    expect(screen.getByRole("dialog", { name: "软件更新" })).toBeInTheDocument();
-    expect(screen.getByText("0.2.0")).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "发现新版本" })).toBeInTheDocument();
+    expect(screen.getByText("Workbench v0.2.0")).toBeInTheDocument();
     expect(screen.getByText("新增更新提示")).toBeInTheDocument();
     expect(screen.getByText(/2026/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "检查更新" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "稍后" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "稍后" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /下载并安装/ })).toBeInTheDocument();
   });
 
@@ -128,6 +128,55 @@ describe("app update UI", () => {
 
     expect(screen.getAllByRole("listitem")).toHaveLength(3);
     expect(screen.getByText("优化更新说明排版；")).toBeInTheDocument();
+  });
+
+  it("parses markdown release notes into structured sections", () => {
+    const notes = parseReleaseNotes(`## [0.2.0] - 2026-06-20
+
+### Added
+
+- 新增技能市场
+- 增加批量更新
+
+### Fixed
+
+- 修复更新复选框`);
+
+    expect(notes.versionTitle).toBe("[0.2.0] - 2026-06-20");
+    expect(notes.sections).toEqual([
+      { key: "added", title: "新增功能", items: ["新增技能市场", "增加批量更新"] },
+      { key: "fixed", title: "问题修复", items: ["修复更新复选框"] }
+    ]);
+  });
+
+  it("renders markdown release notes as grouped update sections", () => {
+    updateState.value = {
+      ...updateState.value,
+      status: "available",
+      hasUpdate: true,
+      updateInfo: {
+        currentVersion: "0.1.0",
+        latestVersion: "0.2.0",
+        body: `## [0.2.0] - 2026-06-20
+
+### Added
+
+- 新增技能市场
+
+### Security
+
+- 增加下载大小限制`
+      }
+    };
+
+    render(<AppUpdateDialog onClose={vi.fn()} />);
+
+    expect(screen.getByText("[0.2.0] - 2026-06-20")).toBeInTheDocument();
+    expect(screen.getByText("新增 1")).toBeInTheDocument();
+    expect(screen.getByText("安全 1")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /新增功能/ })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /安全改进/ })).toBeInTheDocument();
+    expect(screen.queryByText(/### Added/)).not.toBeInTheDocument();
   });
 
   it("shows download progress while updating", () => {
