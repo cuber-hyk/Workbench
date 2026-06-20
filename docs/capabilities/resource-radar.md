@@ -2,7 +2,7 @@
 artifact_type: capability
 status: current
 created: 2026-06-15
-updated: 2026-06-16
+updated: 2026-06-20
 source_of_truth: src-tauri/src/radar.rs
 ---
 
@@ -14,6 +14,7 @@ source_of_truth: src-tauri/src/radar.rs
 
 - 手动新增、编辑、删除、搜索、筛选、收藏和打开资源链接。
 - 通过 `gh api user/starred --paginate` 手动同步 GitHub Stars。
+- 点击同步 GitHub Stars 时检查本机 GitHub CLI 状态，未配置或未登录时通过右下角提示说明原因并提示 `gh auth login`。
 - 按资源类型、领域、来源、语言、收藏、来源状态和重复状态筛选。
 - 展示 GitHub 仓库语言、Topics、Stars 数量、来源描述和来源有效状态。
 - 为资源维护单选领域 `domain`，默认 `未分类`。
@@ -53,10 +54,12 @@ source_of_truth: src-tauri/src/radar.rs
 
 - 不做后台抓取、定时同步、LLM 分类、摘要或评分。
 - 不在 Workbench 中保存 GitHub Token。
+- 不自动安装 GitHub CLI。
 - 不因来源失效自动删除用户资源。
 
 ## 验证
 
 - Rust 测试覆盖旧表升级、手动 CRUD、重复同步、用户字段保护、取消与恢复 Star。
 - Rust 测试覆盖 URL 唯一匹配自动合并、多候选重复组、名称相似不合并和重复组合并规则。
-- 前端测试覆盖类型、领域、来源、语言、重复状态筛选、同步入口、同步中防重复触发和来源失效文字提示。
+- Rust 测试覆盖 GitHub CLI 登录状态分类。
+- 前端测试覆盖类型、领域、来源、语言、重复状态筛选、GitHub CLI 缺失提示、同步入口、同步中防重复触发和来源失效文字提示。

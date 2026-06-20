@@ -1829,4 +1829,31 @@ describe("Workbench UI interactions", () => {
     expect(document.body.dataset.theme).toBe("dark");
     expect(within(navigation).getByRole("button", { name: "资源 Radar" })).toBeInTheDocument();
   });
+
+  it("checks GitHub CLI only when syncing stars and reports missing setup in toast", async () => {
+    const user = userEvent.setup();
+    const checkGithubCliStatus = vi.spyOn(workbenchApi, "checkGithubCliStatus").mockResolvedValue({
+      status: "missing",
+      account: "",
+      message: "未检测到 gh 命令。请先安装 GitHub CLI，并运行 gh auth login 登录后重试。"
+    });
+    const syncGithubStars = vi.spyOn(workbenchApi, "syncGithubStars");
+    renderWithUpdateProvider(<App />);
+
+    const navigation = screen.getByRole("navigation", { name: "主导航" });
+    await user.click(within(navigation).getByRole("button", { name: "资源 Radar" }));
+    await user.click(screen.getByRole("button", { name: "同步 GitHub Stars" }));
+
+    expect(checkGithubCliStatus).toHaveBeenCalledOnce();
+    expect(syncGithubStars).not.toHaveBeenCalled();
+    expect(await screen.findByText(/未检测到 gh 命令/)).toBeInTheDocument();
+    expect(screen.getByText("gh auth login")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveClass("toast-warning");
+
+    await user.click(screen.getByRole("button", { name: "关闭通知" }));
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    checkGithubCliStatus.mockRestore();
+    syncGithubStars.mockRestore();
+  });
 });

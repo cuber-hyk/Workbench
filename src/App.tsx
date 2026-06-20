@@ -93,6 +93,7 @@ const toolIconSources: Record<string, string> = {
 
 type ToastState = {
   message: string;
+  tone: "neutral" | "success" | "warning" | "danger";
   actionLabel?: string;
   onAction?: () => void;
 };
@@ -219,11 +220,11 @@ export function App() {
   const deletingCustomTool = settings?.toolTargets.find((tool) => tool.key === deleteCustomToolKey && tool.source === "custom");
   const selectedRadar = radarItems.find((item) => item.id === selectedRadarId) ?? radarItems[0];
 
-  function showToast(message: string, options?: { actionLabel?: string; onAction?: () => void; duration?: number }) {
+  function showToast(message: string, options?: { actionLabel?: string; onAction?: () => void; duration?: number; tone?: ToastState["tone"] }) {
     if (toastTimerRef.current) {
       window.clearTimeout(toastTimerRef.current);
     }
-    setToast({ message, actionLabel: options?.actionLabel, onAction: options?.onAction });
+    setToast({ message, tone: options?.tone ?? "neutral", actionLabel: options?.actionLabel, onAction: options?.onAction });
     toastTimerRef.current = window.setTimeout(() => setToast(null), options?.duration ?? 1800);
   }
 
@@ -281,12 +282,16 @@ export function App() {
   }, [hasUpdate, openUpdateDialog, updateInfo?.latestVersion]);
 
   function runToastAction(currentToast: ToastState) {
+    dismissToast();
+    currentToast.onAction?.();
+  }
+
+  function dismissToast() {
     if (toastTimerRef.current) {
       window.clearTimeout(toastTimerRef.current);
       toastTimerRef.current = null;
     }
     setToast(null);
-    currentToast.onAction?.();
   }
 
   async function refreshSkills() {
@@ -431,12 +436,17 @@ export function App() {
   async function syncGithubStars() {
     setSyncingGithubStars(true);
     try {
+      const cliStatus = await workbenchApi.checkGithubCliStatus();
+      if (cliStatus.status !== "ready") {
+        showToast(cliStatus.message, { duration: 4200, tone: "warning" });
+        return;
+      }
       const result = await workbenchApi.syncGithubStars();
       setRadarItems(result.items);
       setRadarDuplicateGroups(await workbenchApi.listRadarDuplicateGroups());
       showToast(`GitHub Stars 同步完成：新增 ${result.added}，更新 ${result.updated}，失效 ${result.deactivated}，未变化 ${result.unchanged}`);
     } catch (error) {
-      showToast(error instanceof Error ? error.message : String(error));
+      showToast(error instanceof Error ? error.message : String(error), { duration: 4200, tone: "danger" });
     } finally {
       setSyncingGithubStars(false);
     }
@@ -791,13 +801,17 @@ export function App() {
       </main>
 
       {toast && (
-        <div className={`toast show ${toast.onAction ? "actionable" : ""}`}>
-          <span>{toast.message}</span>
+        <div className={`toast show toast-${toast.tone} ${toast.onAction ? "actionable" : ""}`} role="status">
+          <span className="toast-icon" aria-hidden="true">{toastIcon(toast.tone)}</span>
+          <span className="toast-message">{formatToastMessage(toast.message)}</span>
           {toast.onAction && (
             <button type="button" onClick={() => runToastAction(toast)}>
               {toast.actionLabel ?? "查看"}
             </button>
           )}
+          <button type="button" className="toast-close" aria-label="关闭通知" onClick={dismissToast}>
+            <X size={15} />
+          </button>
         </div>
       )}
       {activeDialog === "app-update" && <AppUpdateDialog onClose={() => setActiveDialog(null)} />}
@@ -4149,4 +4163,24 @@ function createRadarId(name: string) {
 function radarSourceLabel(item: RadarItem) {
   const sources = item.sources.length > 0 ? item.sources : [item.source];
   return sources.map((source) => source === "github_star" ? "GitHub Stars" : "手动添加").join(" + ");
+}
+
+function toastIcon(tone: ToastState["tone"]) {
+  if (tone === "success") return <CircleCheck size={18} />;
+  if (tone === "warning") return <CircleAlert size={18} />;
+  if (tone === "danger") return <Ban size={18} />;
+  return <CircleDot size={18} />;
+}
+
+function formatToastMessage(message: string) {
+  const command = "gh auth login";
+  if (!message.includes(command)) return message;
+  const [before, after] = message.split(command);
+  return (
+    <>
+      {before}
+      <code>{command}</code>
+      {after}
+    </>
+  );
 }

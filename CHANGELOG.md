@@ -8,8 +8,11 @@
 
 ### Added
 
+- 资源 Radar 在同步 GitHub Stars 时检查 GitHub CLI 状态，未配置或未登录时通过右下角提示告知用户运行 `gh auth login`。
+
 ### Changed
 
+- Toast 通知改为主题适配的卡片样式，支持 neutral、success、warning 和 danger 语义，并提供关闭入口和命令 chip 展示。
 - Skills 更新页在没有可检查的 `skills.sh` 来源 Skill 时显示可操作空状态，并将批量确认面板切换为等待可更新项说明。
 
 ### Fixed
