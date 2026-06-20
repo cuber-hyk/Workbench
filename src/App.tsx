@@ -98,6 +98,15 @@ type ToastState = {
   onAction?: () => void;
 };
 
+type MarketInstallTask = {
+  key: string;
+  source: string;
+  skillId: string;
+  progress: number;
+  status: "running" | "succeeded" | "failed";
+  error?: string;
+};
+
 export function App() {
   const { hasUpdate, updateInfo } = useAppUpdate();
   const [activeView, setActiveView] = useState<ViewKey>("projects");
@@ -131,6 +140,8 @@ export function App() {
   const [deleteSkillId, setDeleteSkillId] = useState("");
   const [createDirectoryPath, setCreateDirectoryPath] = useState("");
   const [syncingGithubStars, setSyncingGithubStars] = useState(false);
+  const [marketInstallTask, setMarketInstallTask] = useState<MarketInstallTask | null>(null);
+  const marketInstallRunningRef = useRef(false);
 
   useEffect(() => {
     document.body.dataset.theme = theme;
@@ -311,6 +322,45 @@ export function App() {
       showToast(success);
     } catch (error) {
       showToast(String(error));
+    }
+  }
+
+  async function installMarketSkill(item: SkillMarketItem) {
+    if (marketInstallRunningRef.current) return;
+    marketInstallRunningRef.current = true;
+    const key = `${item.source}/${item.skillId}`;
+    setMarketInstallTask({
+      key,
+      source: item.source,
+      skillId: item.skillId,
+      progress: 8,
+      status: "running"
+    });
+    try {
+      const state = await workbenchApi.installSkillFromMarket(item.source, item.skillId, (progress) => {
+        setMarketInstallTask((current) =>
+          current?.key === key ? { ...current, progress, status: "running" } : current
+        );
+      });
+      setSkills(state.skills);
+      setSkillCategories(state.categories);
+      setSettings(state.settings);
+      if (!state.skills.some((skill) => skill.id === selectedSkillId)) {
+        setSelectedSkillId(state.skills[0]?.id ?? "");
+      }
+      skillMarketRuntimeCache = null;
+      setMarketInstallTask((current) =>
+        current?.key === key ? { ...current, progress: 100, status: "succeeded" } : current
+      );
+      showToast("Skill 已安装", { tone: "success" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setMarketInstallTask((current) =>
+        current?.key === key ? { ...current, status: "failed", error: message } : current
+      );
+      showToast(message, { tone: "danger", duration: 4200 });
+    } finally {
+      marketInstallRunningRef.current = false;
     }
   }
 
@@ -638,6 +688,8 @@ export function App() {
               }
             }}
             onRefresh={() => void runSkillAction(refreshSkills, "Skills 已重新扫描")}
+            marketInstallTask={marketInstallTask}
+            onInstallMarketSkill={(item) => void installMarketSkill(item)}
             onManageCategories={() => setActiveDialog("skill-categories")}
             onToggle={(tool, enabled, project) =>
               void runSkillAction(
@@ -1857,6 +1909,8 @@ export function SkillsView({
   onSelect,
   onImport,
   onRefresh,
+  marketInstallTask,
+  onInstallMarketSkill,
   onManageCategories,
   onToggle,
   onToggleSkillGlobal,
@@ -1874,6 +1928,8 @@ export function SkillsView({
   onSelect: (id: string) => void;
   onImport: (kind: "zip" | "folder") => Promise<void>;
   onRefresh: () => void | Promise<void>;
+  marketInstallTask?: MarketInstallTask | null;
+  onInstallMarketSkill?: (item: SkillMarketItem) => void;
   onManageCategories: () => void;
   onToggle: (tool: ToolKey, enabled: boolean, project?: Project) => void;
   onToggleSkillGlobal: (directoryName: string, tool: ToolKey, enabled: boolean) => void;
@@ -1897,8 +1953,6 @@ export function SkillsView({
   const [marketDetail, setMarketDetail] = useState<SkillMarketDetail | null>(null);
   const [marketLoading, setMarketLoading] = useState(false);
   const [marketError, setMarketError] = useState("");
-  const [installingMarketKey, setInstallingMarketKey] = useState("");
-  const [installingMarketProgress, setInstallingMarketProgress] = useState(0);
   const [uninstallingMarketKey, setUninstallingMarketKey] = useState("");
   const [deletingMarketItem, setDeletingMarketItem] = useState<SkillMarketItem | null>(null);
   const [updateStatuses, setUpdateStatuses] = useState<SkillUpdateStatus[]>([]);
@@ -1906,6 +1960,12 @@ export function SkillsView({
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [updatingNames, setUpdatingNames] = useState<string[]>([]);
   const [updateResults, setUpdateResults] = useState<SkillUpdateResult[]>([]);
+  const handledMarketInstallRef = useRef("");
+  const handleMarketInstall = onInstallMarketSkill ?? ((item: SkillMarketItem) => {
+    void workbenchApi.installSkillFromMarket(item.source, item.skillId, () => undefined)
+      .then(() => onRefresh())
+      .catch((error) => setMarketError(String(error)));
+  });
   const categories = ["全部分类", ...skillCategories.map((category) => category.name)];
   const projectToolTargets = settings.toolTargets.filter((tool) => tool.supportsProjectScope);
   const visibleSkills = skills.filter((skill) => {
@@ -1952,6 +2012,19 @@ export function SkillsView({
   }, [activeSkillsTab]);
 
   useEffect(() => {
+    if (activeSkillsTab !== "market" || !marketInstallTask || marketInstallTask.status === "running") return;
+    const marker = `${marketInstallTask.key}:${marketInstallTask.status}`;
+    if (handledMarketInstallRef.current === marker) return;
+    handledMarketInstallRef.current = marker;
+    if (marketInstallTask.status === "succeeded") {
+      void loadMarketItems("", true);
+      void loadSkillUpdates(false);
+      return;
+    }
+    setMarketError(marketInstallTask.error || "Skill 安装失败");
+  }, [activeSkillsTab, marketInstallTask?.key, marketInstallTask?.status, marketInstallTask?.error]);
+
+  useEffect(() => {
     if (!selectedMarketItem) {
       setMarketDetail(null);
       return;
@@ -1990,27 +2063,6 @@ export function SkillsView({
     } catch (error) {
       setMarketDetail(null);
       setMarketError(String(error));
-    }
-  }
-
-  async function installMarketSkill(item: SkillMarketItem) {
-    const key = `${item.source}/${item.skillId}`;
-    setInstallingMarketKey(key);
-    setInstallingMarketProgress(8);
-    setMarketError("");
-    try {
-      await workbenchApi.installSkillFromMarket(item.source, item.skillId, setInstallingMarketProgress);
-      setInstallingMarketProgress(100);
-      skillMarketRuntimeCache = null;
-      await loadMarketItems("", true);
-      await onRefresh();
-    } catch (error) {
-      setMarketError(String(error));
-    } finally {
-      window.setTimeout(() => {
-        setInstallingMarketKey("");
-        setInstallingMarketProgress(0);
-      }, 320);
     }
   }
 
@@ -2236,15 +2288,14 @@ export function SkillsView({
           currentCount={visibleMarketItems.length}
           loading={marketLoading}
           error={marketError}
-          installingKey={installingMarketKey}
-          installingProgress={installingMarketProgress}
+          installTask={marketInstallTask ?? null}
           uninstallingKey={uninstallingMarketKey}
           onQueryChange={setMarketQuery}
           onStatusFilterChange={setMarketStatusFilter}
           onRefresh={() => void loadMarketItems("", true)}
           onSearch={() => void loadMarketItems(marketQuery)}
           onSelect={(item) => setSelectedMarketKey(`${item.source}/${item.skillId}`)}
-          onInstall={(item) => void installMarketSkill(item)}
+          onInstall={handleMarketInstall}
           onUninstall={setDeletingMarketItem}
           onOpenSource={(url) => void workbenchApi.openRadarLink(url)}
         />
@@ -2341,8 +2392,7 @@ function SkillsMarketView({
   currentCount,
   loading,
   error,
-  installingKey,
-  installingProgress,
+  installTask,
   uninstallingKey,
   onQueryChange,
   onStatusFilterChange,
@@ -2362,8 +2412,7 @@ function SkillsMarketView({
   currentCount: number;
   loading: boolean;
   error: string;
-  installingKey: string;
-  installingProgress: number;
+  installTask: MarketInstallTask | null;
   uninstallingKey: string;
   onQueryChange: (query: string) => void;
   onStatusFilterChange: (status: "全部状态" | "未安装" | "已安装" | "可更新" | "不可安装") => void;
@@ -2423,7 +2472,9 @@ function SkillsMarketView({
           {loading && items.length === 0 && <MarketListSkeleton />}
           {!loading && items.map((item) => {
             const key = `${item.source}/${item.skillId}`;
-            const installing = installingKey === key;
+            const taskForItem = installTask?.key === key ? installTask : null;
+            const installing = taskForItem?.status === "running";
+            const installedByTask = taskForItem?.status === "succeeded" && !item.installedDirectoryName;
             const uninstalling = uninstallingKey === key;
             return (
               <div
@@ -2442,11 +2493,13 @@ function SkillsMarketView({
                 <span>{formatInstallCount(item.installs)}</span>
                 <span className="row-actions table-actions install-action">
                   {installing ? (
-                    <Button disabled><RefreshCcw className="spin" size={14} />安装中 {installingProgress}%</Button>
+                    <Button disabled><RefreshCcw className="spin" size={14} />安装中 {taskForItem?.progress ?? 8}%</Button>
+                  ) : installedByTask ? (
+                    <Button disabled><CircleCheck size={14} />安装完成</Button>
                   ) : item.installedDirectoryName ? (
                     <Button
                       variant="danger"
-                      disabled={Boolean(installingKey) || uninstalling}
+                      disabled={installTask?.status === "running" || uninstalling}
                       onClick={(event) => {
                         event.stopPropagation();
                         onUninstall(item);
@@ -2458,7 +2511,7 @@ function SkillsMarketView({
                     <SkillStatusIndicator status="unsupported" />
                   ) : (
                     <Button
-                      disabled={Boolean(installingKey)}
+                      disabled={installTask?.status === "running"}
                       onClick={(event) => {
                         event.stopPropagation();
                         onInstall(item);
@@ -2467,7 +2520,7 @@ function SkillsMarketView({
                       <PackagePlus size={14} />安装
                     </Button>
                   )}
-                  {installing && <i style={{ width: `${installingProgress}%` }} />}
+                  {installing && <i style={{ width: `${taskForItem?.progress ?? 8}%` }} />}
                 </span>
               </div>
             );
