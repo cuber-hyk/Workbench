@@ -4,10 +4,11 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
 use std::hash::{Hash, Hasher};
-use std::io::{self, Read};
+use std::io;
 use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::process::{Command, Output, Stdio};
+use std::thread;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_dialog::DialogExt;
 use tempfile::tempdir;
@@ -17,9 +18,7 @@ use zip::ZipArchive;
 type SkillResult<T> = Result<T, String>;
 const UNCATEGORIZED_CATEGORY_ID: &str = "uncategorized";
 const UNCATEGORIZED_CATEGORY_NAME: &str = "未分类";
-const MARKET_DOWNLOAD_LIMIT_BYTES: u64 = 100 * 1024 * 1024;
-const MARKET_EXTRACT_LIMIT_BYTES: u64 = 500 * 1024 * 1024;
-const MARKET_ARCHIVE_ENTRY_LIMIT: usize = 20_000;
+const SKILLS_CLI_TIMEOUT_SECONDS: u64 = 180;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -2124,13 +2123,11 @@ fn parse_skill_detail(source: &str, skill_id: &str, html: &str) -> SkillMarketDe
     SkillMarketDetail {
         item,
         repository_url: github_repository_url(source).unwrap_or_default(),
-        install_command: if github_source(source) {
-            format!("npx skills add https://github.com/{source} --skill {skill_id}")
-        } else {
-            format!("npx skills add {source} --skill {skill_id}")
-        },
+        install_command: format!(
+            "npx -y skills add {source} --skill {skill_id} -g --agent codex -y --copy"
+        ),
         skill_markdown_preview: preview,
-        security_note: "skills.sh 会展示安全审计信息，但 Workbench 安装前仍只做结构校验，不保证第三方 Skill 安全。".to_string(),
+        security_note: "Workbench 调用 skills.sh 官方安装器完成获取和展开，再复制到统一 Skills 根目录；第三方 Skill 仍需自行确认来源可信。".to_string(),
     }
 }
 
@@ -2290,14 +2287,94 @@ fn source_record_for_directory(
         .map_err(error_message)
 }
 
-fn download_github_skill(
-    source: &str,
-    skill_id: &str,
-) -> SkillResult<(tempfile::TempDir, PathBuf, String, String)> {
-    download_github_skill_with_progress(source, skill_id, &|_| {})
+fn skills_cli_command_name(command: &str) -> String {
+    if cfg!(windows) && matches!(command, "npm" | "npx") {
+        format!("{command}.cmd")
+    } else {
+        command.to_string()
+    }
 }
 
-fn download_github_skill_with_progress(
+fn skills_cli_install_args(source: &str, skill_id: &str) -> Vec<String> {
+    [
+        "-y", "skills", "add", source, "--skill", skill_id, "-g", "--agent", "codex", "-y",
+        "--copy",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect()
+}
+
+fn skills_cli_app_data(home: &Path) -> PathBuf {
+    home.join("AppData").join("Roaming")
+}
+
+fn skills_cli_skill_path(home: &Path, skill_id: &str) -> PathBuf {
+    home.join(".agents").join("skills").join(skill_id)
+}
+
+fn missing_skills_cli_dependency_message(missing: &[&str]) -> String {
+    format!(
+        "未检测到 {}，无法调用 skills.sh 官方安装器。请安装 Node.js LTS，并确认 npm/npx 可在终端中使用后重试。",
+        missing.join("、")
+    )
+}
+
+fn require_skills_cli_dependencies() -> SkillResult<()> {
+    let mut missing = Vec::new();
+    for command in ["node", "npm", "npx"] {
+        let status = Command::new(skills_cli_command_name(command))
+            .arg("--version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        if !matches!(status, Ok(status) if status.success()) {
+            missing.push(command);
+        }
+    }
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(missing_skills_cli_dependency_message(&missing))
+    }
+}
+
+fn run_command_with_timeout(command: &mut Command, timeout: Duration) -> SkillResult<Output> {
+    let mut child = command.spawn().map_err(|error| {
+        format!("无法启动 skills.sh 官方安装器：{error}。请确认 Node.js/npm/npx 已正确安装。")
+    })?;
+    let started_at = Instant::now();
+    loop {
+        match child.try_wait().map_err(error_message)? {
+            Some(_) => return child.wait_with_output().map_err(error_message),
+            None if started_at.elapsed() >= timeout => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err("skills.sh 官方安装器执行超时，请检查网络后重试。".to_string());
+            }
+            None => thread::sleep(Duration::from_millis(150)),
+        }
+    }
+}
+
+fn skills_cli_output_text(output: &Output) -> String {
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if !stderr.is_empty() {
+        return stderr;
+    }
+    String::from_utf8_lossy(&output.stdout).trim().to_string()
+}
+
+fn skills_cli_failure_message(output: &Output) -> String {
+    let detail = skills_cli_output_text(output);
+    if detail.is_empty() {
+        "skills.sh 官方安装器执行失败，请检查网络或稍后重试。".to_string()
+    } else {
+        format!("skills.sh 官方安装器执行失败：{detail}")
+    }
+}
+
+fn extract_skill_with_skills_cli(
     source: &str,
     skill_id: &str,
     on_progress: &dyn Fn(u8),
@@ -2306,83 +2383,36 @@ fn download_github_skill_with_progress(
         return Err("当前仅支持 GitHub owner/repo 格式的 skills.sh 来源".to_string());
     }
     on_progress(12);
+    require_skills_cli_dependencies()?;
+    on_progress(20);
     let temporary = tempdir().map_err(error_message)?;
-    let archive_path = temporary.path().join("source.zip");
-    let mut downloaded = false;
-    let mut last_download_error = None;
-    let agent = ureq::AgentBuilder::new()
-        .timeout_connect(Duration::from_secs(10))
-        .timeout_read(Duration::from_secs(30))
-        .timeout_write(Duration::from_secs(10))
-        .build();
-    for branch in ["main", "master"] {
-        let url = format!("https://codeload.github.com/{source}/zip/refs/heads/{branch}");
-        match agent
-            .get(&url)
-            .set("User-Agent", "Workbench-App/0.1")
-            .call()
-        {
-            Ok(response) => {
-                if response
-                    .header("Content-Length")
-                    .and_then(|value| value.parse::<u64>().ok())
-                    .is_some_and(|size| size > MARKET_DOWNLOAD_LIMIT_BYTES)
-                {
-                    return Err("GitHub 仓库压缩包超过 100 MiB，安装已停止".to_string());
-                }
-                on_progress(28);
-                let mut reader = response.into_reader().take(MARKET_DOWNLOAD_LIMIT_BYTES + 1);
-                let mut file = fs::File::create(&archive_path).map_err(error_message)?;
-                let downloaded_bytes = io::copy(&mut reader, &mut file).map_err(error_message)?;
-                if downloaded_bytes > MARKET_DOWNLOAD_LIMIT_BYTES {
-                    return Err("GitHub 仓库压缩包超过 100 MiB，安装已停止".to_string());
-                }
-                downloaded = true;
-                break;
-            }
-            Err(error) => last_download_error = Some(error.to_string()),
-        }
+    let app_data = skills_cli_app_data(temporary.path());
+    fs::create_dir_all(&app_data).map_err(error_message)?;
+    let mut command = Command::new(skills_cli_command_name("npx"));
+    command
+        .args(skills_cli_install_args(source, skill_id))
+        .current_dir(temporary.path())
+        .env("HOME", temporary.path())
+        .env("USERPROFILE", temporary.path())
+        .env("APPDATA", &app_data)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    on_progress(45);
+    let output = run_command_with_timeout(
+        &mut command,
+        Duration::from_secs(SKILLS_CLI_TIMEOUT_SECONDS),
+    )?;
+    if !output.status.success() {
+        return Err(skills_cli_failure_message(&output));
     }
-    if !downloaded {
+    on_progress(72);
+    let skill = skills_cli_skill_path(temporary.path(), skill_id);
+    if !skill.join("SKILL.md").is_file() {
         return Err(format!(
-            "无法下载 GitHub 仓库压缩包：{}",
-            last_download_error.unwrap_or_else(|| "网络请求失败".to_string())
+            "skills.sh 官方安装器未生成 Skill: {skill_id}。请确认该 Skill 是否存在或稍后重试。"
         ));
     }
-    on_progress(55);
-    let extract_root = temporary.path().join("repo");
-    fs::create_dir_all(&extract_root).map_err(error_message)?;
-    let zip_file = fs::File::open(&archive_path).map_err(error_message)?;
-    let mut archive = ZipArchive::new(zip_file).map_err(error_message)?;
-    if archive.len() > MARKET_ARCHIVE_ENTRY_LIMIT {
-        return Err("GitHub 仓库文件数量超过限制，安装已停止".to_string());
-    }
-    let mut extracted_bytes = 0u64;
-    for index in 0..archive.len() {
-        extracted_bytes = extracted_bytes
-            .checked_add(archive.by_index(index).map_err(error_message)?.size())
-            .ok_or_else(|| "GitHub 仓库解压大小无效".to_string())?;
-        if extracted_bytes > MARKET_EXTRACT_LIMIT_BYTES {
-            return Err("GitHub 仓库解压后超过 500 MiB，安装已停止".to_string());
-        }
-    }
-    archive.extract(&extract_root).map_err(error_message)?;
-    on_progress(72);
-    let candidates = discover_skill_sources(&extract_root)?;
-    let skill = candidates
-        .into_iter()
-        .find(|path| {
-            path.file_name()
-                .and_then(|name| name.to_str())
-                .map(|name| name.eq_ignore_ascii_case(skill_id))
-                .unwrap_or(false)
-        })
-        .ok_or_else(|| format!("仓库中未找到 Skill: {skill_id}"))?;
-    let relative = skill
-        .strip_prefix(&extract_root)
-        .unwrap_or(&skill)
-        .to_string_lossy()
-        .to_string();
+    let relative = format!(".agents/skills/{skill_id}");
     let hash = directory_content_hash(&skill)?;
     on_progress(84);
     Ok((temporary, skill, relative, hash))
@@ -2468,7 +2498,7 @@ fn install_skill_from_market_sync(
         return Err("统一根目录中已存在同名 Skill，安装已停止".to_string());
     }
     let (_temporary, skill_source, relative, hash) =
-        download_github_skill_with_progress(&source, &skill_id, on_progress)?;
+        extract_skill_with_skills_cli(&source, &skill_id, on_progress)?;
     copy_to_new_target(&skill_source, &target)?;
     on_progress(92);
     let workbench_root = PathBuf::from(&settings.workbench_root);
@@ -2556,7 +2586,7 @@ pub fn check_skill_updates() -> SkillResult<Vec<SkillUpdateStatus>> {
         let mut message = "检查失败".to_string();
         let mut next_record = record.clone();
         if let Some((source, skill_id)) = record.package_slug.rsplit_once('/') {
-            match download_github_skill(source, skill_id) {
+            match extract_skill_with_skills_cli(source, skill_id, &|_| {}) {
                 Ok((_temporary, _skill_source, _relative, hash)) => {
                     next_record.remote_ref = hash.clone();
                     status = if hash == record.installed_hash {
@@ -2598,7 +2628,8 @@ pub fn update_skill_from_market(directory_name: String) -> SkillResult<SkillUpda
         .package_slug
         .rsplit_once('/')
         .ok_or_else(|| "来源记录无效".to_string())?;
-    let (_temporary, remote_skill, relative, hash) = download_github_skill(source, skill_id)?;
+    let (_temporary, remote_skill, relative, hash) =
+        extract_skill_with_skills_cli(source, skill_id, &|_| {})?;
     if hash == record.installed_hash {
         return Ok(SkillUpdateResult {
             directory_name,
@@ -2915,6 +2946,63 @@ mod tests {
         assert!(items[0].installable);
         assert_eq!(items[1].update_status, SkillUpdateState::NotInstalled);
         assert!(!items[1].installable);
+    }
+
+    #[test]
+    fn builds_official_skills_cli_install_arguments() {
+        let args = skills_cli_install_args("anthropics/skills", "frontend-design");
+
+        assert_eq!(
+            args,
+            vec![
+                "-y",
+                "skills",
+                "add",
+                "anthropics/skills",
+                "--skill",
+                "frontend-design",
+                "-g",
+                "--agent",
+                "codex",
+                "-y",
+                "--copy"
+            ]
+        );
+    }
+
+    #[test]
+    fn resolves_skills_cli_paths_inside_the_temporary_home() {
+        let root = PathBuf::from("C:/temp/workbench-cli");
+
+        assert_eq!(
+            skills_cli_skill_path(&root, "frontend-design"),
+            root.join(".agents").join("skills").join("frontend-design")
+        );
+        assert_eq!(
+            skills_cli_app_data(&root),
+            root.join("AppData").join("Roaming")
+        );
+    }
+
+    #[test]
+    fn explains_missing_skills_cli_dependencies_as_a_node_boundary() {
+        let message = missing_skills_cli_dependency_message(&["node", "npm", "npx"]);
+
+        assert!(message.contains("Node.js LTS"));
+        assert!(message.contains("npm/npx"));
+    }
+
+    #[test]
+    fn uses_cmd_shims_for_npm_tools_on_windows() {
+        if cfg!(windows) {
+            assert_eq!(skills_cli_command_name("npx"), "npx.cmd");
+            assert_eq!(skills_cli_command_name("npm"), "npm.cmd");
+            assert_eq!(skills_cli_command_name("node"), "node");
+        } else {
+            assert_eq!(skills_cli_command_name("npx"), "npx");
+            assert_eq!(skills_cli_command_name("npm"), "npm");
+            assert_eq!(skills_cli_command_name("node"), "node");
+        }
     }
 
     #[test]

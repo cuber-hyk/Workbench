@@ -309,9 +309,9 @@ export const workbenchApi = {
       return {
         item,
         repositoryUrl: item.source.includes("/") && !item.source.includes(".") ? `https://github.com/${item.source}` : "",
-        installCommand: `npx skills add https://github.com/${item.source} --skill ${item.skillId}`,
+        installCommand: `npx -y skills add ${item.source} --skill ${item.skillId} -g --agent codex -y --copy`,
         skillMarkdownPreview: item.description,
-        securityNote: "预览数据：正式安装前 Workbench 会下载并校验 SKILL.md。"
+        securityNote: "预览数据：Workbench 通过 skills.sh 官方 CLI 安装，并在写入前做结构校验。"
       } satisfies SkillMarketDetail;
     }
     return invoke<SkillMarketDetail>("get_skill_market_detail", { source, skillId });

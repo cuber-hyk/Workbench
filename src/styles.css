@@ -189,6 +189,7 @@ code { font-family: Consolas, monospace; }
 .table-actions .button { min-width: 54px; max-width: 100%; min-height: 32px; padding: 0 10px; white-space: nowrap; }
 .install-action { position: relative; padding-bottom: 5px; }
 .install-action .button { width: auto; min-width: 0; font-size: 11px; }
+.action-muted { display: inline-flex; align-items: center; min-height: 30px; padding: 0 6px; color: var(--muted); font-size: 11px; font-weight: 700; }
 .install-action i { position: absolute; left: 0; bottom: 0; height: 2px; border-radius: 999px; background: var(--accent); transition: width .18s ease; }
 .row-actions .icon-button { width: 30px; height: 30px; }
 .action-group.row-actions .icon-button { width: 30px; height: 30px; }
@@ -197,7 +198,7 @@ code { font-family: Consolas, monospace; }
 .skill-status-indicator.neutral { border-color: var(--border); background: color-mix(in srgb, var(--panel), var(--bg) 35%); color: var(--muted); }
 .skill-status-indicator.success { border-color: color-mix(in srgb, var(--success), transparent 70%); background: color-mix(in srgb, var(--success), transparent 88%); color: var(--success); }
 .skill-status-indicator.attention { border-color: color-mix(in srgb, var(--attention), transparent 68%); background: color-mix(in srgb, var(--attention), transparent 88%); color: var(--attention); }
-.skill-status-indicator.warning { border-color: color-mix(in srgb, var(--warning-text), transparent 72%); background: color-mix(in srgb, var(--warning-bg), transparent 20%); color: var(--warning-text); }
+.skill-status-indicator.warning { border-color: color-mix(in srgb, var(--warning-text), transparent 82%); background: color-mix(in srgb, var(--warning-bg), transparent 62%); color: var(--warning-text); }
 .skill-status-indicator.danger { border-color: color-mix(in srgb, var(--danger-text), transparent 72%); background: var(--danger-bg); color: var(--danger-text); }
 .spin { animation: spin .9s linear infinite; }
 

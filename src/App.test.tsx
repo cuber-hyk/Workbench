@@ -269,6 +269,17 @@ function testMarketItems(): SkillMarketItem[] {
       installedDirectoryName: "excalidraw-diagram-generator",
       updateStatus: "update_available",
       installable: true
+    },
+    {
+      source: "open.feishu.cn",
+      skillId: "lark-doc",
+      name: "lark-doc",
+      description: "Operate Feishu docs.",
+      installs: 256800,
+      official: false,
+      installedDirectoryName: null,
+      updateStatus: "unsupported",
+      installable: false
     }
   ];
 }
@@ -1732,6 +1743,10 @@ describe("Workbench UI interactions", () => {
     await user.click(screen.getByRole("button", { name: "技能市场" }));
     expect((await screen.findAllByText("next-upgrade")).length).toBeGreaterThan(0);
     expect(screen.getByLabelText("技能市场统计")).toHaveTextContent("全部");
+    expect(screen.getAllByLabelText("不支持").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "不支持" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("不可安装")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "不可安装" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "安装" }));
 
@@ -1741,6 +1756,60 @@ describe("Workbench UI interactions", () => {
       expect(onRefresh).toHaveBeenCalled();
     });
     installSkill.mockRestore();
+  });
+
+  it("shows unsupported market items without requesting remote details", async () => {
+    const user = userEvent.setup();
+    const listMarket = vi.spyOn(workbenchApi, "listSkillMarket").mockResolvedValue(testMarketItems());
+    const getDetail = vi.spyOn(workbenchApi, "getSkillMarketDetail").mockResolvedValue({
+      item: testMarketItems()[0],
+      repositoryUrl: "https://github.com/vercel-labs/next-skills",
+      installCommand: "npx -y skills add vercel-labs/next-skills --skill next-upgrade -g --agent codex -y --copy",
+      skillMarkdownPreview: "Upgrade Next.js following official migration guides.",
+      securityNote: "Workbench 通过 skills.sh 官方 CLI 安装，并在写入前做结构校验。"
+    });
+
+    try {
+      render(
+        <SkillsView
+          skills={skillsForView}
+          selectedSkill={skillsForView[0]}
+          categories={skillCategoriesForView}
+          settings={skillsSettings}
+          projects={[activeProject, secondActiveProject]}
+          onSelect={vi.fn()}
+          onImport={vi.fn()}
+          onRefresh={vi.fn()}
+          onInstallMarketSkill={vi.fn()}
+          onManageCategories={vi.fn()}
+          onToggle={vi.fn()}
+          onToggleSkillGlobal={vi.fn()}
+          onToggleProjectAll={vi.fn()}
+          onCategorySkill={vi.fn()}
+          onCreateCategorySkill={vi.fn()}
+          onResolve={vi.fn()}
+          onDeleteSkill={vi.fn()}
+        />
+      );
+
+      await user.click(screen.getByRole("button", { name: "技能市场" }));
+      await user.selectOptions(screen.getByLabelText("按市场状态筛选"), "不可安装");
+      const unsupportedAction = await screen.findByLabelText("不可安装");
+      getDetail.mockClear();
+
+      const unsupportedRow = unsupportedAction.closest("button");
+      expect(unsupportedRow).toBeDefined();
+      await user.click(unsupportedRow as HTMLElement);
+
+      await waitFor(() => {
+        expect(getDetail).not.toHaveBeenCalled();
+      });
+      expect(screen.queryByText(/请求远程来源失败/)).not.toBeInTheDocument();
+      expect(screen.getByText("该来源不是 GitHub owner/repo 格式，Workbench 暂不请求远程详情，也不支持安装。")).toBeInTheDocument();
+    } finally {
+      listMarket.mockRestore();
+      getDetail.mockRestore();
+    }
   });
 
   it("keeps market install progress after switching Skills subviews", async () => {
