@@ -10,7 +10,7 @@ Workbench App 已完成第一阶段基础能力验证，当前进入进阶开发
 - 本地优先，数据默认保存在本机。
 - Agent 配置中心、Obsidian 连接、后台资源采集和自动化入口属于后续方向，进入实现前需要单独计划。
 - Skills 使用 `~/.workbench/skills` 作为统一真实来源。
-- `skills.sh` 是当前唯一接入的在线 Skills 来源；安装和更新由 Workbench 下载 GitHub 来源 Skill，不依赖 `npx skills`。
+- `skills.sh` 是当前唯一接入的在线 Skills 来源；安装和更新通过隔离临时目录调用官方 `npx skills add` 提取内容，再由 Workbench 写入统一 Skills 根目录并维护来源记录。
 
 ## 已确认实现方向
 
@@ -34,4 +34,5 @@ Workbench App 已完成第一阶段基础能力验证，当前进入进阶开发
 - 停用只移除 Workbench 管理的链接或副本。
 - 内容冲突通过用户选择唯一版本源解决，替换前备份。
 - 删除或市场卸载 Skill 不删除未被 Workbench 管理的工具目录内容；skills.sh 来源 Skill 删除时同步清理来源记录。
+- 市场安装和更新依赖 Node.js、npm 和 npx；缺失或网络/CLI 失败时在市场页用统一 warning 提示具体原因和重试入口。
 - 项目归档只更新 Workbench SQLite 记录，不移动、不删除、不修改本地项目目录。

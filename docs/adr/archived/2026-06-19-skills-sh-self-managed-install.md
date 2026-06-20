@@ -1,6 +1,6 @@
 ---
 artifact_type: adr
-status: accepted
+status: archived
 created: 2026-06-19
 updated: 2026-06-20
 source_of_truth: docs/adr/
@@ -10,7 +10,9 @@ source_of_truth: docs/adr/
 
 ## 状态
 
-accepted
+archived
+
+归档原因：2026-06-20 的 `docs/adr/2026-06-20-skills-sh-cli-adapter.md` 已替代本决策。Workbench 不再自行下载和解压 GitHub 仓库作为市场安装核心路径，而是通过隔离临时目录调用官方 `skills.sh` CLI 提取 Skill 内容。
 
 ## 背景
 

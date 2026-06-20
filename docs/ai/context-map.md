@@ -28,7 +28,7 @@ Do not read `docs/plans/`, `docs/audits/`, or archived directories by default.
 - `src-tauri/src/skills.rs`：Skills 扫描、导入、skills.sh 市场安装与更新、启用、冲突、删除、自定义工具目标和 SQLite 逻辑。
 - `docs/capabilities/skills-management.md`：Skills 当前能力、skills.sh 来源、自定义工具目标、分类与筛选语义、数据所有权、同步边界和验证。
 - `docs/adr/2026-06-18-skill-categories-table.md`：Skills 分类使用独立分类表和 `category_id` 的长期决策。
-- `docs/adr/2026-06-19-skills-sh-self-managed-install.md`：Workbench 自管 skills.sh Skill 安装与更新，含 skill_sources 表、内容 hash 检测和备份策略的决策。
+- `docs/adr/2026-06-20-skills-sh-cli-adapter.md`：skills.sh 市场安装/更新通过官方 CLI 临时提取、Workbench 统一落盘和记录的决策。
 - `docs/references/skills-manager-engineering-lessons.md`：从 `E:\Development\12-工具-Utility\Agent\skills-manager` 提炼的工程借鉴，不是当前能力事实。
 - `docs/references/skills-manager-feature-lessons.md`：从 `skills-manager` 提炼的功能借鉴和取舍，不是 PRD 承诺范围。
 

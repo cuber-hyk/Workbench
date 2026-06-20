@@ -358,7 +358,7 @@ export function App() {
       setMarketInstallTask((current) =>
         current?.key === key ? { ...current, status: "failed", error: message } : current
       );
-      showToast(message, { tone: "danger", duration: 4200 });
+      showToast("Skill 安装失败，请在技能市场查看详情", { tone: "danger", duration: 3600 });
     } finally {
       marketInstallRunningRef.current = false;
     }
@@ -2058,6 +2058,10 @@ export function SkillsView({
 
   async function loadMarketDetail(item: SkillMarketItem) {
     setMarketError("");
+    if (!item.installable) {
+      setMarketDetail(localMarketDetail(item));
+      return;
+    }
     try {
       setMarketDetail(await workbenchApi.getSkillMarketDetail(item.source, item.skillId));
     } catch (error) {
@@ -2337,7 +2341,7 @@ function SkillStatusIndicator({ status, label }: { status: SkillUpdateState; lab
     up_to_date: { icon: CircleCheck, tone: "success", label: "已是最新" },
     update_available: { icon: ArrowUpCircle, tone: "attention", label: "可更新" },
     check_failed: { icon: CircleAlert, tone: "danger", label: "检查失败" },
-    unsupported: { icon: Ban, tone: "warning", label: "不支持" }
+    unsupported: { icon: Ban, tone: "neutral", label: "不支持" }
   }[status];
   const Icon = presentation.icon;
   const text = label ?? presentation.label;
@@ -2508,7 +2512,7 @@ function SkillsMarketView({
                       <Trash2 size={14} />{uninstalling ? "卸载中" : "卸载"}
                     </Button>
                   ) : !item.installable ? (
-                    <SkillStatusIndicator status="unsupported" />
+                    <span className="action-muted" aria-label="不可安装">不可安装</span>
                   ) : (
                     <Button
                       disabled={installTask?.status === "running"}
@@ -2542,10 +2546,10 @@ function SkillsMarketView({
                 <div><dt>安装状态</dt><dd><SkillStatusIndicator status={marketItemStatus(selectedItem)} /></dd></div>
                 <div><dt>skills.sh 包</dt><dd><code>{selectedItem.source}/{selectedItem.skillId}</code></dd></div>
                 <div><dt>Skill ID</dt><dd><code>{selectedItem.skillId}</code></dd></div>
-                <div><dt>来源仓库</dt><dd><code>{repositoryUrl || "非 GitHub 来源，暂不支持 Workbench 自管安装"}</code></dd></div>
-                <div><dt>参考命令</dt><dd><code>{detail?.installCommand || `npx skills add ${selectedItem.source} --skill ${selectedItem.skillId}`}</code></dd></div>
+                <div><dt>来源仓库</dt><dd><code>{repositoryUrl || "非 GitHub owner/repo 来源，暂不支持 Workbench 安装"}</code></dd></div>
+                <div><dt>参考命令</dt><dd><code>{detail?.installCommand || `npx -y skills add ${selectedItem.source} --skill ${selectedItem.skillId} -g --agent codex -y --copy`}</code></dd></div>
               </dl>
-              <div className="warning market-detail-warning">{detail?.securityNote || "安装前请确认第三方 Skill 来源可信。Workbench 只做结构校验和备份，不做安全担保。"}</div>
+              <div className="warning market-detail-warning">{detail?.securityNote || "Workbench 调用 skills.sh 官方安装器完成获取和展开，再复制到统一 Skills 根目录；第三方 Skill 仍需自行确认来源可信。"}</div>
               {detail?.skillMarkdownPreview && <div className="market-preview"><h3>SKILL.md 预览</h3><p>{detail.skillMarkdownPreview}</p></div>}
             </>
           ) : (
@@ -2669,6 +2673,16 @@ function marketItemStatus(item: SkillMarketItem): SkillUpdateState {
 
 function marketRepositoryUrl(item: SkillMarketItem) {
   return item.installable ? `https://github.com/${item.source}` : "";
+}
+
+function localMarketDetail(item: SkillMarketItem): SkillMarketDetail {
+  return {
+    item,
+    repositoryUrl: "",
+    installCommand: `npx -y skills add ${item.source} --skill ${item.skillId} -g --agent codex -y --copy`,
+    skillMarkdownPreview: "",
+    securityNote: "该来源不是 GitHub owner/repo 格式，Workbench 暂不请求远程详情，也不支持安装。"
+  };
 }
 
 function buildMarketStats(items: SkillMarketItem[]) {
