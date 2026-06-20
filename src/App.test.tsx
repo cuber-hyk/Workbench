@@ -1738,6 +1738,43 @@ describe("Workbench UI interactions", () => {
     updateSkills.mockRestore();
   });
 
+  it("shows an actionable empty state when no skills.sh skills can be checked for updates", async () => {
+    const user = userEvent.setup();
+    const listUpdates = vi.spyOn(workbenchApi, "listSkillUpdates").mockResolvedValue([]);
+    render(
+      <SkillsView
+        skills={skillsForView}
+        selectedSkill={skillsForView[0]}
+        categories={skillCategoriesForView}
+        settings={skillsSettings}
+        projects={[activeProject, secondActiveProject]}
+        onSelect={vi.fn()}
+        onImport={vi.fn()}
+        onRefresh={vi.fn()}
+        onManageCategories={vi.fn()}
+        onToggle={vi.fn()}
+        onToggleSkillGlobal={vi.fn()}
+        onToggleProjectAll={vi.fn()}
+        onCategorySkill={vi.fn()}
+        onCreateCategorySkill={vi.fn()}
+        onResolve={vi.fn()}
+        onDeleteSkill={vi.fn()}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: "更新" }));
+
+    expect(await screen.findByText("暂无可检查的 skills.sh Skill")).toBeInTheDocument();
+    expect(screen.getByText("从技能市场安装的 Skill 会出现在这里，用于检查和执行更新。")).toBeInTheDocument();
+    expect(screen.getByText("等待可更新项")).toBeInTheDocument();
+    expect(screen.getByText("检查后发现可更新 Skill 时，可在左侧选择并批量更新。")).toBeInTheDocument();
+    expect(screen.queryByText(/已选择 0 个可更新 Skill/)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "去技能市场" }));
+    expect(screen.getByRole("button", { name: "技能市场" })).toHaveClass("active");
+    listUpdates.mockRestore();
+  });
+
   it("uninstalls an installed skills.sh market skill through the delete flow", async () => {
     const user = userEvent.setup();
     const deleteSkill = vi.spyOn(workbenchApi, "deleteSkill").mockResolvedValue({

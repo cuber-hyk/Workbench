@@ -10,6 +10,8 @@
 
 ### Changed
 
+- Skills 更新页在没有可检查的 `skills.sh` 来源 Skill 时显示可操作空状态，并将批量确认面板切换为等待可更新项说明。
+
 ### Fixed
 
 ### Security
