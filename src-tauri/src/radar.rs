@@ -2,6 +2,7 @@ use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -61,6 +62,14 @@ pub struct GitHubStarsSyncResult {
     pub updated: usize,
     pub deactivated: usize,
     pub unchanged: usize,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHubCliStatus {
+    pub status: String,
+    pub account: String,
+    pub message: String,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
@@ -130,6 +139,13 @@ pub async fn sync_github_stars() -> RadarResult<GitHubStarsSyncResult> {
     })
     .await
     .map_err(|error| format!("GitHub Stars 同步任务失败：{error}"))?
+}
+
+#[tauri::command]
+pub async fn check_github_cli_status() -> RadarResult<GitHubCliStatus> {
+    tauri::async_runtime::spawn_blocking(detect_github_cli_status)
+        .await
+        .map_err(|error| format!("GitHub CLI 状态检查失败：{error}"))?
 }
 
 #[tauri::command]
@@ -394,14 +410,84 @@ fn fetch_github_stars() -> RadarResult<Vec<GitHubStar>> {
             ".[] | {name: .full_name, description: .description, html_url: .html_url, stars: .stargazers_count, language: .language, topics: .topics, updated_at: .updated_at}",
         ])
         .output()
-        .map_err(|error| format!("无法运行 gh CLI，请确认已安装 GitHub CLI：{error}"))?;
+        .map_err(|error| {
+            if error.kind() == ErrorKind::NotFound {
+                "未检测到 gh 命令。请先安装 GitHub CLI，并运行 gh auth login 登录后重试。"
+                    .to_string()
+            } else {
+                format!("无法运行 GitHub CLI：{error}")
+            }
+        })?;
     if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let detail = if stderr.is_empty() {
+            "GitHub CLI 未返回详细错误".to_string()
+        } else {
+            stderr
+        };
         return Err(format!(
             "GitHub Stars 同步失败，请运行 gh auth login 后重试：{}",
-            String::from_utf8_lossy(&output.stderr).trim()
+            detail
         ));
     }
     parse_github_stars(&String::from_utf8_lossy(&output.stdout))
+}
+
+fn detect_github_cli_status() -> RadarResult<GitHubCliStatus> {
+    if Command::new("gh").arg("--version").output().is_err() {
+        return Ok(GitHubCliStatus {
+            status: "missing".to_string(),
+            account: String::new(),
+            message: "未检测到 gh 命令。请先安装 GitHub CLI，并运行 gh auth login 登录后重试。"
+                .to_string(),
+        });
+    }
+
+    let output = Command::new("gh")
+        .args(["auth", "status"])
+        .output()
+        .map_err(|error| format!("无法检查 GitHub CLI 登录状态：{error}"))?;
+    let auth_output = format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    Ok(classify_github_cli_auth_status(
+        output.status.success(),
+        &auth_output,
+    ))
+}
+
+fn classify_github_cli_auth_status(success: bool, output: &str) -> GitHubCliStatus {
+    if success {
+        let account = parse_github_cli_account(output);
+        let message = if account.is_empty() {
+            "GitHub CLI 已就绪。".to_string()
+        } else {
+            format!("GitHub CLI 已就绪：当前账号 {account}。")
+        };
+        return GitHubCliStatus {
+            status: "ready".to_string(),
+            account,
+            message,
+        };
+    }
+
+    GitHubCliStatus {
+        status: "unauthenticated".to_string(),
+        account: String::new(),
+        message: "GitHub CLI 已安装，但尚未登录。请运行 gh auth login 后重试。".to_string(),
+    }
+}
+
+fn parse_github_cli_account(output: &str) -> String {
+    output
+        .lines()
+        .find_map(|line| line.split_once("account "))
+        .and_then(|(_prefix, suffix)| suffix.split_whitespace().next())
+        .map(|account| account.trim_matches(|character| character == '(' || character == ')'))
+        .unwrap_or_default()
+        .to_string()
 }
 
 fn parse_github_stars(output: &str) -> RadarResult<Vec<GitHubStar>> {
@@ -1379,5 +1465,23 @@ mod tests {
         item.url = "example.com".to_string();
         assert!(validate_radar_item(&item).is_err());
         assert!(parse_github_stars("not json").is_err());
+    }
+
+    #[test]
+    fn classifies_github_cli_auth_status() {
+        let ready = classify_github_cli_auth_status(
+            true,
+            "github.com\n  ✓ Logged in to github.com account octocat (keyring)",
+        );
+        assert_eq!(ready.status, "ready");
+        assert_eq!(ready.account, "octocat");
+        assert!(ready.message.contains("当前账号 octocat"));
+
+        let unauthenticated = classify_github_cli_auth_status(
+            false,
+            "You are not logged into any GitHub hosts. Run gh auth login to authenticate.",
+        );
+        assert_eq!(unauthenticated.status, "unauthenticated");
+        assert!(unauthenticated.message.contains("gh auth login"));
     }
 }

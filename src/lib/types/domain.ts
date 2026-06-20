@@ -232,6 +232,12 @@ export interface GitHubStarsSyncResult {
   unchanged: number;
 }
 
+export interface GitHubCliStatus {
+  status: "missing" | "unauthenticated" | "ready";
+  account: string;
+  message: string;
+}
+
 export interface AppSettings {
   workbenchRoot: string;
   skillsRoot: string;

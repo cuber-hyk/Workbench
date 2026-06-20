@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { projects, radarItems, settings, skillCategories, skills } from "./mockData";
-import type { CloseBehavior, CustomToolTargetInput, GitHubStarsSyncResult, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, SkillInstallProgress, SkillMarketDetail, SkillMarketItem, SkillUpdateResult, SkillUpdateStatus, SkillVersionSource, SkillsState, ToolKey } from "../types/domain";
+import type { CloseBehavior, CustomToolTargetInput, GitHubCliStatus, GitHubStarsSyncResult, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, SkillInstallProgress, SkillMarketDetail, SkillMarketItem, SkillUpdateResult, SkillUpdateStatus, SkillVersionSource, SkillsState, ToolKey } from "../types/domain";
 
 const delay = async () => new Promise((resolve) => window.setTimeout(resolve, 80));
 const isTauri = "__TAURI_INTERNALS__" in window;
@@ -214,6 +214,17 @@ export const workbenchApi = {
       return;
     }
     return invoke<void>("open_radar_link", { url });
+  },
+  async checkGithubCliStatus() {
+    if (!isTauri) {
+      await delay();
+      return {
+        status: "missing",
+        account: "",
+        message: "未检测到 gh 命令。请先安装 GitHub CLI，并运行 gh auth login 登录后重试。"
+      } satisfies GitHubCliStatus;
+    }
+    return invoke<GitHubCliStatus>("check_github_cli_status");
   },
   async syncGithubStars() {
     if (!isTauri) {

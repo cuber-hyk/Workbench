@@ -85,6 +85,7 @@ pub fn run() {
             radar::merge_radar_duplicate_group,
             radar::open_radar_link,
             radar::save_radar_item,
+            radar::check_github_cli_status,
             radar::sync_github_stars,
             skills::get_skills_state,
             skills::set_skills_root,
