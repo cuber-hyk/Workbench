@@ -91,7 +91,8 @@ Workbench/
 │  ├─ src/
 │  │  ├─ main.rs
 │  │  ├─ lib.rs
-│  │  └─ skills.rs
+│  │  ├─ skills.rs
+│  │  └─ skills/
 │  ├─ tauri.conf.json
 │  └─ Cargo.toml
 ├─ DESIGN.md
@@ -110,7 +111,7 @@ Workbench/
 - `docs/capabilities/`、`docs/audits/`、`docs/adr/` 保存后续可沉淀的能力、审核和架构决策记录。
 - `UI/` 保存讨论用静态原型，不作为正式前端代码入口。
 - `src/lib/api/` 封装 Tauri `invoke` 调用。
-- `src-tauri/src/skills.rs` 集中实现当前 Skills commands、SQLite 与文件系统逻辑；进阶开发中当职责产生实际维护压力时，再按 commands、database、sync、importer 和 filesystem 边界拆分。
+- `src-tauri/src/skills.rs` 是当前 Skills command facade；类型、SQLite、文件系统同步、工具目标、skills.sh 市场和 CLI 适配位于 `src-tauri/src/skills/`。
 
 ## 4. 前端模块说明
 
@@ -238,7 +239,7 @@ Workbench/
 
 `src-tauri/src/lib.rs` 注册前端唯一可调用的 Tauri commands。
 
-当前已实现的 Skills 能力集中在 `src-tauri/src/skills.rs`：
+当前已实现的 Skills command 入口位于 `src-tauri/src/skills.rs`，类型、SQLite、文件系统同步、工具目标、skills.sh 市场和 CLI 适配位于 `src-tauri/src/skills/`：
 
 - 扫描和解析 `SKILL.md`。
 - 系统选择器、ZIP / 文件夹导入与冲突检查。
@@ -254,7 +255,7 @@ Workbench/
 - `skills.sh` 市场列表、详情、安装、卸载、更新检查、单项更新和批量更新。
 - 打开本地文件或目录。
 
-当前 Skills 后端仍保持单文件模块；进阶开发中当模块职责产生实际维护压力时，再按 commands、database、sync、importer 和 filesystem 边界拆分。
+当前 Skills 后端按 command facade、类型、数据库、文件系统同步、工具目标、skills.sh 市场和 CLI 适配拆分；导入、根目录迁移、受管目标重建、启用和冲突解决仍由 `src-tauri/src/skills.rs` 承载 command 编排。
 
 ## 6. 核心数据模型
 

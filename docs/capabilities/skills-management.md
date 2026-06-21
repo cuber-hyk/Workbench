@@ -2,14 +2,14 @@
 artifact_type: capability
 status: current
 created: 2026-06-17
-updated: 2026-06-20
-source_of_truth: src-tauri/src/skills.rs
+updated: 2026-06-21
+source_of_truth: src-tauri/src/skills.rs; src-tauri/src/skills/
 adr: docs/adr/2026-06-20-skills-sh-cli-adapter.md
 ---
 
 # Skills 管理
 
-Skills 管理模块使用统一 Skills 根目录作为本地 Skill 内容的真实来源，并通过 Workbench SQLite 记录分类、全局启用、项目级启用、同步方式和冲突状态。前端入口位于 `src/App.tsx`，后端 source of truth 为 `src-tauri/src/skills.rs`。
+Skills 管理模块使用统一 Skills 根目录作为本地 Skill 内容的真实来源，并通过 Workbench SQLite 记录分类、全局启用、项目级启用、同步方式和冲突状态。前端入口位于 `src/App.tsx`，后端 command 入口为 `src-tauri/src/skills.rs`，类型、数据库、文件系统同步、工具目标、市场和 CLI 适配位于 `src-tauri/src/skills/`。
 
 ## 当前能力
 

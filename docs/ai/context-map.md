@@ -25,7 +25,7 @@ Do not read `docs/plans/`, `docs/audits/`, or archived directories by default.
 - `src-tauri/src/radar.rs`：资源 Radar 持久化、GitHub Stars 手动同步、URL 去重、重复组合并、校验和链接打开逻辑。
 - `docs/capabilities/resource-radar.md`：资源 Radar 当前能力、领域分类、数据所有权、同步规则和重复组合并规则。
 - `docs/adr/2026-06-16-resource-radar-duplicate-merge.md`：资源 Radar 重复组合并后删除副资源的长期决策。
-- `src-tauri/src/skills.rs`：Skills 扫描、外部工具目录发现、导入、根目录迁移、受管目标重建、skills.sh 市场安装与更新、启用、冲突、删除、自定义工具目标和 SQLite 逻辑。
+- `src-tauri/src/skills.rs`、`src-tauri/src/skills/`：Skills command 入口、类型、SQLite、文件系统同步、工具目标、skills.sh 市场/CLI、导入、根目录迁移、受管目标重建、启用、冲突、删除和自定义工具目标逻辑。
 - `docs/capabilities/skills-management.md`：Skills 当前能力、外部发现、根目录迁移、skills.sh 来源、自定义工具目标、分类与筛选语义、数据所有权、同步边界和验证。
 - `docs/adr/2026-06-18-skill-categories-table.md`：Skills 分类使用独立分类表和 `category_id` 的长期决策。
 - `docs/adr/2026-06-20-skills-sh-cli-adapter.md`：skills.sh 市场安装/更新通过官方 CLI 临时提取、Workbench 统一落盘和记录的决策。
