@@ -14,6 +14,8 @@ Do not read `docs/plans/`, `docs/audits/`, or archived directories by default.
 
 - `docs/ARCHITECTURE.md`：技术栈、目录结构、核心模块、数据模型和关键流程。
 - `src/App.tsx`：当前前端应用壳、全局状态和主要交互入口。
+- `src/views/projects/ProjectsView.tsx`：项目列表、详情、启动项面板和本次启动日志前端视图。
+- `src/views/projects/launchState.ts`：项目启动状态、启动事件归并、停止状态标记和启动配置筛选的前端纯逻辑。
 - `src/views/radar/RadarView.tsx`：资源 Radar 前端列表、详情、筛选和增删弹窗。
 - `src/lib/ui/toolIcons.tsx`：Agent 工具图标资源映射、自定义图标路径转换和图标回退显示。
 - `src/lib/types/domain.ts`：前端领域类型。
