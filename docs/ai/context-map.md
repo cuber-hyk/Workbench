@@ -17,6 +17,8 @@ Do not read `docs/plans/`, `docs/audits/`, or archived directories by default.
 - `src/views/projects/ProjectsView.tsx`：项目列表、详情、启动项面板和本次启动日志前端视图。
 - `src/views/projects/launchState.ts`：项目启动状态、启动事件归并、停止状态标记和启动配置筛选的前端纯逻辑。
 - `src/views/radar/RadarView.tsx`：资源 Radar 前端列表、详情、筛选和增删弹窗。
+- `src/views/settings/SettingsView.tsx`：设置页前端视图。
+- `src/views/settings/settingsFormatters.ts`：设置页展示格式化逻辑。
 - `src/lib/ui/toolIcons.tsx`：Agent 工具图标资源映射、自定义图标路径转换和图标回退显示。
 - `src/lib/types/domain.ts`：前端领域类型。
 - `src/lib/api/workbenchApi.ts`：前端到 Tauri commands 的 API 边界。
