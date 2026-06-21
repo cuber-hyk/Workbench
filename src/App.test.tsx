@@ -2,10 +2,18 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { App, CustomToolDialog, ModuleStateView, ProjectDialog, ProjectsView, RadarView, SettingsView, SkillCategoryDialog, SkillsView, applyPendingLaunchEvents, markLaunchRunStopped, mergeLaunchRunSnapshots, rememberUpdateNotice, shouldShowUpdateNotice } from "./App";
+import { App, ModuleStateView, rememberUpdateNotice, shouldShowUpdateNotice } from "./App";
+import { ProjectDialog } from "./components/dialogs/projects/ProjectDialog";
+import { CustomToolDialog } from "./components/dialogs/settings/CustomToolDialog";
+import { SkillCategoryDialog } from "./components/dialogs/skills/SkillCategoryDialog";
 import { AppUpdateProvider } from "./contexts/AppUpdateContext";
 import { workbenchApi } from "./lib/api/workbenchApi";
 import type { AppSettings, LaunchSessionEvent, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, Skill, SkillCategory, SkillMarketItem, SkillsState } from "./lib/types/domain";
+import { ProjectsView } from "./views/projects/ProjectsView";
+import { applyPendingLaunchEvents, markLaunchRunStopped, mergeLaunchRunSnapshots } from "./views/projects/launchState";
+import { RadarView } from "./views/radar/RadarView";
+import { SettingsView } from "./views/settings/SettingsView";
+import { SkillsView } from "./views/skills/SkillsView";
 
 const activeProject: Project = {
   id: "active",

@@ -41,15 +41,6 @@ import { clearSkillMarketRuntimeCache, SkillsView } from "./views/skills/SkillsV
 import type { MarketInstallTask } from "./views/skills/SkillsMarketView";
 import type { AppSettings, CloseBehavior, CustomToolTargetInput, ExternalSkillCandidateGroup, ExternalSkillImportSelection, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, ManagedTargetRebuildResult, ManagedTargetRebuildSelection, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, Skill, SkillCategory, SkillMarketItem, SkillsRootMigrationState, ToolKey, ViewKey } from "./lib/types/domain";
 
-export { RadarView } from "./views/radar/RadarView";
-export { ProjectsView } from "./views/projects/ProjectsView";
-export { SettingsView } from "./views/settings/SettingsView";
-export { ProjectDialog } from "./components/dialogs/projects/ProjectDialog";
-export { CustomToolDialog } from "./components/dialogs/settings/CustomToolDialog";
-export { SkillCategoryDialog } from "./components/dialogs/skills/SkillCategoryDialog";
-export { SkillsView } from "./views/skills/SkillsView";
-export { applyPendingLaunchEvents, markLaunchRunStopped, mergeLaunchRunSnapshots } from "./views/projects/launchState";
-
 const views: Array<{ key: ViewKey; label: string; icon: JSX.Element }> = [
   { key: "projects", label: "项目", icon: <Box size={16} /> },
   { key: "skills", label: "Skills", icon: <Sparkles size={16} /> },
