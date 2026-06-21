@@ -256,6 +256,7 @@ export const projectOpenProfiles: ProjectOpenProfile[] = [
 export const settings: AppSettings = {
   workbenchRoot: "C:\\Users\\dev\\.workbench",
   skillsRoot: "C:\\Users\\dev\\.workbench\\skills",
+  previousSkillsRoot: null,
   closeBehavior: "hide_to_tray",
   closeTrayHintDismissed: false,
   projectOpenProfiles,

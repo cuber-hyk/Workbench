@@ -1,7 +1,7 @@
 use regex::Regex;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::io;
@@ -101,6 +101,7 @@ pub struct CustomToolTargetInput {
 pub struct SkillsSettings {
     pub workbench_root: String,
     pub skills_root: String,
+    pub previous_skills_root: Option<String>,
     pub tool_targets: Vec<ToolTarget>,
     pub close_behavior: CloseBehavior,
     pub close_tray_hint_dismissed: bool,
@@ -258,8 +259,129 @@ pub struct ImportResult {
 #[serde(rename_all = "camelCase")]
 pub enum ImportStatus {
     Imported,
+    Skipped,
     Conflict,
     Invalid,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalSkillCandidateGroup {
+    pub directory_name: String,
+    pub display_name: String,
+    pub description: String,
+    pub status: ExternalSkillCandidateStatus,
+    pub sources: Vec<ExternalSkillCandidateSource>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalSkillCandidateSource {
+    pub tool: String,
+    pub tool_name: String,
+    pub path: String,
+    pub content_hash: Option<String>,
+    pub readable: bool,
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ExternalSkillCandidateStatus {
+    New,
+    SameAsCurrent,
+    Conflict,
+    Invalid,
+    Unreadable,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalSkillImportSelection {
+    pub directory_name: String,
+    pub source_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillsRootMigrationState {
+    pub previous_skills_root: Option<String>,
+    pub current_skills_root: String,
+    pub can_migrate: bool,
+    pub candidates: Vec<RootSkillMigrationCandidate>,
+    pub managed_targets: Vec<ManagedTargetRebuildCandidate>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RootSkillMigrationCandidate {
+    pub directory_name: String,
+    pub display_name: String,
+    pub description: String,
+    pub source_path: String,
+    pub status: ExternalSkillCandidateStatus,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RootSkillMigrationSelection {
+    pub directory_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedTargetRebuildCandidate {
+    pub directory_name: String,
+    pub tool: String,
+    pub scope: String,
+    pub project_name: String,
+    pub project_path: String,
+    pub link_path: String,
+    pub sync_method: SyncMethod,
+    pub status: ManagedTargetRebuildStatus,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedTargetRebuildSelection {
+    pub directory_name: String,
+    pub tool: String,
+    pub scope: String,
+    pub project_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedTargetRebuildResult {
+    pub directory_name: String,
+    pub tool: String,
+    pub scope: String,
+    pub project_path: String,
+    pub status: ManagedTargetRebuildStatus,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ManagedTargetRebuildStatus {
+    Ready,
+    Rebuilt,
+    Skipped,
+    Conflict,
+    Invalid,
+}
+
+#[derive(Debug, Clone)]
+struct ManagedTargetRecord {
+    directory_name: String,
+    tool: String,
+    scope: String,
+    project_name: String,
+    project_path: String,
+    link_path: String,
+    sync_method: SyncMethod,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -515,6 +637,92 @@ fn detect_external_status(source: &Path, target: &Path) -> SkillResult<GlobalSta
         return Ok(GlobalStatus::External);
     }
     Ok(GlobalStatus::Conflict)
+}
+
+fn skill_directory_metadata(source: &Path, fallback: &str) -> SkillResult<SkillMetadata> {
+    let markdown = fs::read_to_string(source.join("SKILL.md")).map_err(error_message)?;
+    Ok(parse_skill_markdown(&markdown, fallback))
+}
+
+fn import_skill_directory_allow_skipped(
+    source: &Path,
+    target_root: &Path,
+) -> SkillResult<ImportResult> {
+    let directory_name = source
+        .file_name()
+        .ok_or_else(|| "导入来源没有目录名称".to_string())?
+        .to_string_lossy()
+        .to_string();
+
+    if !source.join("SKILL.md").is_file() {
+        return Ok(ImportResult {
+            directory_name,
+            status: ImportStatus::Invalid,
+            message: "目录中不存在 SKILL.md".to_string(),
+        });
+    }
+    validate_directory_name(&directory_name)?;
+    fs::create_dir_all(target_root).map_err(error_message)?;
+    let target = target_root.join(&directory_name);
+    if target.exists() || target.symlink_metadata().is_ok() {
+        if target.is_dir() && directories_match(source, &target)? {
+            return Ok(ImportResult {
+                directory_name,
+                status: ImportStatus::Skipped,
+                message: "统一根目录中已存在相同内容".to_string(),
+            });
+        }
+        return Ok(ImportResult {
+            directory_name,
+            status: ImportStatus::Conflict,
+            message: "统一根目录中已存在同名 Skill".to_string(),
+        });
+    }
+
+    import_skill_directory(source, target_root)
+}
+
+fn candidate_status_for_source(
+    source: &Path,
+    target_root: &Path,
+) -> SkillResult<ExternalSkillCandidateStatus> {
+    let directory_name = source
+        .file_name()
+        .ok_or_else(|| "Skill 目录名称无效".to_string())?
+        .to_string_lossy()
+        .to_string();
+    if validate_directory_name(&directory_name).is_err() {
+        return Ok(ExternalSkillCandidateStatus::Invalid);
+    }
+    let target = target_root.join(&directory_name);
+    if target.exists() || target.symlink_metadata().is_ok() {
+        if target.is_dir() && directories_match(source, &target)? {
+            Ok(ExternalSkillCandidateStatus::SameAsCurrent)
+        } else {
+            Ok(ExternalSkillCandidateStatus::Conflict)
+        }
+    } else {
+        Ok(ExternalSkillCandidateStatus::New)
+    }
+}
+
+fn scan_one_level_skill_candidates(root: &Path) -> SkillResult<Vec<PathBuf>> {
+    if !root.exists() {
+        return Ok(Vec::new());
+    }
+    if !root.is_dir() {
+        return Ok(Vec::new());
+    }
+    let mut candidates = Vec::new();
+    for entry in fs::read_dir(root).map_err(error_message)? {
+        let entry = entry.map_err(error_message)?;
+        let path = entry.path();
+        if path.is_dir() && path.join("SKILL.md").is_file() {
+            candidates.push(path);
+        }
+    }
+    candidates.sort();
+    Ok(candidates)
 }
 
 #[cfg(unix)]
@@ -874,6 +1082,20 @@ fn configured_skills_root(connection: &Connection, workbench_root: &Path) -> Ski
     }
 }
 
+fn configured_previous_skills_root(connection: &Connection) -> SkillResult<Option<PathBuf>> {
+    let configured = connection.query_row(
+        "SELECT value FROM app_settings WHERE key = 'previous_skills_root'",
+        [],
+        |row| row.get::<_, String>(0),
+    );
+    match configured {
+        Ok(path) if path.trim().is_empty() => Ok(None),
+        Ok(path) => Ok(Some(PathBuf::from(path))),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
 fn tool_target_path(tool: &str, project_path: Option<&str>) -> SkillResult<PathBuf> {
     if let Ok(definition) = builtin_tool_target_definition(tool) {
         let base = match project_path {
@@ -1061,10 +1283,13 @@ fn current_settings() -> SkillResult<SkillsSettings> {
     let workbench_root = default_workbench_root()?;
     let connection = open_database(&workbench_root)?;
     let skills_root = configured_skills_root(&connection, &workbench_root)?;
+    let previous_skills_root = configured_previous_skills_root(&connection)?
+        .map(|path| path.to_string_lossy().to_string());
     fs::create_dir_all(&skills_root).map_err(error_message)?;
     Ok(SkillsSettings {
         workbench_root: workbench_root.to_string_lossy().to_string(),
         skills_root: skills_root.to_string_lossy().to_string(),
+        previous_skills_root,
         tool_targets: ordered_tool_targets(&connection)?,
         close_behavior: configured_close_behavior(&connection)?,
         close_tray_hint_dismissed: configured_bool_setting(
@@ -1524,6 +1749,16 @@ pub fn set_skills_root(path: String) -> SkillResult<SkillsState> {
     fs::create_dir_all(&root).map_err(error_message)?;
     let workbench_root = default_workbench_root()?;
     let connection = open_database(&workbench_root)?;
+    let previous_root = configured_skills_root(&connection, &workbench_root)?;
+    if previous_root != root {
+        connection
+            .execute(
+                "INSERT INTO app_settings(key, value) VALUES('previous_skills_root', ?1)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                [previous_root.to_string_lossy().to_string()],
+            )
+            .map_err(error_message)?;
+    }
     connection
         .execute(
             "INSERT INTO app_settings(key, value) VALUES('skills_root', ?1)
@@ -2009,6 +2244,239 @@ pub fn import_skills_from_zip(zip_path: String) -> SkillResult<Vec<ImportResult>
         io::copy(&mut entry, &mut output).map_err(error_message)?;
     }
     import_skills_from_folder(temporary.path().to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub fn discover_external_skills() -> SkillResult<Vec<ExternalSkillCandidateGroup>> {
+    let settings = current_settings()?;
+    let workbench_root = PathBuf::from(&settings.workbench_root);
+    let connection = open_database(&workbench_root)?;
+    discover_external_skills_in(&connection, Path::new(&settings.skills_root))
+}
+
+fn discover_external_skills_in(
+    connection: &Connection,
+    skills_root: &Path,
+) -> SkillResult<Vec<ExternalSkillCandidateGroup>> {
+    let mut groups: HashMap<String, ExternalSkillCandidateGroup> = HashMap::new();
+    let mut seen_roots = HashSet::new();
+    let skills_root_key = normalized_path_key(skills_root);
+
+    for target in tool_targets(connection)? {
+        let target_root = PathBuf::from(&target.global_skills_dir);
+        let target_key = normalized_path_key(&target_root);
+        if target_key == skills_root_key || !seen_roots.insert(target_key) {
+            continue;
+        }
+        let candidates = match scan_one_level_skill_candidates(&target_root) {
+            Ok(candidates) => candidates,
+            Err(error) => {
+                let directory_name = format!("{}-unreadable", target.key);
+                groups.insert(
+                    directory_name.clone(),
+                    ExternalSkillCandidateGroup {
+                        directory_name,
+                        display_name: target.name.clone(),
+                        description: "工具目录不可读".to_string(),
+                        status: ExternalSkillCandidateStatus::Unreadable,
+                        sources: vec![ExternalSkillCandidateSource {
+                            tool: target.key,
+                            tool_name: target.name,
+                            path: target_root.to_string_lossy().to_string(),
+                            content_hash: None,
+                            readable: false,
+                            message: Some(error),
+                        }],
+                    },
+                );
+                continue;
+            }
+        };
+        for candidate in candidates {
+            let directory_name = candidate
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let status = candidate_status_for_source(&candidate, skills_root)?;
+            let metadata =
+                skill_directory_metadata(&candidate, &directory_name).unwrap_or(SkillMetadata {
+                    name: directory_name.clone(),
+                    description: "无法读取 Skill 元信息".to_string(),
+                });
+            let content_hash = directory_content_hash(&candidate).ok();
+            let source = ExternalSkillCandidateSource {
+                tool: target.key.clone(),
+                tool_name: target.name.clone(),
+                path: candidate.to_string_lossy().to_string(),
+                content_hash,
+                readable: status != ExternalSkillCandidateStatus::Unreadable,
+                message: None,
+            };
+            groups
+                .entry(directory_name.clone())
+                .and_modify(|group| {
+                    let source_conflicts = group
+                        .sources
+                        .iter()
+                        .any(|existing| existing.content_hash != source.content_hash);
+                    group.sources.push(source.clone());
+                    group.status = if source_conflicts {
+                        ExternalSkillCandidateStatus::Conflict
+                    } else {
+                        merge_candidate_status(group.status, status)
+                    };
+                })
+                .or_insert_with(|| ExternalSkillCandidateGroup {
+                    directory_name,
+                    display_name: metadata.name,
+                    description: metadata.description,
+                    status,
+                    sources: vec![source],
+                });
+        }
+    }
+
+    let mut groups = groups.into_values().collect::<Vec<_>>();
+    groups.sort_by(|left, right| {
+        left.display_name
+            .to_lowercase()
+            .cmp(&right.display_name.to_lowercase())
+    });
+    Ok(groups)
+}
+
+#[tauri::command]
+pub fn import_external_skills(
+    selections: Vec<ExternalSkillImportSelection>,
+) -> SkillResult<Vec<ImportResult>> {
+    let settings = current_settings()?;
+    let workbench_root = PathBuf::from(&settings.workbench_root);
+    let connection = open_database(&workbench_root)?;
+    let discovered = discover_external_skills_in(&connection, Path::new(&settings.skills_root))?;
+    let allowed: HashSet<String> = discovered
+        .iter()
+        .flat_map(|group| group.sources.iter())
+        .map(|source| normalized_path_key(Path::new(&source.path)))
+        .collect();
+    selections
+        .iter()
+        .map(|selection| {
+            validate_directory_name(&selection.directory_name)?;
+            let source = PathBuf::from(&selection.source_path);
+            let source_name = source
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string())
+                .unwrap_or_default();
+            if source_name != selection.directory_name {
+                return Ok(ImportResult {
+                    directory_name: selection.directory_name.clone(),
+                    status: ImportStatus::Invalid,
+                    message: "导入来源与 Skill 目录名不一致".to_string(),
+                });
+            }
+            if !allowed.contains(&normalized_path_key(&source)) {
+                return Ok(ImportResult {
+                    directory_name: selection.directory_name.clone(),
+                    status: ImportStatus::Invalid,
+                    message: "导入来源不在已发现的工具目录候选中".to_string(),
+                });
+            }
+            import_skill_directory_allow_skipped(&source, Path::new(&settings.skills_root))
+        })
+        .collect()
+}
+
+#[tauri::command]
+pub fn inspect_skills_root_migration() -> SkillResult<SkillsRootMigrationState> {
+    let settings = current_settings()?;
+    let workbench_root = PathBuf::from(&settings.workbench_root);
+    let connection = open_database(&workbench_root)?;
+    inspect_skills_root_migration_in(&connection, &settings)
+}
+
+fn inspect_skills_root_migration_in(
+    connection: &Connection,
+    settings: &SkillsSettings,
+) -> SkillResult<SkillsRootMigrationState> {
+    let current_root = PathBuf::from(&settings.skills_root);
+    let previous_root = settings.previous_skills_root.as_ref().map(PathBuf::from);
+    let mut candidates = Vec::new();
+    if let Some(previous_root) = &previous_root {
+        if previous_root != &current_root && previous_root.is_dir() {
+            for source in scan_one_level_skill_candidates(previous_root)? {
+                let directory_name = source
+                    .file_name()
+                    .map(|name| name.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                let status = candidate_status_for_source(&source, &current_root)?;
+                let metadata =
+                    skill_directory_metadata(&source, &directory_name).unwrap_or(SkillMetadata {
+                        name: directory_name.clone(),
+                        description: "无法读取 Skill 元信息".to_string(),
+                    });
+                let message = match status {
+                    ExternalSkillCandidateStatus::New => "可迁移".to_string(),
+                    ExternalSkillCandidateStatus::SameAsCurrent => {
+                        "当前根目录已存在相同内容".to_string()
+                    }
+                    ExternalSkillCandidateStatus::Conflict => {
+                        "当前根目录已存在同名不同内容".to_string()
+                    }
+                    ExternalSkillCandidateStatus::Invalid => "Skill 目录名称无效".to_string(),
+                    ExternalSkillCandidateStatus::Unreadable => "Skill 目录不可读".to_string(),
+                };
+                candidates.push(RootSkillMigrationCandidate {
+                    directory_name,
+                    display_name: metadata.name,
+                    description: metadata.description,
+                    source_path: source.to_string_lossy().to_string(),
+                    status,
+                    message,
+                });
+            }
+        }
+    }
+    let managed_targets = managed_target_rebuild_candidates(connection, settings)?;
+    Ok(SkillsRootMigrationState {
+        previous_skills_root: settings.previous_skills_root.clone(),
+        current_skills_root: settings.skills_root.clone(),
+        can_migrate: !candidates.is_empty(),
+        candidates,
+        managed_targets,
+    })
+}
+
+#[tauri::command]
+pub fn migrate_skills_root(
+    selections: Vec<RootSkillMigrationSelection>,
+) -> SkillResult<Vec<ImportResult>> {
+    let settings = current_settings()?;
+    let Some(previous_root) = settings.previous_skills_root.as_ref().map(PathBuf::from) else {
+        return Ok(Vec::new());
+    };
+    let mut results = Vec::new();
+    for selection in selections {
+        validate_directory_name(&selection.directory_name)?;
+        let source = previous_root.join(&selection.directory_name);
+        results.push(import_skill_directory_allow_skipped(
+            &source,
+            Path::new(&settings.skills_root),
+        )?);
+    }
+    Ok(results)
+}
+
+#[tauri::command]
+pub fn rebuild_managed_skill_targets(
+    selections: Vec<ManagedTargetRebuildSelection>,
+) -> SkillResult<Vec<ManagedTargetRebuildResult>> {
+    let settings = current_settings()?;
+    let workbench_root = PathBuf::from(&settings.workbench_root);
+    let connection = open_database(&workbench_root)?;
+    selections
+        .iter()
+        .map(|selection| rebuild_managed_skill_target(&connection, &settings, selection))
+        .collect()
 }
 
 fn discover_skill_sources(source: &Path) -> SkillResult<Vec<PathBuf>> {
@@ -2804,6 +3272,252 @@ fn parse_sync_method(method: &str) -> SkillResult<SyncMethod> {
     }
 }
 
+fn normalized_path_key(path: &Path) -> String {
+    path.canonicalize()
+        .unwrap_or_else(|_| path.to_path_buf())
+        .to_string_lossy()
+        .to_lowercase()
+}
+
+fn merge_candidate_status(
+    left: ExternalSkillCandidateStatus,
+    right: ExternalSkillCandidateStatus,
+) -> ExternalSkillCandidateStatus {
+    use ExternalSkillCandidateStatus::*;
+    match (left, right) {
+        (Conflict, _) | (_, Conflict) => Conflict,
+        (Invalid, _) | (_, Invalid) => Invalid,
+        (Unreadable, _) | (_, Unreadable) => Unreadable,
+        (New, _) | (_, New) => New,
+        _ => SameAsCurrent,
+    }
+}
+
+fn managed_target_rebuild_candidates(
+    connection: &Connection,
+    settings: &SkillsSettings,
+) -> SkillResult<Vec<ManagedTargetRebuildCandidate>> {
+    let mut statement = connection
+        .prepare(
+            "SELECT directory_name, tool, scope, project_name, project_path, link_path, sync_method
+             FROM skill_enablements
+             ORDER BY directory_name, tool, scope, project_path",
+        )
+        .map_err(error_message)?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, String>(5)?,
+                row.get::<_, String>(6)?,
+            ))
+        })
+        .map_err(error_message)?;
+    let mut candidates = Vec::new();
+    for row in rows {
+        let (directory_name, tool, scope, project_name, project_path, link_path, sync_method) =
+            row.map_err(error_message)?;
+        candidates.push(classify_managed_target_rebuild(
+            settings,
+            ManagedTargetRecord {
+                directory_name,
+                tool,
+                scope,
+                project_name,
+                project_path,
+                link_path,
+                sync_method: parse_sync_method(&sync_method)?,
+            },
+        )?);
+    }
+    Ok(candidates)
+}
+
+fn classify_managed_target_rebuild(
+    settings: &SkillsSettings,
+    record: ManagedTargetRecord,
+) -> SkillResult<ManagedTargetRebuildCandidate> {
+    let ManagedTargetRecord {
+        directory_name,
+        tool,
+        scope,
+        project_name,
+        project_path,
+        link_path,
+        sync_method,
+    } = record;
+    let current_source = PathBuf::from(&settings.skills_root).join(&directory_name);
+    let target = PathBuf::from(&link_path);
+    let Some(previous_root) = settings.previous_skills_root.as_ref().map(PathBuf::from) else {
+        return Ok(ManagedTargetRebuildCandidate {
+            directory_name,
+            tool,
+            scope,
+            project_name,
+            project_path,
+            link_path,
+            sync_method,
+            status: ManagedTargetRebuildStatus::Skipped,
+            message: "没有可用于重建的旧根目录记录".to_string(),
+        });
+    };
+    let previous_source = previous_root.join(&directory_name);
+    if !current_source.join("SKILL.md").is_file() {
+        return Ok(ManagedTargetRebuildCandidate {
+            directory_name,
+            tool,
+            scope,
+            project_name,
+            project_path,
+            link_path,
+            sync_method,
+            status: ManagedTargetRebuildStatus::Invalid,
+            message: "当前根目录中不存在该 Skill，无法重建".to_string(),
+        });
+    }
+    let target_matches_current = match sync_method {
+        SyncMethod::Symlink => symlink_points_to(&current_source, &target),
+        SyncMethod::Copy => target.is_dir() && directories_match(&current_source, &target)?,
+    };
+    if target_matches_current {
+        return Ok(ManagedTargetRebuildCandidate {
+            directory_name,
+            tool,
+            scope,
+            project_name,
+            project_path,
+            link_path,
+            sync_method,
+            status: ManagedTargetRebuildStatus::Skipped,
+            message: "目标已指向当前根目录".to_string(),
+        });
+    }
+    let target_matches_previous = match sync_method {
+        SyncMethod::Symlink => symlink_points_to(&previous_source, &target),
+        SyncMethod::Copy => target.is_dir() && directories_match(&previous_source, &target)?,
+    };
+    let status = if target.symlink_metadata().is_err() || target_matches_previous {
+        ManagedTargetRebuildStatus::Ready
+    } else {
+        ManagedTargetRebuildStatus::Conflict
+    };
+    let message = match status {
+        ManagedTargetRebuildStatus::Ready => "可重建到当前根目录".to_string(),
+        ManagedTargetRebuildStatus::Conflict => {
+            "目标已被修改或不再是旧根目录的受管内容".to_string()
+        }
+        _ => String::new(),
+    };
+    Ok(ManagedTargetRebuildCandidate {
+        directory_name,
+        tool,
+        scope,
+        project_name,
+        project_path,
+        link_path,
+        sync_method,
+        status,
+        message,
+    })
+}
+
+fn rebuild_managed_skill_target(
+    connection: &Connection,
+    settings: &SkillsSettings,
+    selection: &ManagedTargetRebuildSelection,
+) -> SkillResult<ManagedTargetRebuildResult> {
+    validate_directory_name(&selection.directory_name)?;
+    let row = connection.query_row(
+        "SELECT directory_name, tool, scope, project_name, project_path, link_path, sync_method
+         FROM skill_enablements
+         WHERE directory_name = ?1 AND tool = ?2 AND scope = ?3 AND project_path = ?4",
+        params![
+            selection.directory_name,
+            selection.tool,
+            selection.scope,
+            selection.project_path
+        ],
+        |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, String>(5)?,
+                row.get::<_, String>(6)?,
+            ))
+        },
+    );
+    let Ok((directory_name, tool, scope, project_name, project_path, link_path, sync_method)) = row
+    else {
+        return Ok(ManagedTargetRebuildResult {
+            directory_name: selection.directory_name.clone(),
+            tool: selection.tool.clone(),
+            scope: selection.scope.clone(),
+            project_path: selection.project_path.clone(),
+            status: ManagedTargetRebuildStatus::Invalid,
+            message: "未找到对应的 Workbench 受管启用记录".to_string(),
+        });
+    };
+    let sync_method = parse_sync_method(&sync_method)?;
+    let candidate = classify_managed_target_rebuild(
+        settings,
+        ManagedTargetRecord {
+            directory_name: directory_name.clone(),
+            tool: tool.clone(),
+            scope: scope.clone(),
+            project_name,
+            project_path: project_path.clone(),
+            link_path: link_path.clone(),
+            sync_method,
+        },
+    )?;
+    if candidate.status != ManagedTargetRebuildStatus::Ready {
+        return Ok(ManagedTargetRebuildResult {
+            directory_name,
+            tool,
+            scope,
+            project_path,
+            status: candidate.status,
+            message: candidate.message,
+        });
+    }
+    let source = PathBuf::from(&settings.skills_root).join(&directory_name);
+    let target = PathBuf::from(&link_path);
+    if target.symlink_metadata().is_ok() {
+        remove_existing_target(&target)?;
+    }
+    let next_method = sync_directory_auto_with(&source, &target, create_directory_symlink)?;
+    connection
+        .execute(
+            "UPDATE skill_enablements
+             SET link_path = ?1, sync_method = ?2
+             WHERE directory_name = ?3 AND tool = ?4 AND scope = ?5 AND project_path = ?6",
+            params![
+                target.to_string_lossy().to_string(),
+                sync_method_name(next_method),
+                directory_name,
+                tool,
+                scope,
+                project_path
+            ],
+        )
+        .map_err(error_message)?;
+    Ok(ManagedTargetRebuildResult {
+        directory_name,
+        tool,
+        scope,
+        project_path,
+        status: ManagedTargetRebuildStatus::Rebuilt,
+        message: format!("已重建为 {}", sync_method_name(next_method)),
+    })
+}
+
 #[tauri::command]
 pub fn open_local_path(path: String) -> SkillResult<()> {
     let path = PathBuf::from(path);
@@ -3118,6 +3832,153 @@ mod tests {
                 && target.name == "My Agent"
                 && target.source == ToolTargetSource::Custom
         }));
+    }
+
+    #[test]
+    fn discovers_skills_from_registered_custom_tool_targets() {
+        let root = tempdir().unwrap();
+        let tool_root = root.path().join("tool-skills");
+        let skill = tool_root.join("external-skill");
+        fs::create_dir_all(&skill).unwrap();
+        fs::write(
+            skill.join("SKILL.md"),
+            "---\nname: External Skill\ndescription: From tool\n---\n",
+        )
+        .unwrap();
+        let skills_root = root.path().join("workbench-skills");
+        fs::create_dir_all(&skills_root).unwrap();
+        let connection = in_memory_settings_connection();
+        connection
+            .execute(
+                "INSERT INTO custom_tool_targets(key, name, global_skills_dir, icon_path)
+                 VALUES('my-tool', 'My Tool', ?1, '')",
+                [tool_root.to_string_lossy().to_string()],
+            )
+            .unwrap();
+
+        let candidates = discover_external_skills_in(&connection, &skills_root).unwrap();
+        let candidate = candidates
+            .iter()
+            .find(|candidate| candidate.directory_name == "external-skill")
+            .unwrap();
+
+        assert_eq!(candidate.status, ExternalSkillCandidateStatus::New);
+        assert_eq!(candidate.display_name, "External Skill");
+        assert_eq!(candidate.sources[0].tool, "my-tool");
+    }
+
+    #[test]
+    fn marks_same_named_external_candidates_with_different_content_as_conflict() {
+        let root = tempdir().unwrap();
+        let first_root = root.path().join("first-tool");
+        let second_root = root.path().join("second-tool");
+        let first_skill = first_root.join("shared");
+        let second_skill = second_root.join("shared");
+        fs::create_dir_all(&first_skill).unwrap();
+        fs::create_dir_all(&second_skill).unwrap();
+        fs::write(first_skill.join("SKILL.md"), "first").unwrap();
+        fs::write(second_skill.join("SKILL.md"), "second").unwrap();
+        let skills_root = root.path().join("workbench-skills");
+        fs::create_dir_all(&skills_root).unwrap();
+        let connection = in_memory_settings_connection();
+        connection
+            .execute(
+                "INSERT INTO custom_tool_targets(key, name, global_skills_dir, icon_path)
+                 VALUES('first-tool', 'First Tool', ?1, ''), ('second-tool', 'Second Tool', ?2, '')",
+                params![
+                    first_root.to_string_lossy().to_string(),
+                    second_root.to_string_lossy().to_string()
+                ],
+            )
+            .unwrap();
+
+        let candidates = discover_external_skills_in(&connection, &skills_root).unwrap();
+        let candidate = candidates
+            .iter()
+            .find(|candidate| candidate.directory_name == "shared")
+            .unwrap();
+
+        assert_eq!(candidate.status, ExternalSkillCandidateStatus::Conflict);
+        assert_eq!(candidate.sources.len(), 2);
+    }
+
+    #[test]
+    fn root_migration_skips_same_content_and_conflicts_different_content() {
+        let root = tempdir().unwrap();
+        let previous_root = root.path().join("old");
+        let current_root = root.path().join("new");
+        let same_old = previous_root.join("same");
+        let same_new = current_root.join("same");
+        let changed_old = previous_root.join("changed");
+        let changed_new = current_root.join("changed");
+        fs::create_dir_all(&same_old).unwrap();
+        fs::create_dir_all(&same_new).unwrap();
+        fs::create_dir_all(&changed_old).unwrap();
+        fs::create_dir_all(&changed_new).unwrap();
+        fs::write(same_old.join("SKILL.md"), "same").unwrap();
+        fs::write(same_new.join("SKILL.md"), "same").unwrap();
+        fs::write(changed_old.join("SKILL.md"), "old").unwrap();
+        fs::write(changed_new.join("SKILL.md"), "new").unwrap();
+
+        let same = import_skill_directory_allow_skipped(&same_old, &current_root).unwrap();
+        let changed = import_skill_directory_allow_skipped(&changed_old, &current_root).unwrap();
+
+        assert_eq!(same.status, ImportStatus::Skipped);
+        assert_eq!(changed.status, ImportStatus::Conflict);
+        assert_eq!(
+            fs::read_to_string(changed_new.join("SKILL.md")).unwrap(),
+            "new"
+        );
+    }
+
+    #[test]
+    fn rebuild_managed_copy_repoints_to_current_root_content() {
+        let root = tempdir().unwrap();
+        let workbench_root = root.path().join("workbench");
+        let connection = open_database(&workbench_root).unwrap();
+        let previous_root = root.path().join("old");
+        let current_root = root.path().join("new");
+        let previous_skill = previous_root.join("shared");
+        let current_skill = current_root.join("shared");
+        let target = root.path().join("tool").join("shared");
+        fs::create_dir_all(&previous_skill).unwrap();
+        fs::create_dir_all(&current_skill).unwrap();
+        fs::create_dir_all(&target).unwrap();
+        fs::write(previous_skill.join("SKILL.md"), "old").unwrap();
+        fs::write(current_skill.join("SKILL.md"), "new").unwrap();
+        fs::write(target.join("SKILL.md"), "old").unwrap();
+        connection
+            .execute(
+                "INSERT INTO skill_enablements(directory_name, tool, scope, project_name, project_path, link_path, sync_method)
+                 VALUES('shared', 'codex', 'global', '', '', ?1, 'copy')",
+                [target.to_string_lossy().to_string()],
+            )
+            .unwrap();
+        let settings = SkillsSettings {
+            workbench_root: workbench_root.to_string_lossy().to_string(),
+            skills_root: current_root.to_string_lossy().to_string(),
+            previous_skills_root: Some(previous_root.to_string_lossy().to_string()),
+            tool_targets: Vec::new(),
+            close_behavior: CloseBehavior::HideToTray,
+            close_tray_hint_dismissed: false,
+        };
+
+        let candidates = managed_target_rebuild_candidates(&connection, &settings).unwrap();
+        assert_eq!(candidates[0].status, ManagedTargetRebuildStatus::Ready);
+        let result = rebuild_managed_skill_target(
+            &connection,
+            &settings,
+            &ManagedTargetRebuildSelection {
+                directory_name: "shared".to_string(),
+                tool: "codex".to_string(),
+                scope: "global".to_string(),
+                project_path: String::new(),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(result.status, ManagedTargetRebuildStatus::Rebuilt);
+        assert_eq!(fs::read_to_string(target.join("SKILL.md")).unwrap(), "new");
     }
 
     #[test]

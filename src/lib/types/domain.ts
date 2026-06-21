@@ -241,6 +241,7 @@ export interface GitHubCliStatus {
 export interface AppSettings {
   workbenchRoot: string;
   skillsRoot: string;
+  previousSkillsRoot?: string | null;
   closeBehavior: CloseBehavior;
   closeTrayHintDismissed: boolean;
   toolTargets: ToolTarget[];
@@ -257,6 +258,77 @@ export interface SkillsState {
 
 export interface ImportResult {
   directoryName: string;
-  status: "imported" | "conflict" | "invalid";
+  status: "imported" | "skipped" | "conflict" | "invalid";
   message: string;
+}
+
+export type ExternalSkillCandidateStatus = "new" | "same_as_current" | "conflict" | "invalid" | "unreadable";
+
+export interface ExternalSkillCandidateSource {
+  tool: ToolKey;
+  toolName: string;
+  path: string;
+  contentHash?: string | null;
+  readable: boolean;
+  message?: string | null;
+}
+
+export interface ExternalSkillCandidateGroup {
+  directoryName: string;
+  displayName: string;
+  description: string;
+  status: ExternalSkillCandidateStatus;
+  sources: ExternalSkillCandidateSource[];
+}
+
+export interface ExternalSkillImportSelection {
+  directoryName: string;
+  sourcePath: string;
+}
+
+export interface RootSkillMigrationCandidate {
+  directoryName: string;
+  displayName: string;
+  description: string;
+  sourcePath: string;
+  status: ExternalSkillCandidateStatus;
+  message: string;
+}
+
+export type ManagedTargetRebuildStatus = "ready" | "rebuilt" | "skipped" | "conflict" | "invalid";
+
+export interface ManagedTargetRebuildCandidate {
+  directoryName: string;
+  tool: ToolKey;
+  scope: "global" | "project";
+  projectName: string;
+  projectPath: string;
+  linkPath: string;
+  syncMethod: "symlink" | "copy";
+  status: ManagedTargetRebuildStatus;
+  message: string;
+}
+
+export interface ManagedTargetRebuildSelection {
+  directoryName: string;
+  tool: ToolKey;
+  scope: "global" | "project";
+  projectPath: string;
+}
+
+export interface ManagedTargetRebuildResult {
+  directoryName: string;
+  tool: ToolKey;
+  scope: "global" | "project";
+  projectPath: string;
+  status: ManagedTargetRebuildStatus;
+  message: string;
+}
+
+export interface SkillsRootMigrationState {
+  previousSkillsRoot?: string | null;
+  currentSkillsRoot: string;
+  canMigrate: boolean;
+  candidates: RootSkillMigrationCandidate[];
+  managedTargets: ManagedTargetRebuildCandidate[];
 }

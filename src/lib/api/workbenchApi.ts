@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { projects, radarItems, settings, skillCategories, skills } from "./mockData";
-import type { CloseBehavior, CustomToolTargetInput, GitHubCliStatus, GitHubStarsSyncResult, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, SkillInstallProgress, SkillMarketDetail, SkillMarketItem, SkillUpdateResult, SkillUpdateStatus, SkillVersionSource, SkillsState, ToolKey } from "../types/domain";
+import type { CloseBehavior, CustomToolTargetInput, ExternalSkillCandidateGroup, ExternalSkillImportSelection, GitHubCliStatus, GitHubStarsSyncResult, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, ManagedTargetRebuildResult, ManagedTargetRebuildSelection, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, RootSkillMigrationCandidate, SkillInstallProgress, SkillMarketDetail, SkillMarketItem, SkillUpdateResult, SkillUpdateStatus, SkillVersionSource, SkillsRootMigrationState, SkillsState, ToolKey } from "../types/domain";
 
 const delay = async () => new Promise((resolve) => window.setTimeout(resolve, 80));
 const isTauri = "__TAURI_INTERNALS__" in window;
@@ -397,6 +397,59 @@ export const workbenchApi = {
   },
   async setSkillsRoot(path: string) {
     return invokeSkillsState("set_skills_root", { path });
+  },
+  async discoverExternalSkills() {
+    if (!isTauri) {
+      await delay();
+      return [] satisfies ExternalSkillCandidateGroup[];
+    }
+    return invoke<ExternalSkillCandidateGroup[]>("discover_external_skills");
+  },
+  async importExternalSkills(selections: ExternalSkillImportSelection[]) {
+    if (!isTauri) {
+      await delay();
+      return selections.map((selection) => ({
+        directoryName: selection.directoryName,
+        status: "imported",
+        message: "导入成功"
+      })) satisfies ImportResult[];
+    }
+    return invoke<ImportResult[]>("import_external_skills", { selections });
+  },
+  async inspectSkillsRootMigration() {
+    if (!isTauri) {
+      await delay();
+      return {
+        previousSkillsRoot: settings.previousSkillsRoot,
+        currentSkillsRoot: settings.skillsRoot,
+        canMigrate: false,
+        candidates: [] satisfies RootSkillMigrationCandidate[],
+        managedTargets: []
+      } satisfies SkillsRootMigrationState;
+    }
+    return invoke<SkillsRootMigrationState>("inspect_skills_root_migration");
+  },
+  async migrateSkillsRoot(selections: Array<{ directoryName: string }>) {
+    if (!isTauri) {
+      await delay();
+      return selections.map((selection) => ({
+        directoryName: selection.directoryName,
+        status: "skipped",
+        message: "预览模式不执行迁移"
+      })) satisfies ImportResult[];
+    }
+    return invoke<ImportResult[]>("migrate_skills_root", { selections });
+  },
+  async rebuildManagedSkillTargets(selections: ManagedTargetRebuildSelection[]) {
+    if (!isTauri) {
+      await delay();
+      return selections.map((selection) => ({
+        ...selection,
+        status: "skipped",
+        message: "预览模式不执行重建"
+      })) satisfies ManagedTargetRebuildResult[];
+    }
+    return invoke<ManagedTargetRebuildResult[]>("rebuild_managed_skill_targets", { selections });
   },
   async setSkillCategory(directoryName: string, categoryId: string) {
     if (!isTauri) {

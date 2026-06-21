@@ -1504,6 +1504,36 @@ describe("Workbench UI interactions", () => {
     expect(screen.queryByRole("group", { name: "project-codex-second Skill" })).not.toBeInTheDocument();
   });
 
+  it("exposes the external skills discovery action", async () => {
+    const user = userEvent.setup();
+    const onDiscoverExternalSkills = vi.fn();
+    render(
+      <SkillsView
+        skills={skillsForView}
+        selectedSkill={skillsForView[0]}
+        categories={skillCategoriesForView}
+        settings={skillsSettings}
+        projects={[activeProject, secondActiveProject]}
+        onSelect={vi.fn()}
+        onImport={vi.fn()}
+        onRefresh={vi.fn()}
+        onDiscoverExternalSkills={onDiscoverExternalSkills}
+        onManageCategories={vi.fn()}
+        onToggle={vi.fn()}
+        onToggleSkillGlobal={vi.fn()}
+        onToggleProjectAll={vi.fn()}
+        onCategorySkill={vi.fn()}
+        onCreateCategorySkill={vi.fn()}
+        onResolve={vi.fn()}
+        onDeleteSkill={vi.fn()}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: "发现已有工具 Skills" }));
+
+    expect(onDiscoverExternalSkills).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps global tool icons compact and toggles hidden tools from the overflow", async () => {
     const user = userEvent.setup();
     const onToggleSkillGlobal = vi.fn();

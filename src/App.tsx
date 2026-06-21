@@ -59,7 +59,7 @@ import { UpdateBadge } from "./components/UpdateBadge";
 import { ActionGroup, Button, ConfirmDeleteModal, DetailHeader, FilterMore, IconButton, Modal, PageHeader, Panel, SearchInput, StatusBadge, TagList, Toolbar } from "./components/ui";
 import { useAppUpdate } from "./contexts/AppUpdateContext";
 import { workbenchApi } from "./lib/api/workbenchApi";
-import type { AppSettings, CloseBehavior, CustomToolTargetInput, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, Project, ProjectLaunchConfig, ProjectOpenProfile, RadarCategory, RadarDuplicateGroup, RadarItem, Skill, SkillCategory, SkillMarketDetail, SkillMarketItem, SkillUpdateResult, SkillUpdateState, SkillUpdateStatus, SkillVersionSource, ToolKey, ToolTarget, ViewKey } from "./lib/types/domain";
+import type { AppSettings, CloseBehavior, CustomToolTargetInput, ExternalSkillCandidateGroup, ExternalSkillImportSelection, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, ManagedTargetRebuildResult, ManagedTargetRebuildSelection, Project, ProjectLaunchConfig, ProjectOpenProfile, RadarCategory, RadarDuplicateGroup, RadarItem, Skill, SkillCategory, SkillMarketDetail, SkillMarketItem, SkillUpdateResult, SkillUpdateState, SkillUpdateStatus, SkillVersionSource, SkillsRootMigrationState, ToolKey, ToolTarget, ViewKey } from "./lib/types/domain";
 
 const views: Array<{ key: ViewKey; label: string; icon: JSX.Element }> = [
   { key: "projects", label: "项目", icon: <Box size={16} /> },
@@ -164,7 +164,7 @@ function WorkbenchApp() {
   const [loadError, setLoadError] = useState("");
   const [toast, setToast] = useState<ToastState | null>(null);
   const toastTimerRef = useRef<number | null>(null);
-  const [activeDialog, setActiveDialog] = useState<"project" | "project-open-profile" | "project-open-profile-delete" | "custom-tool" | "custom-tool-delete" | "skills-import" | "skill-delete" | "skill-categories" | "radar" | "radar-delete" | "app-update" | "create-directory" | "tray-hint" | null>(null);
+  const [activeDialog, setActiveDialog] = useState<"project" | "project-open-profile" | "project-open-profile-delete" | "custom-tool" | "custom-tool-delete" | "skills-import" | "external-skills" | "skills-root-migration" | "skills-root-change" | "skill-delete" | "skill-categories" | "radar" | "radar-delete" | "app-update" | "create-directory" | "tray-hint" | null>(null);
   const [editingProjectId, setEditingProjectId] = useState("");
   const [editingProjectOpenProfileId, setEditingProjectOpenProfileId] = useState("");
   const [deleteProjectOpenProfileId, setDeleteProjectOpenProfileId] = useState("");
@@ -172,6 +172,10 @@ function WorkbenchApp() {
   const [deleteCustomToolKey, setDeleteCustomToolKey] = useState("");
   const [editingRadarId, setEditingRadarId] = useState("");
   const [importResults, setImportResults] = useState<ImportResult[]>([]);
+  const [externalSkillCandidates, setExternalSkillCandidates] = useState<ExternalSkillCandidateGroup[]>([]);
+  const [migrationState, setMigrationState] = useState<SkillsRootMigrationState | null>(null);
+  const [rebuildResults, setRebuildResults] = useState<ManagedTargetRebuildResult[]>([]);
+  const [pendingSkillsRoot, setPendingSkillsRoot] = useState("");
   const [deleteSkillId, setDeleteSkillId] = useState("");
   const [createDirectoryPath, setCreateDirectoryPath] = useState("");
   const [syncingGithubStars, setSyncingGithubStars] = useState(false);
@@ -357,6 +361,77 @@ function WorkbenchApp() {
       await action();
       await refreshSkills();
       showToast(success);
+    } catch (error) {
+      showToast(String(error));
+    }
+  }
+
+  async function openExternalSkillsDialog() {
+    try {
+      const candidates = await workbenchApi.discoverExternalSkills();
+      setExternalSkillCandidates(candidates);
+      setActiveDialog("external-skills");
+    } catch (error) {
+      showToast(String(error));
+    }
+  }
+
+  async function importExternalSkillSelections(selections: ExternalSkillImportSelection[]) {
+    try {
+      const results = await workbenchApi.importExternalSkills(selections);
+      setImportResults(results);
+      await refreshSkills();
+      setActiveDialog("skills-import");
+      showToast("外部 Skills 导入完成");
+    } catch (error) {
+      showToast(String(error));
+    }
+  }
+
+  async function openSkillsRootMigrationDialog() {
+    try {
+      const state = await workbenchApi.inspectSkillsRootMigration();
+      setMigrationState(state);
+      setRebuildResults([]);
+      setActiveDialog("skills-root-migration");
+    } catch (error) {
+      showToast(String(error));
+    }
+  }
+
+  function requestSkillsRootChange(path: string) {
+    setPendingSkillsRoot(path);
+    setActiveDialog("skills-root-change");
+  }
+
+  async function confirmSkillsRootChange() {
+    if (!pendingSkillsRoot) return;
+    await runSkillAction(() => workbenchApi.setSkillsRoot(pendingSkillsRoot), "Skills 根目录已切换");
+    setPendingSkillsRoot("");
+    setActiveDialog(null);
+    void openSkillsRootMigrationDialog();
+  }
+
+  async function migrateRootSkills(directoryNames: string[]) {
+    try {
+      const results = await workbenchApi.migrateSkillsRoot(directoryNames.map((directoryName) => ({ directoryName })));
+      setImportResults(results);
+      await refreshSkills();
+      setMigrationState(await workbenchApi.inspectSkillsRootMigration());
+      setActiveDialog("skills-import");
+      showToast("根目录迁移完成");
+    } catch (error) {
+      showToast(String(error));
+    }
+  }
+
+  async function rebuildManagedTargets(selections: ManagedTargetRebuildSelection[]) {
+    try {
+      const results = await workbenchApi.rebuildManagedSkillTargets(selections);
+      setRebuildResults(results);
+      await refreshSkills();
+      setMigrationState(await workbenchApi.inspectSkillsRootMigration());
+      showToast("受管目标重建完成");
     } catch (error) {
       showToast(String(error));
     }
@@ -724,6 +799,7 @@ function WorkbenchApp() {
                 showToast(String(error));
               }
             }}
+            onDiscoverExternalSkills={() => void openExternalSkillsDialog()}
             onRefresh={() => void runSkillAction(refreshSkills, "Skills 已重新扫描")}
             marketInstallTask={marketInstallTask}
             onInstallMarketSkill={(item) => void installMarketSkill(item)}
@@ -815,6 +891,7 @@ function WorkbenchApp() {
             error={loadError}
             emptyTitle="暂无 Skills"
             emptyDescription="配置统一根目录并扫描后，可以在这里管理 Skills。"
+            action={<Button onClick={() => void openExternalSkillsDialog()}><Sparkles size={15} />发现已有工具 Skills</Button>}
           />
         )}
         {activeView === "radar" && (
@@ -847,7 +924,8 @@ function WorkbenchApp() {
             theme={theme}
             onOpenUpdateDetails={openUpdateDialog}
             onThemeToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
-            onRootChange={(path) => void runSkillAction(() => workbenchApi.setSkillsRoot(path), "Skills 根目录已更新")}
+            onRootChange={requestSkillsRootChange}
+            onInspectRootMigration={() => void openSkillsRootMigrationDialog()}
             onReorderToolTargets={(toolKeys) => void runSkillAction(() => workbenchApi.setToolTargetOrder(toolKeys), "工具展示顺序已更新")}
             onAddCustomTool={() => {
               setEditingCustomToolKey("");
@@ -944,6 +1022,55 @@ function WorkbenchApp() {
           onClose={() => {
             setActiveDialog(null);
             setImportResults([]);
+          }}
+        />
+      )}
+      {activeDialog === "external-skills" && settings && (
+        <ExternalSkillsDialog
+          candidates={externalSkillCandidates}
+          skillsRoot={settings.skillsRoot}
+          onRefresh={() => void openExternalSkillsDialog()}
+          onImport={(selections) => void importExternalSkillSelections(selections)}
+          onClose={() => {
+            setActiveDialog(null);
+            setExternalSkillCandidates([]);
+          }}
+        />
+      )}
+      {activeDialog === "skills-root-change" && settings && (
+        <Modal
+          title="切换 Skills 根目录"
+          description="切换只改变 Workbench 的统一来源，不会自动迁移旧目录内容或重建工具目录链接。"
+          onClose={() => {
+            setActiveDialog(null);
+            setPendingSkillsRoot("");
+          }}
+          footer={
+            <>
+              <Button onClick={() => {
+                setActiveDialog(null);
+                setPendingSkillsRoot("");
+              }}>取消</Button>
+              <Button variant="primary" onClick={() => void confirmSkillsRootChange()}>切换根目录</Button>
+            </>
+          }
+        >
+          <div className="file-block"><span>当前根目录</span><code>{settings.skillsRoot}</code></div>
+          <div className="file-block"><span>新根目录</span><code>{pendingSkillsRoot}</code></div>
+          <div className="warning">切换后可在设置页检查旧根目录迁移，并按需重建 Workbench 受管的启用目标。</div>
+        </Modal>
+      )}
+      {activeDialog === "skills-root-migration" && migrationState && (
+        <SkillsRootMigrationDialog
+          state={migrationState}
+          rebuildResults={rebuildResults}
+          onMigrate={(directoryNames) => void migrateRootSkills(directoryNames)}
+          onRebuild={(selections) => void rebuildManagedTargets(selections)}
+          onRefresh={() => void openSkillsRootMigrationDialog()}
+          onClose={() => {
+            setActiveDialog(null);
+            setMigrationState(null);
+            setRebuildResults([]);
           }}
         />
       )}
@@ -1062,7 +1189,8 @@ export function ModuleStateView({
   loading,
   error,
   emptyTitle,
-  emptyDescription
+  emptyDescription,
+  action
 }: {
   title: string;
   description: string;
@@ -1070,6 +1198,7 @@ export function ModuleStateView({
   error: string;
   emptyTitle: string;
   emptyDescription: string;
+  action?: ReactNode;
 }) {
   return (
     <section className="view">
@@ -1078,6 +1207,7 @@ export function ModuleStateView({
         <div className="empty-state detail-empty">
           <strong>{loading ? "正在加载" : error ? "加载失败" : emptyTitle}</strong>
           <small>{loading ? "正在读取 Workbench 本地数据。" : error || emptyDescription}</small>
+          {!loading && !error && action}
         </div>
       </Panel>
     </section>
@@ -1948,6 +2078,7 @@ export function SkillsView({
   onRefresh,
   marketInstallTask,
   onInstallMarketSkill,
+  onDiscoverExternalSkills = () => undefined,
   onManageCategories,
   onToggle,
   onToggleSkillGlobal,
@@ -1967,6 +2098,7 @@ export function SkillsView({
   onRefresh: () => void | Promise<void>;
   marketInstallTask?: MarketInstallTask | null;
   onInstallMarketSkill?: (item: SkillMarketItem) => void;
+  onDiscoverExternalSkills?: () => void;
   onManageCategories: () => void;
   onToggle: (tool: ToolKey, enabled: boolean, project?: Project) => void;
   onToggleSkillGlobal: (directoryName: string, tool: ToolKey, enabled: boolean) => void;
@@ -2180,6 +2312,7 @@ export function SkillsView({
           <div className="header-actions">
             <Button onClick={onRefresh}><RefreshCcw size={15} />扫描</Button>
             <Button onClick={onManageCategories}><Settings size={15} />管理分类</Button>
+            <Button onClick={onDiscoverExternalSkills}><Sparkles size={15} />发现已有工具 Skills</Button>
             <div className="import-control">
               <Button variant="primary" onClick={() => setImportMenuOpen(!importMenuOpen)}>
                 <Download size={15} />导入 Skills<ChevronDown size={14} />
@@ -3381,6 +3514,7 @@ export function SettingsView({
   onOpenUpdateDetails,
   onThemeToggle,
   onRootChange,
+  onInspectRootMigration = () => undefined,
   onReorderToolTargets,
   onAddCustomTool,
   onEditCustomTool,
@@ -3396,6 +3530,7 @@ export function SettingsView({
   onOpenUpdateDetails: () => void;
   onThemeToggle: () => void;
   onRootChange: (path: string) => void;
+  onInspectRootMigration?: () => void;
   onReorderToolTargets: (toolKeys: ToolKey[]) => void;
   onAddCustomTool: () => void;
   onEditCustomTool: (tool: ToolTarget) => void;
@@ -3437,7 +3572,13 @@ export function SettingsView({
                 />
                 <IconButton title="打开 Skills 根目录" onClick={() => onOpenPath(settings.skillsRoot)}><FolderOpen size={15} /></IconButton>
               </span>
+              {settings.previousSkillsRoot && settings.previousSkillsRoot !== settings.skillsRoot && (
+                <small>上一个根目录：{settings.previousSkillsRoot}</small>
+              )}
             </div>
+            <span className="settings-row-actions">
+              <Button onClick={onInspectRootMigration}><RefreshCcw size={15} />检查迁移</Button>
+            </span>
           </div>
         </section>
         <section className="settings-panel">
@@ -4012,6 +4153,166 @@ function createLaunchConfig(name: string, workdir: string): ProjectLaunchConfig 
 function createProjectOpenProfileId(name: string) {
   const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   return `open-${slug || Date.now()}`;
+}
+
+function ExternalSkillsDialog({
+  candidates,
+  skillsRoot,
+  onRefresh,
+  onImport,
+  onClose
+}: {
+  candidates: ExternalSkillCandidateGroup[];
+  skillsRoot: string;
+  onRefresh: () => void;
+  onImport: (selections: ExternalSkillImportSelection[]) => void;
+  onClose: () => void;
+}) {
+  const importable = candidates.filter((candidate) => candidate.status === "new");
+  const selections = importable.map((candidate) => ({
+    directoryName: candidate.directoryName,
+    sourcePath: candidate.sources[0]?.path ?? ""
+  })).filter((selection) => selection.sourcePath);
+  return (
+    <Modal
+      title="发现已有工具 Skills"
+      description="从已注册工具的全局目录中只读发现可导入的 Skills"
+      onClose={onClose}
+      large
+      footer={
+        <>
+          <Button onClick={onRefresh}><RefreshCcw size={15} />重新发现</Button>
+          <Button onClick={onClose}>关闭</Button>
+          <Button variant="primary" disabled={selections.length === 0} onClick={() => onImport(selections)}>
+            导入可导入项
+          </Button>
+        </>
+      }
+    >
+      <div className="warning">发现过程不会创建目录、复制文件或启用 Skill；导入后默认只进入统一根目录。</div>
+      <div className="file-block"><span>当前统一根目录</span><code>{skillsRoot}</code></div>
+      {candidates.length === 0 ? (
+        <div className="notice compact-empty">未发现可导入的工具目录 Skills。</div>
+      ) : (
+        <div className="import-list">
+          {candidates.map((candidate) => (
+            <div className={`import-result ${candidateStatusImportClass(candidate.status)}`} key={candidate.directoryName}>
+              <span>
+                <strong>{candidate.displayName}</strong>
+                <small>{candidate.directoryName} · {externalCandidateStatusLabel(candidate.status)}</small>
+                {candidate.sources.map((source) => (
+                  <small key={`${candidate.directoryName}-${source.tool}-${source.path}`}>{source.toolName}: {source.path}</small>
+                ))}
+              </span>
+              <i>{externalCandidateStatusLabel(candidate.status)}</i>
+            </div>
+          ))}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function SkillsRootMigrationDialog({
+  state,
+  rebuildResults,
+  onMigrate,
+  onRebuild,
+  onRefresh,
+  onClose
+}: {
+  state: SkillsRootMigrationState;
+  rebuildResults: ManagedTargetRebuildResult[];
+  onMigrate: (directoryNames: string[]) => void;
+  onRebuild: (selections: ManagedTargetRebuildSelection[]) => void;
+  onRefresh: () => void;
+  onClose: () => void;
+}) {
+  const migrateTargets = state.candidates
+    .filter((candidate) => candidate.status === "new")
+    .map((candidate) => candidate.directoryName);
+  const rebuildTargets = state.managedTargets
+    .filter((target) => target.status === "ready")
+    .map((target) => ({
+      directoryName: target.directoryName,
+      tool: target.tool,
+      scope: target.scope,
+      projectPath: target.projectPath
+    }));
+  return (
+    <Modal
+      title="根目录迁移"
+      description="从上一个统一根目录迁移 Skills，并重建 Workbench 受管启用目标"
+      onClose={onClose}
+      large
+      footer={
+        <>
+          <Button onClick={onRefresh}><RefreshCcw size={15} />重新检查</Button>
+          <Button onClick={onClose}>关闭</Button>
+          <Button disabled={migrateTargets.length === 0} onClick={() => onMigrate(migrateTargets)}>迁移可迁移项</Button>
+          <Button variant="primary" disabled={rebuildTargets.length === 0} onClick={() => onRebuild(rebuildTargets)}>重建受管目标</Button>
+        </>
+      }
+    >
+      <div className="warning">迁移和重建都需要用户显式执行；旧根目录不会被删除，未受管的工具目录内容不会被覆盖。</div>
+      <div className="file-block"><span>上一个根目录</span><code>{state.previousSkillsRoot || "无"}</code></div>
+      <div className="file-block"><span>当前根目录</span><code>{state.currentSkillsRoot}</code></div>
+      <div className="import-summary">
+        <strong>可迁移 {migrateTargets.length} 个 · 可重建 {rebuildTargets.length} 个</strong>
+        <span>同名冲突和已修改目标会保留原状。</span>
+      </div>
+      <div className="import-list">
+        {state.candidates.map((candidate) => (
+          <div className={`import-result ${candidateStatusImportClass(candidate.status)}`} key={`migration-${candidate.directoryName}`}>
+            <span><strong>{candidate.displayName}</strong><small>{candidate.directoryName} · {candidate.message}</small><small>{candidate.sourcePath}</small></span>
+            <i>{externalCandidateStatusLabel(candidate.status)}</i>
+          </div>
+        ))}
+        {state.managedTargets.map((target) => (
+          <div className={`import-result ${managedTargetStatusImportClass(target.status)}`} key={`target-${target.directoryName}-${target.tool}-${target.scope}-${target.projectPath}`}>
+            <span><strong>{target.directoryName}</strong><small>{target.tool} · {target.scope} · {target.message}</small><small>{target.linkPath}</small></span>
+            <i>{managedTargetStatusLabel(target.status)}</i>
+          </div>
+        ))}
+        {rebuildResults.map((result) => (
+          <div className={`import-result ${managedTargetStatusImportClass(result.status)}`} key={`result-${result.directoryName}-${result.tool}-${result.scope}-${result.projectPath}`}>
+            <span><strong>{result.directoryName}</strong><small>{result.tool} · {result.message}</small></span>
+            <i>{managedTargetStatusLabel(result.status)}</i>
+          </div>
+        ))}
+      </div>
+    </Modal>
+  );
+}
+
+function candidateStatusImportClass(status: ExternalSkillCandidateGroup["status"]) {
+  if (status === "new") return "imported";
+  if (status === "same_as_current") return "skipped";
+  if (status === "conflict") return "conflict";
+  return "invalid";
+}
+
+function externalCandidateStatusLabel(status: ExternalSkillCandidateGroup["status"]) {
+  if (status === "new") return "可导入";
+  if (status === "same_as_current") return "已存在相同内容";
+  if (status === "conflict") return "同名冲突";
+  if (status === "unreadable") return "不可读";
+  return "无效";
+}
+
+function managedTargetStatusImportClass(status: ManagedTargetRebuildResult["status"]) {
+  if (status === "ready" || status === "rebuilt") return "imported";
+  if (status === "skipped") return "skipped";
+  if (status === "conflict") return "conflict";
+  return "invalid";
+}
+
+function managedTargetStatusLabel(status: ManagedTargetRebuildResult["status"]) {
+  if (status === "ready") return "可重建";
+  if (status === "rebuilt") return "已重建";
+  if (status === "skipped") return "已跳过";
+  if (status === "conflict") return "冲突";
+  return "无效";
 }
 
 function SkillsImportDialog({

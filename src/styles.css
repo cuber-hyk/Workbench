@@ -483,6 +483,7 @@ code { font-family: Consolas, monospace; }
 .import-result span { display: grid; gap: 2px; }
 .import-result small { color: var(--muted); }
 .import-result i { color: var(--accent); font-style: normal; }
+.import-result.skipped i { color: var(--muted); }
 .import-result.conflict i { color: #a96712; }
 .import-result.invalid i { color: var(--danger-text); }
 .import-list i { color: var(--accent); font-style: normal; }
