@@ -6,10 +6,9 @@ use std::time::{Duration, Instant};
 
 use tempfile::tempdir;
 
-use super::{
-    directory_content_hash, error_message, market::github_source, SkillResult,
-    SKILLS_CLI_TIMEOUT_SECONDS,
-};
+use super::{directory_content_hash, error_message, market::github_source, SkillResult};
+
+const SKILLS_CLI_TIMEOUT_SECONDS: u64 = 180;
 
 pub(super) fn skills_cli_command_name(command: &str) -> String {
     if cfg!(windows) && matches!(command, "npm" | "npx") {

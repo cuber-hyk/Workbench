@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 pub(super) type SkillResult<T> = Result<T, String>;
 pub(super) const UNCATEGORIZED_CATEGORY_ID: &str = "uncategorized";
 pub(super) const UNCATEGORIZED_CATEGORY_NAME: &str = "未分类";
-pub(super) const SKILLS_CLI_TIMEOUT_SECONDS: u64 = 180;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -98,122 +97,6 @@ pub enum CloseBehavior {
     Exit,
     HideToTray,
 }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct ToolTargetDefinition {
-    pub(super) key: &'static str,
-    pub(super) name: &'static str,
-    pub(super) global_path: &'static [&'static str],
-    pub(super) project_path: Option<&'static [&'static str]>,
-}
-
-pub(super) const TOOL_TARGET_ORDER_SETTING: &str = "tool_target_order";
-pub(super) const CLOSE_BEHAVIOR_SETTING: &str = "close_behavior";
-pub(super) const CLOSE_TRAY_HINT_DISMISSED_SETTING: &str = "close_tray_hint_dismissed";
-pub(super) const TOOL_TARGET_DEFINITIONS: &[ToolTargetDefinition] = &[
-    ToolTargetDefinition {
-        key: "codex",
-        name: "Codex",
-        global_path: &[".codex", "skills"],
-        project_path: Some(&[".codex", "skills"]),
-    },
-    ToolTargetDefinition {
-        key: "claude",
-        name: "Claude Code",
-        global_path: &[".claude", "skills"],
-        project_path: Some(&[".claude", "skills"]),
-    },
-    ToolTargetDefinition {
-        key: "opencode",
-        name: "OpenCode",
-        global_path: &[".config", "opencode", "skills"],
-        project_path: Some(&[".opencode", "skills"]),
-    },
-    ToolTargetDefinition {
-        key: "deveco",
-        name: "DevEco Code",
-        global_path: &[".config", "deveco", "skills"],
-        project_path: None,
-    },
-    ToolTargetDefinition {
-        key: "hermes",
-        name: "Hermes",
-        global_path: &[".hermes", "skills"],
-        project_path: None,
-    },
-    ToolTargetDefinition {
-        key: "kimi",
-        name: "Kimi Code",
-        global_path: &[".kimi-code", "skills"],
-        project_path: None,
-    },
-    ToolTargetDefinition {
-        key: "pi",
-        name: "Pi Agent",
-        global_path: &[".pi", "agent", "skills"],
-        project_path: None,
-    },
-    ToolTargetDefinition {
-        key: "gemini",
-        name: "Gemini CLI",
-        global_path: &[".gemini", "skills"],
-        project_path: None,
-    },
-    ToolTargetDefinition {
-        key: "qwen",
-        name: "Qwen Code",
-        global_path: &[".qwen", "skills"],
-        project_path: None,
-    },
-    ToolTargetDefinition {
-        key: "goose",
-        name: "Goose",
-        global_path: &[".agents", "skills"],
-        project_path: None,
-    },
-    ToolTargetDefinition {
-        key: "kilo",
-        name: "Kilo Code",
-        global_path: &[".kilo", "skills"],
-        project_path: None,
-    },
-    ToolTargetDefinition {
-        key: "cline",
-        name: "Cline",
-        global_path: &[".cline", "skills"],
-        project_path: None,
-    },
-    ToolTargetDefinition {
-        key: "roo",
-        name: "Roo Code",
-        global_path: &[".roo", "skills"],
-        project_path: None,
-    },
-    ToolTargetDefinition {
-        key: "factory",
-        name: "Factory Droid",
-        global_path: &[".factory", "skills"],
-        project_path: None,
-    },
-    ToolTargetDefinition {
-        key: "amp",
-        name: "Amp",
-        global_path: &[".config", "agents", "skills"],
-        project_path: None,
-    },
-    ToolTargetDefinition {
-        key: "kiro",
-        name: "Kiro CLI",
-        global_path: &[".kiro", "skills"],
-        project_path: None,
-    },
-    ToolTargetDefinition {
-        key: "junie",
-        name: "Junie CLI",
-        global_path: &[".junie", "skills"],
-        project_path: None,
-    },
-];
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -358,17 +241,6 @@ pub enum ManagedTargetRebuildStatus {
     Invalid,
 }
 
-#[derive(Debug, Clone)]
-pub(super) struct ManagedTargetRecord {
-    pub(super) directory_name: String,
-    pub(super) tool: String,
-    pub(super) scope: String,
-    pub(super) project_name: String,
-    pub(super) project_path: String,
-    pub(super) link_path: String,
-    pub(super) sync_method: SyncMethod,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SkillMarketItem {
@@ -438,14 +310,6 @@ pub struct SkillUpdateResult {
     pub message: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct SkillInstallProgress {
-    pub(super) source: String,
-    pub(super) skill_id: String,
-    pub(super) progress: u8,
-}
-
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum SyncMethod {
@@ -460,10 +324,4 @@ pub enum GlobalStatus {
     Managed,
     External,
     Conflict,
-}
-
-#[derive(Debug, Deserialize)]
-pub(super) struct Frontmatter {
-    pub(super) name: Option<String>,
-    pub(super) description: Option<String>,
 }

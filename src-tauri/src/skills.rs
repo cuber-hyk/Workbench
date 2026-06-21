@@ -1,210 +1,39 @@
 use rusqlite::{params, Connection};
-use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::hash::{Hash, Hasher};
-use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_dialog::DialogExt;
-use tempfile::tempdir;
-use walkdir::WalkDir;
-use zip::ZipArchive;
 
+mod categories;
 mod cli;
+mod custom_tools;
 mod db;
 mod filesystem;
+mod importer;
 mod market;
+mod migration;
 mod tool_targets;
 mod types;
 
+use self::categories::*;
 use self::cli::*;
+use self::custom_tools::*;
 use self::db::*;
 use self::filesystem::*;
+use self::importer::*;
 use self::market::*;
+use self::migration::*;
 use self::tool_targets::*;
 use self::types::*;
 
-pub fn parse_skill_markdown(markdown: &str, fallback: &str) -> SkillMetadata {
-    let normalized = markdown.replace("\r\n", "\n");
-    let frontmatter = normalized
-        .strip_prefix("---\n")
-        .and_then(|body| body.split_once("\n---"))
-        .and_then(|(yaml, _)| serde_yaml::from_str::<Frontmatter>(yaml).ok());
-
-    SkillMetadata {
-        name: frontmatter
-            .as_ref()
-            .and_then(|value| value.name.clone())
-            .filter(|value| !value.trim().is_empty())
-            .unwrap_or_else(|| fallback.to_string()),
-        description: frontmatter
-            .and_then(|value| value.description)
-            .unwrap_or_default(),
-    }
-}
-
-pub fn scan_skill_directories(root: &Path) -> SkillResult<Vec<SkillRecord>> {
-    if !root.exists() {
-        return Ok(Vec::new());
-    }
-
-    let mut skills = Vec::new();
-    for entry in fs::read_dir(root).map_err(error_message)? {
-        let entry = entry.map_err(error_message)?;
-        let path = entry.path();
-        if !path.is_dir() {
-            continue;
-        }
-
-        let skill_path = path.join("SKILL.md");
-        if !skill_path.is_file() {
-            continue;
-        }
-
-        let directory_name = entry.file_name().to_string_lossy().to_string();
-        let markdown = fs::read_to_string(&skill_path).map_err(error_message)?;
-        let metadata = parse_skill_markdown(&markdown, &directory_name);
-        skills.push(SkillRecord {
-            id: directory_name.clone(),
-            directory_name,
-            name: metadata.name,
-            description: metadata.description,
-            category_id: UNCATEGORIZED_CATEGORY_ID.to_string(),
-            category: UNCATEGORIZED_CATEGORY_NAME.to_string(),
-            skill_path: skill_path.to_string_lossy().to_string(),
-            enabled_tools: Vec::new(),
-            enabled_tool_methods: Vec::new(),
-            global_tool_states: Vec::new(),
-            enabled_projects: Vec::new(),
-        });
-    }
-    skills.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
-    Ok(skills)
-}
-
-pub fn import_skill_directory(source: &Path, target_root: &Path) -> SkillResult<ImportResult> {
-    let directory_name = source
-        .file_name()
-        .ok_or_else(|| "导入来源没有目录名称".to_string())?
-        .to_string_lossy()
-        .to_string();
-
-    if !source.join("SKILL.md").is_file() {
-        return Ok(ImportResult {
-            directory_name,
-            status: ImportStatus::Invalid,
-            message: "目录中不存在 SKILL.md".to_string(),
-        });
-    }
-    validate_directory_name(&directory_name)?;
-
-    fs::create_dir_all(target_root).map_err(error_message)?;
-    let target = target_root.join(&directory_name);
-    if target.exists() || target.symlink_metadata().is_ok() {
-        return Ok(ImportResult {
-            directory_name,
-            status: ImportStatus::Conflict,
-            message: "统一根目录中已存在同名 Skill".to_string(),
-        });
-    }
-
-    let temporary = tempfile::tempdir_in(target_root).map_err(error_message)?;
-    let staged = temporary.path().join(&directory_name);
-    copy_directory(source, &staged)?;
-    fs::rename(staged, &target).map_err(error_message)?;
-    Ok(ImportResult {
-        directory_name,
-        status: ImportStatus::Imported,
-        message: "导入成功".to_string(),
-    })
-}
-
-fn skill_directory_metadata(source: &Path, fallback: &str) -> SkillResult<SkillMetadata> {
-    let markdown = fs::read_to_string(source.join("SKILL.md")).map_err(error_message)?;
-    Ok(parse_skill_markdown(&markdown, fallback))
-}
-
-fn import_skill_directory_allow_skipped(
-    source: &Path,
-    target_root: &Path,
-) -> SkillResult<ImportResult> {
-    let directory_name = source
-        .file_name()
-        .ok_or_else(|| "导入来源没有目录名称".to_string())?
-        .to_string_lossy()
-        .to_string();
-
-    if !source.join("SKILL.md").is_file() {
-        return Ok(ImportResult {
-            directory_name,
-            status: ImportStatus::Invalid,
-            message: "目录中不存在 SKILL.md".to_string(),
-        });
-    }
-    validate_directory_name(&directory_name)?;
-    fs::create_dir_all(target_root).map_err(error_message)?;
-    let target = target_root.join(&directory_name);
-    if target.exists() || target.symlink_metadata().is_ok() {
-        if target.is_dir() && directories_match(source, &target)? {
-            return Ok(ImportResult {
-                directory_name,
-                status: ImportStatus::Skipped,
-                message: "统一根目录中已存在相同内容".to_string(),
-            });
-        }
-        return Ok(ImportResult {
-            directory_name,
-            status: ImportStatus::Conflict,
-            message: "统一根目录中已存在同名 Skill".to_string(),
-        });
-    }
-
-    import_skill_directory(source, target_root)
-}
-
-fn candidate_status_for_source(
-    source: &Path,
-    target_root: &Path,
-) -> SkillResult<ExternalSkillCandidateStatus> {
-    let directory_name = source
-        .file_name()
-        .ok_or_else(|| "Skill 目录名称无效".to_string())?
-        .to_string_lossy()
-        .to_string();
-    if validate_directory_name(&directory_name).is_err() {
-        return Ok(ExternalSkillCandidateStatus::Invalid);
-    }
-    let target = target_root.join(&directory_name);
-    if target.exists() || target.symlink_metadata().is_ok() {
-        if target.is_dir() && directories_match(source, &target)? {
-            Ok(ExternalSkillCandidateStatus::SameAsCurrent)
-        } else {
-            Ok(ExternalSkillCandidateStatus::Conflict)
-        }
-    } else {
-        Ok(ExternalSkillCandidateStatus::New)
-    }
-}
-
-fn scan_one_level_skill_candidates(root: &Path) -> SkillResult<Vec<PathBuf>> {
-    if !root.exists() {
-        return Ok(Vec::new());
-    }
-    if !root.is_dir() {
-        return Ok(Vec::new());
-    }
-    let mut candidates = Vec::new();
-    for entry in fs::read_dir(root).map_err(error_message)? {
-        let entry = entry.map_err(error_message)?;
-        let path = entry.path();
-        if path.is_dir() && path.join("SKILL.md").is_file() {
-            candidates.push(path);
-        }
-    }
-    candidates.sort();
-    Ok(candidates)
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SkillInstallProgress {
+    source: String,
+    skill_id: String,
+    progress: u8,
 }
 
 fn current_settings() -> SkillResult<SkillsSettings> {
@@ -344,51 +173,6 @@ fn enrich_skills(
         }
     }
     Ok(skills)
-}
-
-fn list_skill_categories(connection: &Connection) -> SkillResult<Vec<SkillCategory>> {
-    let mut statement = connection
-        .prepare(
-            "SELECT skill_categories.id,
-                    skill_categories.name,
-                    skill_categories.sort_order,
-                    COUNT(skill_metadata.directory_name) AS skill_count
-             FROM skill_categories
-             LEFT JOIN skill_metadata ON skill_metadata.category_id = skill_categories.id
-             GROUP BY skill_categories.id, skill_categories.name, skill_categories.sort_order
-             ORDER BY skill_categories.sort_order, skill_categories.name",
-        )
-        .map_err(error_message)?;
-    let categories = statement
-        .query_map([], |row| {
-            Ok(SkillCategory {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                sort_order: row.get(2)?,
-                skill_count: row.get(3)?,
-            })
-        })
-        .map_err(error_message)?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(error_message)?;
-    Ok(categories)
-}
-
-fn require_category(connection: &Connection, category_id: &str) -> SkillResult<SkillCategory> {
-    connection
-        .query_row(
-            "SELECT id, name, sort_order FROM skill_categories WHERE id = ?1",
-            [category_id],
-            |row| {
-                Ok(SkillCategory {
-                    id: row.get(0)?,
-                    name: row.get(1)?,
-                    sort_order: row.get(2)?,
-                    skill_count: 0,
-                })
-            },
-        )
-        .map_err(|_| "分类不存在".to_string())
 }
 
 fn save_global_enablement(
@@ -727,328 +511,41 @@ pub fn set_close_tray_hint_dismissed(dismissed: bool) -> SkillResult<SkillsState
     get_skills_state()
 }
 
-fn validate_custom_tool_key(key: &str) -> SkillResult<String> {
-    let trimmed = key.trim();
-    if trimmed.len() < 2 || trimmed.len() > 40 {
-        return Err("工具 Key 长度需为 2 到 40 个字符".to_string());
-    }
-    if builtin_tool_target_definition(trimmed).is_ok() {
-        return Err("工具 Key 已被内置工具占用".to_string());
-    }
-    let first = trimmed
-        .chars()
-        .next()
-        .ok_or_else(|| "工具 Key 不能为空".to_string())?;
-    if !first.is_ascii_lowercase() && !first.is_ascii_digit() {
-        return Err("工具 Key 必须以小写字母或数字开头".to_string());
-    }
-    if !trimmed.chars().all(|value| {
-        value.is_ascii_lowercase() || value.is_ascii_digit() || value == '-' || value == '_'
-    }) {
-        return Err("工具 Key 仅支持小写字母、数字、短横线和下划线".to_string());
-    }
-    Ok(trimmed.to_string())
-}
-
-fn validate_custom_tool_name(name: &str) -> SkillResult<String> {
-    let trimmed = name.trim();
-    if trimmed.is_empty() {
-        return Err("工具名称不能为空".to_string());
-    }
-    Ok(trimmed.to_string())
-}
-
-fn normalized_tool_name(name: &str) -> String {
-    name.trim().to_lowercase()
-}
-
-fn validate_custom_tool_name_unique(
-    connection: &Connection,
-    name: &str,
-    current_key: Option<&str>,
-) -> SkillResult<()> {
-    let normalized = normalized_tool_name(name);
-    if TOOL_TARGET_DEFINITIONS
-        .iter()
-        .any(|definition| normalized_tool_name(definition.name) == normalized)
-    {
-        return Err("工具名称已存在".to_string());
-    }
-    let mut statement = connection
-        .prepare("SELECT key, name FROM custom_tool_targets")
-        .map_err(error_message)?;
-    let rows = statement
-        .query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        })
-        .map_err(error_message)?;
-    for row in rows {
-        let (key, existing_name) = row.map_err(error_message)?;
-        if Some(key.as_str()) != current_key && normalized_tool_name(&existing_name) == normalized {
-            return Err("工具名称已存在".to_string());
-        }
-    }
-    Ok(())
-}
-
-fn custom_tool_key_base(name: &str) -> String {
-    let mut base = String::new();
-    let mut previous_dash = false;
-    for character in name.trim().chars() {
-        if character.is_ascii_alphanumeric() {
-            base.push(character.to_ascii_lowercase());
-            previous_dash = false;
-        } else if !previous_dash && !base.is_empty() {
-            base.push('-');
-            previous_dash = true;
-        }
-    }
-    let trimmed = base
-        .trim_matches('-')
-        .chars()
-        .take(32)
-        .collect::<String>()
-        .trim_matches('-')
-        .to_string();
-    if trimmed.is_empty() {
-        "custom-tool".to_string()
-    } else {
-        trimmed
-    }
-}
-
-fn generate_custom_tool_key(connection: &Connection, name: &str) -> SkillResult<String> {
-    let base = custom_tool_key_base(name);
-    let existing = available_tool_target_keys(connection)?;
-    if !existing.contains(&base) && validate_custom_tool_key(&base).is_ok() {
-        return Ok(base);
-    }
-    for index in 2..=999 {
-        let candidate = format!("{base}-{index}");
-        if !existing.contains(&candidate) && validate_custom_tool_key(&candidate).is_ok() {
-            return Ok(candidate);
-        }
-    }
-    Err("无法生成自定义工具标识".to_string())
-}
-
-fn existing_custom_tool_key(connection: &Connection, key: &str) -> SkillResult<()> {
-    connection
-        .query_row(
-            "SELECT key FROM custom_tool_targets WHERE key = ?1",
-            [key],
-            |_| Ok(()),
-        )
-        .map_err(|_| "自定义工具不存在".to_string())
-}
-
-fn validate_custom_tool_dir(path: &str) -> SkillResult<String> {
-    let trimmed = path.trim();
-    if trimmed.is_empty() {
-        return Err("全局 Skills 目录不能为空".to_string());
-    }
-    let directory = PathBuf::from(trimmed);
-    if !directory.is_absolute() {
-        return Err("全局 Skills 目录必须是绝对路径".to_string());
-    }
-    Ok(directory.to_string_lossy().to_string())
-}
-
-fn copy_custom_tool_icon(workbench_root: &Path, key: &str, source: &str) -> SkillResult<String> {
-    let source_path = PathBuf::from(source.trim());
-    if !source_path.is_file() {
-        return Err("图标文件不存在".to_string());
-    }
-    let extension = source_path
-        .extension()
-        .and_then(|value| value.to_str())
-        .map(|value| value.to_ascii_lowercase())
-        .ok_or_else(|| "图标文件缺少扩展名".to_string())?;
-    if !matches!(
-        extension.as_str(),
-        "png" | "jpg" | "jpeg" | "webp" | "ico" | "svg"
-    ) {
-        return Err("图标仅支持 png、jpg、webp、ico 或 svg".to_string());
-    }
-    let icon_dir = workbench_root.join("tool-icons");
-    fs::create_dir_all(&icon_dir).map_err(error_message)?;
-    let target = icon_dir.join(format!("{key}.{extension}"));
-    if source_path != target {
-        fs::copy(&source_path, &target).map_err(error_message)?;
-    }
-    Ok(target.to_string_lossy().to_string())
-}
-
 #[tauri::command]
 pub async fn select_tool_icon_source<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
 ) -> SkillResult<Option<String>> {
-    Ok(app
-        .dialog()
-        .file()
-        .add_filter("Image", &["png", "jpg", "jpeg", "webp", "ico", "svg"])
-        .blocking_pick_file()
-        .map(|path| path.to_string()))
+    pick_tool_icon_source(app)
 }
 
 #[tauri::command]
 pub fn save_custom_tool_target(input: CustomToolTargetInput) -> SkillResult<SkillsState> {
-    let name = validate_custom_tool_name(&input.name)?;
-    let global_skills_dir = validate_custom_tool_dir(&input.global_skills_dir)?;
-    let workbench_root = default_workbench_root()?;
-    let connection = open_database(&workbench_root)?;
-    let existing_key = input
-        .key
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(validate_custom_tool_key)
-        .transpose()?;
-    if let Some(key) = existing_key.as_deref() {
-        existing_custom_tool_key(&connection, key)?;
-    }
-    validate_custom_tool_name_unique(&connection, &name, existing_key.as_deref())?;
-    let key = match existing_key {
-        Some(key) => key,
-        None => generate_custom_tool_key(&connection, &name)?,
-    };
-    let icon_path = match input
-        .icon_source_path
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        Some(source) => copy_custom_tool_icon(&workbench_root, &key, source)?,
-        None => input.icon_path.unwrap_or_default().trim().to_string(),
-    };
-
-    connection
-        .execute(
-            "INSERT INTO custom_tool_targets(key, name, global_skills_dir, icon_path)
-             VALUES(?1, ?2, ?3, ?4)
-             ON CONFLICT(key) DO UPDATE SET
-                name = excluded.name,
-                global_skills_dir = excluded.global_skills_dir,
-                icon_path = excluded.icon_path,
-                updated_at = CURRENT_TIMESTAMP",
-            params![key, name, global_skills_dir, icon_path],
-        )
-        .map_err(error_message)?;
-    get_skills_state()
+    save_custom_tool_target_state(input)
 }
 
 #[tauri::command]
 pub fn delete_custom_tool_target(key: String) -> SkillResult<SkillsState> {
-    let key = validate_custom_tool_key(&key)?;
-    let workbench_root = default_workbench_root()?;
-    let connection = open_database(&workbench_root)?;
-    let icon_path = connection
-        .query_row(
-            "SELECT icon_path FROM custom_tool_targets WHERE key = ?1",
-            [&key],
-            |row| row.get::<_, String>(0),
-        )
-        .map_err(|_| "自定义工具不存在".to_string())?;
-
-    connection
-        .execute("DELETE FROM skill_enablements WHERE tool = ?1", [&key])
-        .map_err(error_message)?;
-    connection
-        .execute("DELETE FROM custom_tool_targets WHERE key = ?1", [&key])
-        .map_err(error_message)?;
-
-    let order = configured_tool_target_order(&connection)?;
-    let order_json = serde_json::to_string(&order).map_err(error_message)?;
-    connection
-        .execute(
-            "INSERT INTO app_settings(key, value) VALUES(?1, ?2)
-             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            params![TOOL_TARGET_ORDER_SETTING, order_json],
-        )
-        .map_err(error_message)?;
-
-    let icon = PathBuf::from(icon_path);
-    let managed_icon_dir = workbench_root.join("tool-icons");
-    if icon.starts_with(&managed_icon_dir) && icon.is_file() {
-        let _ = fs::remove_file(icon);
-    }
-
-    get_skills_state()
+    delete_custom_tool_target_state(key)
 }
 
 #[tauri::command]
 pub fn set_tool_target_order(tool_keys: Vec<String>) -> SkillResult<SkillsState> {
-    let workbench_root = default_workbench_root()?;
-    let connection = open_database(&workbench_root)?;
-    let order = normalized_tool_target_order(&connection, tool_keys)?;
-    let order_json = serde_json::to_string(&order).map_err(error_message)?;
-    connection
-        .execute(
-            "INSERT INTO app_settings(key, value) VALUES(?1, ?2)
-             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            params![TOOL_TARGET_ORDER_SETTING, order_json],
-        )
-        .map_err(error_message)?;
-    get_skills_state()
-}
-
-fn normalized_tool_target_order(
-    connection: &Connection,
-    tool_keys: Vec<String>,
-) -> SkillResult<Vec<String>> {
-    let targets = tool_targets(connection)?;
-    let allowed: HashSet<String> = targets.iter().map(|target| target.key.clone()).collect();
-    let mut seen = HashSet::new();
-    let mut order = Vec::new();
-    for key in tool_keys {
-        if !allowed.contains(&key) {
-            return Err(format!("不支持的工具: {key}"));
-        }
-        if seen.insert(key.clone()) {
-            order.push(key);
-        }
-    }
-    for target in targets {
-        if seen.insert(target.key.clone()) {
-            order.push(target.key);
-        }
-    }
-    Ok(order)
+    set_tool_target_order_state(tool_keys)
 }
 
 #[tauri::command]
 pub fn set_skill_category(directory_name: String, category_id: String) -> SkillResult<SkillsState> {
-    validate_directory_name(&directory_name)?;
-    let workbench_root = default_workbench_root()?;
-    let connection = open_database(&workbench_root)?;
-    require_category(&connection, &category_id)?;
-    connection
-        .execute(
-            "INSERT INTO skill_metadata(directory_name, category_id) VALUES(?1, ?2)
-             ON CONFLICT(directory_name) DO UPDATE SET category_id = excluded.category_id",
-            params![directory_name, category_id],
-        )
-        .map_err(error_message)?;
-    get_skills_state()
+    set_skill_category_state(directory_name, category_id)
 }
 
 #[tauri::command]
 pub fn create_skill_category(name: String) -> SkillResult<SkillsState> {
-    let workbench_root = default_workbench_root()?;
-    let connection = open_database(&workbench_root)?;
-    create_skill_category_in(&connection, &name)?;
-    get_skills_state()
+    create_skill_category_state(name)
 }
 
 #[tauri::command]
 pub fn rename_skill_category(category_id: String, name: String) -> SkillResult<SkillsState> {
-    if category_id == UNCATEGORIZED_CATEGORY_ID {
-        return Err("未分类不能重命名".to_string());
-    }
-    let workbench_root = default_workbench_root()?;
-    let connection = open_database(&workbench_root)?;
-    rename_skill_category_in(&connection, &category_id, &name)?;
-    get_skills_state()
+    rename_skill_category_state(category_id, name)
 }
 
 #[tauri::command]
@@ -1056,10 +553,7 @@ pub fn delete_skill_category(
     category_id: String,
     replacement_category_id: String,
 ) -> SkillResult<SkillsState> {
-    let workbench_root = default_workbench_root()?;
-    let connection = open_database(&workbench_root)?;
-    delete_skill_category_in(&connection, &category_id, &replacement_category_id)?;
-    get_skills_state()
+    delete_skill_category_state(category_id, replacement_category_id)
 }
 
 #[tauri::command]
@@ -1067,386 +561,48 @@ pub fn merge_skill_category(
     source_category_id: String,
     target_category_id: String,
 ) -> SkillResult<SkillsState> {
-    delete_skill_category(source_category_id, target_category_id)
-}
-
-fn create_skill_category_in(connection: &Connection, name: &str) -> SkillResult<String> {
-    let name = validate_category_name(name)?;
-    let id = category_id_for_name(&name);
-    connection
-        .execute(
-            "INSERT INTO skill_categories(id, name, sort_order)
-             VALUES(?1, ?2, COALESCE((SELECT MAX(sort_order) + 1 FROM skill_categories), 0))",
-            params![id, name],
-        )
-        .map_err(|error| {
-            if is_unique_constraint_error(&error) {
-                "分类名称已存在".to_string()
-            } else {
-                error_message(error)
-            }
-        })?;
-    Ok(id)
-}
-
-fn rename_skill_category_in(
-    connection: &Connection,
-    category_id: &str,
-    name: &str,
-) -> SkillResult<()> {
-    if category_id == UNCATEGORIZED_CATEGORY_ID {
-        return Err("未分类不能重命名".to_string());
-    }
-    let name = validate_category_name(name)?;
-    require_category(connection, category_id)?;
-    connection
-        .execute(
-            "UPDATE skill_categories SET name = ?1, updated_at = CURRENT_TIMESTAMP WHERE id = ?2",
-            params![name, category_id],
-        )
-        .map_err(|error| {
-            if is_unique_constraint_error(&error) {
-                "分类名称已存在".to_string()
-            } else {
-                error_message(error)
-            }
-        })?;
-    Ok(())
-}
-
-fn delete_skill_category_in(
-    connection: &Connection,
-    category_id: &str,
-    replacement_category_id: &str,
-) -> SkillResult<()> {
-    if category_id == UNCATEGORIZED_CATEGORY_ID {
-        return Err("未分类不能删除".to_string());
-    }
-    if category_id == replacement_category_id {
-        return Err("迁移目标不能是当前分类".to_string());
-    }
-    require_category(connection, category_id)?;
-    require_category(connection, replacement_category_id)?;
-    connection
-        .execute(
-            "UPDATE skill_metadata SET category_id = ?1 WHERE category_id = ?2",
-            params![replacement_category_id, category_id],
-        )
-        .map_err(error_message)?;
-    connection
-        .execute("DELETE FROM skill_categories WHERE id = ?1", [category_id])
-        .map_err(error_message)?;
-    Ok(())
+    merge_skill_category_state(source_category_id, target_category_id)
 }
 
 #[tauri::command]
 pub fn import_skills_from_folder(source_path: String) -> SkillResult<Vec<ImportResult>> {
-    let settings = current_settings()?;
-    let source = PathBuf::from(source_path);
-    let candidates = discover_skill_sources(&source)?;
-    candidates
-        .iter()
-        .map(|candidate| import_skill_directory(candidate, Path::new(&settings.skills_root)))
-        .collect()
+    import_skills_from_folder_state(source_path)
 }
 
 #[tauri::command]
 pub fn import_skills_from_zip(zip_path: String) -> SkillResult<Vec<ImportResult>> {
-    let file = fs::File::open(zip_path).map_err(error_message)?;
-    let mut archive = ZipArchive::new(file).map_err(error_message)?;
-    let temporary = tempdir().map_err(error_message)?;
-    for index in 0..archive.len() {
-        let mut entry = archive.by_index(index).map_err(error_message)?;
-        let relative = entry
-            .enclosed_name()
-            .ok_or_else(|| "ZIP 中包含不安全路径".to_string())?;
-        let destination = temporary.path().join(relative);
-        if entry.is_dir() {
-            fs::create_dir_all(&destination).map_err(error_message)?;
-            continue;
-        }
-        if let Some(parent) = destination.parent() {
-            fs::create_dir_all(parent).map_err(error_message)?;
-        }
-        let mut output = fs::File::create(destination).map_err(error_message)?;
-        io::copy(&mut entry, &mut output).map_err(error_message)?;
-    }
-    import_skills_from_folder(temporary.path().to_string_lossy().to_string())
+    import_skills_from_zip_state(zip_path)
 }
 
 #[tauri::command]
 pub fn discover_external_skills() -> SkillResult<Vec<ExternalSkillCandidateGroup>> {
-    let settings = current_settings()?;
-    let workbench_root = PathBuf::from(&settings.workbench_root);
-    let connection = open_database(&workbench_root)?;
-    discover_external_skills_in(&connection, Path::new(&settings.skills_root))
-}
-
-fn discover_external_skills_in(
-    connection: &Connection,
-    skills_root: &Path,
-) -> SkillResult<Vec<ExternalSkillCandidateGroup>> {
-    let mut groups: HashMap<String, ExternalSkillCandidateGroup> = HashMap::new();
-    let mut seen_roots = HashSet::new();
-    let skills_root_key = normalized_path_key(skills_root);
-
-    for target in tool_targets(connection)? {
-        let target_root = PathBuf::from(&target.global_skills_dir);
-        let target_key = normalized_path_key(&target_root);
-        if target_key == skills_root_key || !seen_roots.insert(target_key) {
-            continue;
-        }
-        let candidates = match scan_one_level_skill_candidates(&target_root) {
-            Ok(candidates) => candidates,
-            Err(error) => {
-                let directory_name = format!("{}-unreadable", target.key);
-                groups.insert(
-                    directory_name.clone(),
-                    ExternalSkillCandidateGroup {
-                        directory_name,
-                        display_name: target.name.clone(),
-                        description: "工具目录不可读".to_string(),
-                        status: ExternalSkillCandidateStatus::Unreadable,
-                        sources: vec![ExternalSkillCandidateSource {
-                            tool: target.key,
-                            tool_name: target.name,
-                            path: target_root.to_string_lossy().to_string(),
-                            content_hash: None,
-                            readable: false,
-                            message: Some(error),
-                        }],
-                    },
-                );
-                continue;
-            }
-        };
-        for candidate in candidates {
-            let directory_name = candidate
-                .file_name()
-                .map(|name| name.to_string_lossy().to_string())
-                .unwrap_or_default();
-            let status = candidate_status_for_source(&candidate, skills_root)?;
-            let metadata =
-                skill_directory_metadata(&candidate, &directory_name).unwrap_or(SkillMetadata {
-                    name: directory_name.clone(),
-                    description: "无法读取 Skill 元信息".to_string(),
-                });
-            let content_hash = directory_content_hash(&candidate).ok();
-            let source = ExternalSkillCandidateSource {
-                tool: target.key.clone(),
-                tool_name: target.name.clone(),
-                path: candidate.to_string_lossy().to_string(),
-                content_hash,
-                readable: status != ExternalSkillCandidateStatus::Unreadable,
-                message: None,
-            };
-            groups
-                .entry(directory_name.clone())
-                .and_modify(|group| {
-                    let source_conflicts = group
-                        .sources
-                        .iter()
-                        .any(|existing| existing.content_hash != source.content_hash);
-                    group.sources.push(source.clone());
-                    group.status = if source_conflicts {
-                        ExternalSkillCandidateStatus::Conflict
-                    } else {
-                        merge_candidate_status(group.status, status)
-                    };
-                })
-                .or_insert_with(|| ExternalSkillCandidateGroup {
-                    directory_name,
-                    display_name: metadata.name,
-                    description: metadata.description,
-                    status,
-                    sources: vec![source],
-                });
-        }
-    }
-
-    let mut groups = groups.into_values().collect::<Vec<_>>();
-    groups.sort_by(|left, right| {
-        left.display_name
-            .to_lowercase()
-            .cmp(&right.display_name.to_lowercase())
-    });
-    Ok(groups)
+    discover_external_skills_state()
 }
 
 #[tauri::command]
 pub fn import_external_skills(
     selections: Vec<ExternalSkillImportSelection>,
 ) -> SkillResult<Vec<ImportResult>> {
-    let settings = current_settings()?;
-    let workbench_root = PathBuf::from(&settings.workbench_root);
-    let connection = open_database(&workbench_root)?;
-    let discovered = discover_external_skills_in(&connection, Path::new(&settings.skills_root))?;
-    let allowed: HashSet<String> = discovered
-        .iter()
-        .flat_map(|group| group.sources.iter())
-        .map(|source| normalized_path_key(Path::new(&source.path)))
-        .collect();
-    selections
-        .iter()
-        .map(|selection| {
-            validate_directory_name(&selection.directory_name)?;
-            let source = PathBuf::from(&selection.source_path);
-            let source_name = source
-                .file_name()
-                .map(|name| name.to_string_lossy().to_string())
-                .unwrap_or_default();
-            if source_name != selection.directory_name {
-                return Ok(ImportResult {
-                    directory_name: selection.directory_name.clone(),
-                    status: ImportStatus::Invalid,
-                    message: "导入来源与 Skill 目录名不一致".to_string(),
-                });
-            }
-            if !allowed.contains(&normalized_path_key(&source)) {
-                return Ok(ImportResult {
-                    directory_name: selection.directory_name.clone(),
-                    status: ImportStatus::Invalid,
-                    message: "导入来源不在已发现的工具目录候选中".to_string(),
-                });
-            }
-            import_skill_directory_allow_skipped(&source, Path::new(&settings.skills_root))
-        })
-        .collect()
+    import_external_skills_state(selections)
 }
 
 #[tauri::command]
 pub fn inspect_skills_root_migration() -> SkillResult<SkillsRootMigrationState> {
-    let settings = current_settings()?;
-    let workbench_root = PathBuf::from(&settings.workbench_root);
-    let connection = open_database(&workbench_root)?;
-    inspect_skills_root_migration_in(&connection, &settings)
-}
-
-fn inspect_skills_root_migration_in(
-    connection: &Connection,
-    settings: &SkillsSettings,
-) -> SkillResult<SkillsRootMigrationState> {
-    let current_root = PathBuf::from(&settings.skills_root);
-    let previous_root = settings.previous_skills_root.as_ref().map(PathBuf::from);
-    let mut candidates = Vec::new();
-    if let Some(previous_root) = &previous_root {
-        if previous_root != &current_root && previous_root.is_dir() {
-            for source in scan_one_level_skill_candidates(previous_root)? {
-                let directory_name = source
-                    .file_name()
-                    .map(|name| name.to_string_lossy().to_string())
-                    .unwrap_or_default();
-                let status = candidate_status_for_source(&source, &current_root)?;
-                let metadata =
-                    skill_directory_metadata(&source, &directory_name).unwrap_or(SkillMetadata {
-                        name: directory_name.clone(),
-                        description: "无法读取 Skill 元信息".to_string(),
-                    });
-                let message = match status {
-                    ExternalSkillCandidateStatus::New => "可迁移".to_string(),
-                    ExternalSkillCandidateStatus::SameAsCurrent => {
-                        "当前根目录已存在相同内容".to_string()
-                    }
-                    ExternalSkillCandidateStatus::Conflict => {
-                        "当前根目录已存在同名不同内容".to_string()
-                    }
-                    ExternalSkillCandidateStatus::Invalid => "Skill 目录名称无效".to_string(),
-                    ExternalSkillCandidateStatus::Unreadable => "Skill 目录不可读".to_string(),
-                };
-                candidates.push(RootSkillMigrationCandidate {
-                    directory_name,
-                    display_name: metadata.name,
-                    description: metadata.description,
-                    source_path: source.to_string_lossy().to_string(),
-                    status,
-                    message,
-                });
-            }
-        }
-    }
-    let managed_targets = managed_target_rebuild_candidates(connection, settings)?;
-    Ok(SkillsRootMigrationState {
-        previous_skills_root: settings.previous_skills_root.clone(),
-        current_skills_root: settings.skills_root.clone(),
-        can_migrate: !candidates.is_empty(),
-        candidates,
-        managed_targets,
-    })
+    inspect_skills_root_migration_state()
 }
 
 #[tauri::command]
 pub fn migrate_skills_root(
     selections: Vec<RootSkillMigrationSelection>,
 ) -> SkillResult<Vec<ImportResult>> {
-    let settings = current_settings()?;
-    let Some(previous_root) = settings.previous_skills_root.as_ref().map(PathBuf::from) else {
-        return Ok(Vec::new());
-    };
-    let mut results = Vec::new();
-    for selection in selections {
-        validate_directory_name(&selection.directory_name)?;
-        let source = previous_root.join(&selection.directory_name);
-        results.push(import_skill_directory_allow_skipped(
-            &source,
-            Path::new(&settings.skills_root),
-        )?);
-    }
-    Ok(results)
+    migrate_skills_root_state(selections)
 }
 
 #[tauri::command]
 pub fn rebuild_managed_skill_targets(
     selections: Vec<ManagedTargetRebuildSelection>,
 ) -> SkillResult<Vec<ManagedTargetRebuildResult>> {
-    let settings = current_settings()?;
-    let workbench_root = PathBuf::from(&settings.workbench_root);
-    let connection = open_database(&workbench_root)?;
-    selections
-        .iter()
-        .map(|selection| rebuild_managed_skill_target(&connection, &settings, selection))
-        .collect()
-}
-
-fn discover_skill_sources(source: &Path) -> SkillResult<Vec<PathBuf>> {
-    if source.join("SKILL.md").is_file() {
-        return Ok(vec![source.to_path_buf()]);
-    }
-    let mut candidates = Vec::new();
-    for entry in WalkDir::new(source).follow_links(true) {
-        let entry = entry.map_err(error_message)?;
-        if entry.file_type().is_file() && entry.file_name() == "SKILL.md" {
-            if let Some(parent) = entry.path().parent() {
-                candidates.push(parent.to_path_buf());
-            }
-        }
-    }
-    candidates.sort();
-    candidates.dedup();
-    Ok(candidates)
-}
-
-fn directory_content_hash(root: &Path) -> SkillResult<String> {
-    let mut entries = Vec::new();
-    for entry in WalkDir::new(root).into_iter().filter_map(Result::ok) {
-        if !entry.file_type().is_file() {
-            continue;
-        }
-        let relative = entry
-            .path()
-            .strip_prefix(root)
-            .map_err(error_message)?
-            .to_string_lossy()
-            .replace('\\', "/");
-        let bytes = fs::read(entry.path()).map_err(error_message)?;
-        entries.push((relative, bytes));
-    }
-    entries.sort_by(|left, right| left.0.cmp(&right.0));
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    for (relative, bytes) in entries {
-        relative.hash(&mut hasher);
-        bytes.hash(&mut hasher);
-    }
-    Ok(format!("{:016x}", hasher.finish()))
+    rebuild_managed_skill_targets_state(selections)
 }
 
 fn source_backup_path(workbench_root: &Path, directory_name: &str) -> SkillResult<PathBuf> {
@@ -1811,252 +967,6 @@ fn parse_sync_method(method: &str) -> SkillResult<SyncMethod> {
     }
 }
 
-fn normalized_path_key(path: &Path) -> String {
-    path.canonicalize()
-        .unwrap_or_else(|_| path.to_path_buf())
-        .to_string_lossy()
-        .to_lowercase()
-}
-
-fn merge_candidate_status(
-    left: ExternalSkillCandidateStatus,
-    right: ExternalSkillCandidateStatus,
-) -> ExternalSkillCandidateStatus {
-    use ExternalSkillCandidateStatus::*;
-    match (left, right) {
-        (Conflict, _) | (_, Conflict) => Conflict,
-        (Invalid, _) | (_, Invalid) => Invalid,
-        (Unreadable, _) | (_, Unreadable) => Unreadable,
-        (New, _) | (_, New) => New,
-        _ => SameAsCurrent,
-    }
-}
-
-fn managed_target_rebuild_candidates(
-    connection: &Connection,
-    settings: &SkillsSettings,
-) -> SkillResult<Vec<ManagedTargetRebuildCandidate>> {
-    let mut statement = connection
-        .prepare(
-            "SELECT directory_name, tool, scope, project_name, project_path, link_path, sync_method
-             FROM skill_enablements
-             ORDER BY directory_name, tool, scope, project_path",
-        )
-        .map_err(error_message)?;
-    let rows = statement
-        .query_map([], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?,
-                row.get::<_, String>(4)?,
-                row.get::<_, String>(5)?,
-                row.get::<_, String>(6)?,
-            ))
-        })
-        .map_err(error_message)?;
-    let mut candidates = Vec::new();
-    for row in rows {
-        let (directory_name, tool, scope, project_name, project_path, link_path, sync_method) =
-            row.map_err(error_message)?;
-        candidates.push(classify_managed_target_rebuild(
-            settings,
-            ManagedTargetRecord {
-                directory_name,
-                tool,
-                scope,
-                project_name,
-                project_path,
-                link_path,
-                sync_method: parse_sync_method(&sync_method)?,
-            },
-        )?);
-    }
-    Ok(candidates)
-}
-
-fn classify_managed_target_rebuild(
-    settings: &SkillsSettings,
-    record: ManagedTargetRecord,
-) -> SkillResult<ManagedTargetRebuildCandidate> {
-    let ManagedTargetRecord {
-        directory_name,
-        tool,
-        scope,
-        project_name,
-        project_path,
-        link_path,
-        sync_method,
-    } = record;
-    let current_source = PathBuf::from(&settings.skills_root).join(&directory_name);
-    let target = PathBuf::from(&link_path);
-    let Some(previous_root) = settings.previous_skills_root.as_ref().map(PathBuf::from) else {
-        return Ok(ManagedTargetRebuildCandidate {
-            directory_name,
-            tool,
-            scope,
-            project_name,
-            project_path,
-            link_path,
-            sync_method,
-            status: ManagedTargetRebuildStatus::Skipped,
-            message: "没有可用于重建的旧根目录记录".to_string(),
-        });
-    };
-    let previous_source = previous_root.join(&directory_name);
-    if !current_source.join("SKILL.md").is_file() {
-        return Ok(ManagedTargetRebuildCandidate {
-            directory_name,
-            tool,
-            scope,
-            project_name,
-            project_path,
-            link_path,
-            sync_method,
-            status: ManagedTargetRebuildStatus::Invalid,
-            message: "当前根目录中不存在该 Skill，无法重建".to_string(),
-        });
-    }
-    let target_matches_current = match sync_method {
-        SyncMethod::Symlink => symlink_points_to(&current_source, &target),
-        SyncMethod::Copy => target.is_dir() && directories_match(&current_source, &target)?,
-    };
-    if target_matches_current {
-        return Ok(ManagedTargetRebuildCandidate {
-            directory_name,
-            tool,
-            scope,
-            project_name,
-            project_path,
-            link_path,
-            sync_method,
-            status: ManagedTargetRebuildStatus::Skipped,
-            message: "目标已指向当前根目录".to_string(),
-        });
-    }
-    let target_matches_previous = match sync_method {
-        SyncMethod::Symlink => symlink_points_to(&previous_source, &target),
-        SyncMethod::Copy => target.is_dir() && directories_match(&previous_source, &target)?,
-    };
-    let status = if target.symlink_metadata().is_err() || target_matches_previous {
-        ManagedTargetRebuildStatus::Ready
-    } else {
-        ManagedTargetRebuildStatus::Conflict
-    };
-    let message = match status {
-        ManagedTargetRebuildStatus::Ready => "可重建到当前根目录".to_string(),
-        ManagedTargetRebuildStatus::Conflict => {
-            "目标已被修改或不再是旧根目录的受管内容".to_string()
-        }
-        _ => String::new(),
-    };
-    Ok(ManagedTargetRebuildCandidate {
-        directory_name,
-        tool,
-        scope,
-        project_name,
-        project_path,
-        link_path,
-        sync_method,
-        status,
-        message,
-    })
-}
-
-fn rebuild_managed_skill_target(
-    connection: &Connection,
-    settings: &SkillsSettings,
-    selection: &ManagedTargetRebuildSelection,
-) -> SkillResult<ManagedTargetRebuildResult> {
-    validate_directory_name(&selection.directory_name)?;
-    let row = connection.query_row(
-        "SELECT directory_name, tool, scope, project_name, project_path, link_path, sync_method
-         FROM skill_enablements
-         WHERE directory_name = ?1 AND tool = ?2 AND scope = ?3 AND project_path = ?4",
-        params![
-            selection.directory_name,
-            selection.tool,
-            selection.scope,
-            selection.project_path
-        ],
-        |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?,
-                row.get::<_, String>(4)?,
-                row.get::<_, String>(5)?,
-                row.get::<_, String>(6)?,
-            ))
-        },
-    );
-    let Ok((directory_name, tool, scope, project_name, project_path, link_path, sync_method)) = row
-    else {
-        return Ok(ManagedTargetRebuildResult {
-            directory_name: selection.directory_name.clone(),
-            tool: selection.tool.clone(),
-            scope: selection.scope.clone(),
-            project_path: selection.project_path.clone(),
-            status: ManagedTargetRebuildStatus::Invalid,
-            message: "未找到对应的 Workbench 受管启用记录".to_string(),
-        });
-    };
-    let sync_method = parse_sync_method(&sync_method)?;
-    let candidate = classify_managed_target_rebuild(
-        settings,
-        ManagedTargetRecord {
-            directory_name: directory_name.clone(),
-            tool: tool.clone(),
-            scope: scope.clone(),
-            project_name,
-            project_path: project_path.clone(),
-            link_path: link_path.clone(),
-            sync_method,
-        },
-    )?;
-    if candidate.status != ManagedTargetRebuildStatus::Ready {
-        return Ok(ManagedTargetRebuildResult {
-            directory_name,
-            tool,
-            scope,
-            project_path,
-            status: candidate.status,
-            message: candidate.message,
-        });
-    }
-    let source = PathBuf::from(&settings.skills_root).join(&directory_name);
-    let target = PathBuf::from(&link_path);
-    if target.symlink_metadata().is_ok() {
-        remove_existing_target(&target)?;
-    }
-    let next_method = sync_directory_auto_with(&source, &target, create_directory_symlink)?;
-    connection
-        .execute(
-            "UPDATE skill_enablements
-             SET link_path = ?1, sync_method = ?2
-             WHERE directory_name = ?3 AND tool = ?4 AND scope = ?5 AND project_path = ?6",
-            params![
-                target.to_string_lossy().to_string(),
-                sync_method_name(next_method),
-                directory_name,
-                tool,
-                scope,
-                project_path
-            ],
-        )
-        .map_err(error_message)?;
-    Ok(ManagedTargetRebuildResult {
-        directory_name,
-        tool,
-        scope,
-        project_path,
-        status: ManagedTargetRebuildStatus::Rebuilt,
-        message: format!("已重建为 {}", sync_method_name(next_method)),
-    })
-}
-
 #[tauri::command]
 pub fn open_local_path(path: String) -> SkillResult<()> {
     let path = PathBuf::from(path);
@@ -2096,14 +1006,6 @@ fn validate_directory_name(directory_name: &str) -> SkillResult<()> {
     Ok(())
 }
 
-fn validate_category_name(name: &str) -> SkillResult<String> {
-    let normalized = normalize_category_name(name);
-    if normalized == UNCATEGORIZED_CATEGORY_NAME {
-        return Err("未分类是系统分类".to_string());
-    }
-    Ok(normalized)
-}
-
 fn is_unique_constraint_error(error: &rusqlite::Error) -> bool {
     matches!(
         error,
@@ -2120,6 +1022,7 @@ fn error_message(error: impl std::fmt::Display) -> String {
 mod tests {
     use super::*;
     use std::fs;
+    use std::io;
     use tempfile::tempdir;
 
     fn in_memory_settings_connection() -> Connection {

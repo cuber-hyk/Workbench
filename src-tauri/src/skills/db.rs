@@ -6,9 +6,12 @@ use std::path::{Path, PathBuf};
 use rusqlite::{params, Connection};
 
 use super::{
-    error_message, CloseBehavior, SkillResult, CLOSE_BEHAVIOR_SETTING, UNCATEGORIZED_CATEGORY_ID,
+    error_message, CloseBehavior, SkillResult, UNCATEGORIZED_CATEGORY_ID,
     UNCATEGORIZED_CATEGORY_NAME,
 };
+
+pub(super) const CLOSE_BEHAVIOR_SETTING: &str = "close_behavior";
+pub(super) const CLOSE_TRAY_HINT_DISMISSED_SETTING: &str = "close_tray_hint_dismissed";
 
 pub(super) fn default_workbench_root() -> SkillResult<PathBuf> {
     dirs::home_dir()
