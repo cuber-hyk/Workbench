@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { FormEvent } from "react";
+import { Component, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ErrorInfo, FormEvent, ReactNode } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
@@ -108,6 +108,41 @@ type MarketInstallTask = {
 };
 
 export function App() {
+  return (
+    <AppErrorBoundary>
+      <WorkbenchApp />
+    </AppErrorBoundary>
+  );
+}
+
+class AppErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
+  state: { error: string | null } = { error: null };
+
+  static getDerivedStateFromError(error: unknown) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+
+  componentDidCatch(error: unknown, info: ErrorInfo) {
+    console.error("Workbench render failed", error, info.componentStack);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <section className="view">
+          <div className="notice compact-empty" role="alert">
+            <strong>页面渲染失败</strong>
+            <small>{this.state.error}</small>
+            <Button onClick={() => window.location.reload()}><RefreshCcw size={15} />重新加载</Button>
+          </div>
+        </section>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function WorkbenchApp() {
   const { hasUpdate, updateInfo } = useAppUpdate();
   const [activeView, setActiveView] = useState<ViewKey>("projects");
   const [theme, setTheme] = useState<"light" | "dark">(() => {
@@ -225,10 +260,12 @@ export function App() {
   const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? activeProjects[0] ?? projects[0];
   const selectedSkill = skills.find((skill) => skill.id === selectedSkillId) ?? skills[0];
   const deleteSkill = skills.find((skill) => skill.id === deleteSkillId) ?? selectedSkill;
-  const editingProjectOpenProfile = settings?.projectOpenProfiles.find((profile) => profile.id === editingProjectOpenProfileId);
-  const deletingProjectOpenProfile = settings?.projectOpenProfiles.find((profile) => profile.id === deleteProjectOpenProfileId);
-  const editingCustomTool = settings?.toolTargets.find((tool) => tool.key === editingCustomToolKey && tool.source === "custom");
-  const deletingCustomTool = settings?.toolTargets.find((tool) => tool.key === deleteCustomToolKey && tool.source === "custom");
+  const projectOpenProfiles = settings?.projectOpenProfiles ?? [];
+  const toolTargets = settings?.toolTargets ?? [];
+  const editingProjectOpenProfile = projectOpenProfiles.find((profile) => profile.id === editingProjectOpenProfileId);
+  const deletingProjectOpenProfile = projectOpenProfiles.find((profile) => profile.id === deleteProjectOpenProfileId);
+  const editingCustomTool = toolTargets.find((tool) => tool.key === editingCustomToolKey && tool.source === "custom");
+  const deletingCustomTool = toolTargets.find((tool) => tool.key === deleteCustomToolKey && tool.source === "custom");
   const selectedRadar = radarItems.find((item) => item.id === selectedRadarId) ?? radarItems[0];
 
   function showToast(message: string, options?: { actionLabel?: string; onAction?: () => void; duration?: number; tone?: ToastState["tone"] }) {
@@ -2097,6 +2134,12 @@ export function SkillsView({
       setSelectedUpdateNames((current) =>
         current.filter((directoryName) => statuses.some((status) => status.source.directoryName === directoryName))
       );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setUpdateResults([{ directoryName: checkRemote ? "更新检查" : "更新列表", status: "check_failed", message }]);
+      if (activeSkillsTab === "market") {
+        setMarketError(`更新状态刷新失败：${message}`);
+      }
     } finally {
       setCheckingUpdates(false);
     }

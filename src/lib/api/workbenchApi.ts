@@ -8,12 +8,31 @@ const isTauri = "__TAURI_INTERNALS__" in window;
 
 async function skillsState(): Promise<SkillsState> {
   if (isTauri) {
-    const state = await invoke<SkillsState>("get_skills_state");
-    const projectOpenProfiles = await invoke<ProjectOpenProfile[]>("list_project_open_profiles");
-    return { ...state, settings: { ...state.settings, projectOpenProfiles } };
+    return hydrateSkillsState(await invoke<SkillsState>("get_skills_state"));
   }
   await delay();
   return { settings, skills, categories: previewSkillCategories() };
+}
+
+async function hydrateSkillsState(state: SkillsState): Promise<SkillsState> {
+  if (!isTauri) return normalizeSkillsState(state);
+  const projectOpenProfiles = await invoke<ProjectOpenProfile[]>("list_project_open_profiles");
+  return normalizeSkillsState({ ...state, settings: { ...state.settings, projectOpenProfiles } });
+}
+
+function normalizeSkillsState(state: SkillsState): SkillsState {
+  return {
+    ...state,
+    settings: {
+      ...state.settings,
+      toolTargets: state.settings.toolTargets ?? [],
+      projectOpenProfiles: state.settings.projectOpenProfiles ?? []
+    }
+  };
+}
+
+async function invokeSkillsState(command: string, args?: Record<string, unknown>): Promise<SkillsState> {
+  return hydrateSkillsState(await invoke<SkillsState>(command, args));
 }
 
 function previewSkillCategories() {
@@ -335,7 +354,7 @@ export const workbenchApi = {
       }
     });
     try {
-      return await invoke<SkillsState>("install_skill_from_market", { source, skillId });
+      return await invokeSkillsState("install_skill_from_market", { source, skillId });
     } finally {
       unlisten();
     }
@@ -377,7 +396,7 @@ export const workbenchApi = {
     return invoke<SkillUpdateResult[]>("update_market_skills", { directoryNames });
   },
   async setSkillsRoot(path: string) {
-    return invoke<SkillsState>("set_skills_root", { path });
+    return invokeSkillsState("set_skills_root", { path });
   },
   async setSkillCategory(directoryName: string, categoryId: string) {
     if (!isTauri) {
@@ -391,7 +410,7 @@ export const workbenchApi = {
       }
       return skillsState();
     }
-    return invoke<SkillsState>("set_skill_category", { directoryName, categoryId });
+    return invokeSkillsState("set_skill_category", { directoryName, categoryId });
   },
   async createSkillCategory(name: string) {
     if (!isTauri) {
@@ -408,7 +427,7 @@ export const workbenchApi = {
       skillCategories.push(category);
       return skillsState();
     }
-    return invoke<SkillsState>("create_skill_category", { name });
+    return invokeSkillsState("create_skill_category", { name });
   },
   async renameSkillCategory(categoryId: string, name: string) {
     if (!isTauri) {
@@ -424,7 +443,7 @@ export const workbenchApi = {
       });
       return skillsState();
     }
-    return invoke<SkillsState>("rename_skill_category", { categoryId, name });
+    return invokeSkillsState("rename_skill_category", { categoryId, name });
   },
   async deleteSkillCategory(categoryId: string, replacementCategoryId: string) {
     if (!isTauri) {
@@ -441,7 +460,7 @@ export const workbenchApi = {
       if (index >= 0) skillCategories.splice(index, 1);
       return skillsState();
     }
-    return invoke<SkillsState>("delete_skill_category", { categoryId, replacementCategoryId });
+    return invokeSkillsState("delete_skill_category", { categoryId, replacementCategoryId });
   },
   async mergeSkillCategory(sourceCategoryId: string, targetCategoryId: string) {
     if (!isTauri) {
@@ -458,7 +477,7 @@ export const workbenchApi = {
       if (index >= 0) skillCategories.splice(index, 1);
       return skillsState();
     }
-    return invoke<SkillsState>("merge_skill_category", { sourceCategoryId, targetCategoryId });
+    return invokeSkillsState("merge_skill_category", { sourceCategoryId, targetCategoryId });
   },
   async importSkillsFromFolder(sourcePath: string) {
     return invoke<ImportResult[]>("import_skills_from_folder", { sourcePath });
@@ -480,7 +499,7 @@ export const workbenchApi = {
     directoryName: string,
     source: SkillVersionSource
   ) {
-    return invoke<SkillsState>("resolve_skill_conflict", { directoryName, source });
+    return invokeSkillsState("resolve_skill_conflict", { directoryName, source });
   },
   async deleteSkill(directoryName: string) {
     if (!isTauri) {
@@ -493,7 +512,7 @@ export const workbenchApi = {
       }
       return skillsState();
     }
-    return invoke<SkillsState>("delete_skill", { directoryName });
+    return invokeSkillsState("delete_skill", { directoryName });
   },
   async setSkillEnabled(
     directoryName: string,
@@ -503,7 +522,7 @@ export const workbenchApi = {
     projectName?: string,
     projectPath?: string
   ) {
-    return invoke<SkillsState>("set_skill_enabled", {
+    return invokeSkillsState("set_skill_enabled", {
       directoryName,
       tool,
       enabled,
@@ -517,14 +536,14 @@ export const workbenchApi = {
       settings.closeBehavior = closeBehavior;
       return { settings, skills, categories: previewSkillCategories() };
     }
-    return invoke<SkillsState>("set_close_behavior", { closeBehavior });
+    return invokeSkillsState("set_close_behavior", { closeBehavior });
   },
   async setCloseTrayHintDismissed(dismissed: boolean) {
     if (!isTauri) {
       settings.closeTrayHintDismissed = dismissed;
       return { settings, skills, categories: previewSkillCategories() };
     }
-    return invoke<SkillsState>("set_close_tray_hint_dismissed", { dismissed });
+    return invokeSkillsState("set_close_tray_hint_dismissed", { dismissed });
   },
   async hideMainWindow() {
     if (!isTauri) return;
@@ -553,7 +572,7 @@ export const workbenchApi = {
       settings.toolTargets = [...ordered, ...missing];
       return { settings, skills, categories: previewSkillCategories() };
     }
-    return invoke<SkillsState>("set_tool_target_order", { toolKeys });
+    return invokeSkillsState("set_tool_target_order", { toolKeys });
   },
   async selectToolIconSource() {
     if (!isTauri) {
@@ -588,7 +607,7 @@ export const workbenchApi = {
       }
       return { settings, skills, categories: previewSkillCategories() };
     }
-    return invoke<SkillsState>("save_custom_tool_target", { input });
+    return invokeSkillsState("save_custom_tool_target", { input });
   },
   async deleteCustomToolTarget(key: ToolKey) {
     if (!isTauri) {
@@ -602,7 +621,7 @@ export const workbenchApi = {
       });
       return { settings, skills, categories: previewSkillCategories() };
     }
-    return invoke<SkillsState>("delete_custom_tool_target", { key });
+    return invokeSkillsState("delete_custom_tool_target", { key });
   },
   async openSkillSourceDirectory(directoryName: string) {
     return invoke<void>("open_skill_source_directory", { directoryName });
