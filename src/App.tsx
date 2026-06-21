@@ -2,21 +2,17 @@ import { Component, useCallback, useEffect, useMemo, useRef, useState } from "re
 import type { ErrorInfo, ReactNode } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
-  ArrowUpCircle,
   Ban,
   Box,
   ChevronDown,
   CircleAlert,
   CircleCheck,
-  CircleDashed,
   CircleDot,
   Download,
   Edit3,
-  ExternalLink,
   FileText,
   FolderOpen,
   Moon,
-  PackagePlus,
   Plus,
   RefreshCcw,
   Settings,
@@ -49,6 +45,9 @@ import { SettingsView } from "./views/settings/SettingsView";
 import { ProjectsView } from "./views/projects/ProjectsView";
 import { applyLaunchSessionEvent, applyPendingLaunchEvents, enabledLaunchConfigs, isAlreadyEndedLaunchMessage, isProjectRunning, markLaunchRunStopped, markLaunchRunStoppedInRuns, markLaunchSessionStoppedInRuns, mergeLaunchRunSnapshots, mergeLaunchRunSnapshotsInRuns, normalizeLaunchSessionEvent, replaceLaunchSessionInRuns } from "./views/projects/launchState";
 import { DeleteRadarDialog, RadarDialog, RadarView } from "./views/radar/RadarView";
+import { SkillsMarketView, type MarketInstallTask } from "./views/skills/SkillsMarketView";
+import { SkillUpdatesView } from "./views/skills/SkillUpdatesView";
+import { buildMarketStats, localMarketDetail } from "./views/skills/skillMarketFormatters";
 import type { AppSettings, CloseBehavior, CustomToolTargetInput, ExternalSkillCandidateGroup, ExternalSkillImportSelection, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, ManagedTargetRebuildResult, ManagedTargetRebuildSelection, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, Skill, SkillCategory, SkillMarketDetail, SkillMarketItem, SkillUpdateResult, SkillUpdateState, SkillUpdateStatus, SkillVersionSource, SkillsRootMigrationState, ToolKey, ToolTarget, ViewKey } from "./lib/types/domain";
 
 export { RadarView } from "./views/radar/RadarView";
@@ -74,15 +73,6 @@ type ToastState = {
   tone: "neutral" | "success" | "warning" | "danger";
   actionLabel?: string;
   onAction?: () => void;
-};
-
-type MarketInstallTask = {
-  key: string;
-  source: string;
-  skillId: string;
-  progress: number;
-  status: "running" | "succeeded" | "failed";
-  error?: string;
 };
 
 export function App() {
@@ -1645,391 +1635,16 @@ export function SkillsView({
   );
 }
 
-function SkillStatusIndicator({ status, label }: { status: SkillUpdateState; label?: string }) {
-  const presentation = {
-    not_installed: { icon: CircleDashed, tone: "neutral", label: "未安装" },
-    installed: { icon: CircleCheck, tone: "success", label: "已安装" },
-    up_to_date: { icon: CircleCheck, tone: "success", label: "已是最新" },
-    update_available: { icon: ArrowUpCircle, tone: "attention", label: "可更新" },
-    check_failed: { icon: CircleAlert, tone: "danger", label: "检查失败" },
-    unsupported: { icon: Ban, tone: "neutral", label: "不支持" }
-  }[status];
-  const Icon = presentation.icon;
-  const text = label ?? presentation.label;
-  return (
-    <span className={`skill-status-indicator ${presentation.tone}`} aria-label={text}>
-      <Icon size={14} aria-hidden="true" />
-      <span>{text}</span>
-    </span>
-  );
-}
 
-function MarketListSkeleton() {
-  return (
-    <div className="market-skeleton-list" aria-label="正在加载 skills.sh 市场" aria-busy="true">
-      {Array.from({ length: 6 }, (_, index) => (
-        <div className="table-row market-grid market-skeleton-row" key={index} aria-hidden="true">
-          <span className="skeleton-stack"><i className="skeleton skeleton-title" /><i className="skeleton skeleton-subtitle" /></span>
-          <i className="skeleton skeleton-source" />
-          <i className="skeleton skeleton-status" />
-          <i className="skeleton skeleton-download" />
-          <i className="skeleton skeleton-action" />
-        </div>
-      ))}
-    </div>
-  );
-}
 
-function MarketDetailSkeleton() {
-  return (
-    <div className="market-detail-skeleton" aria-label="正在加载 Skill 详情" aria-busy="true">
-      <i className="skeleton skeleton-kicker" />
-      <i className="skeleton skeleton-detail-title" />
-      <div className="skeleton-divider" />
-      <i className="skeleton skeleton-detail-line wide" />
-      <i className="skeleton skeleton-detail-line" />
-      <div className="skeleton-detail-grid">
-        {Array.from({ length: 5 }, (_, index) => <i className="skeleton skeleton-detail-meta" key={index} />)}
-      </div>
-      <i className="skeleton skeleton-warning" />
-      <i className="skeleton skeleton-preview" />
-    </div>
-  );
-}
 
-function SkillsMarketView({
-  items,
-  selectedItem,
-  detail,
-  query,
-  statusFilter,
-  stats,
-  currentCount,
-  loading,
-  error,
-  installTask,
-  uninstallingKey,
-  onQueryChange,
-  onStatusFilterChange,
-  onRefresh,
-  onSearch,
-  onSelect,
-  onInstall,
-  onUninstall,
-  onOpenSource
-}: {
-  items: SkillMarketItem[];
-  selectedItem: SkillMarketItem | undefined;
-  detail: SkillMarketDetail | null;
-  query: string;
-  statusFilter: "全部状态" | "未安装" | "已安装" | "可更新" | "不可安装";
-  stats: ReturnType<typeof buildMarketStats>;
-  currentCount: number;
-  loading: boolean;
-  error: string;
-  installTask: MarketInstallTask | null;
-  uninstallingKey: string;
-  onQueryChange: (query: string) => void;
-  onStatusFilterChange: (status: "全部状态" | "未安装" | "已安装" | "可更新" | "不可安装") => void;
-  onRefresh: () => void;
-  onSearch: () => void;
-  onSelect: (item: SkillMarketItem) => void;
-  onInstall: (item: SkillMarketItem) => void;
-  onUninstall: (item: SkillMarketItem) => void;
-  onOpenSource: (url: string) => void;
-}) {
-  const selectedKey = selectedItem ? `${selectedItem.source}/${selectedItem.skillId}` : "";
-  const repositoryUrl = selectedItem ? detail?.repositoryUrl || marketRepositoryUrl(selectedItem) : "";
-  return (
-    <>
-      <Toolbar>
-        <SearchInput
-          placeholder="搜索 skills.sh"
-          value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") onSearch();
-          }}
-        />
-        <select aria-label="按市场状态筛选" value={statusFilter} onChange={(event) => onStatusFilterChange(event.target.value as typeof statusFilter)}>
-          <option>全部状态</option>
-          <option>未安装</option>
-          <option>已安装</option>
-          <option>可更新</option>
-          <option>不可安装</option>
-        </select>
-        <Button onClick={onRefresh}><RefreshCcw size={15} />刷新市场</Button>
-      </Toolbar>
-      {error && (
-        <div className="warning market-error" role="alert">
-          <span>{error}</span>
-          <Button onClick={onRefresh}><RefreshCcw size={14} />重试</Button>
-        </div>
-      )}
-      <div className="market-stats" aria-label="技能市场统计">
-        {[
-          [stats.total, "全部"],
-          [stats.installed, "已安装"],
-          [stats.notInstalled, "未安装"],
-          [stats.updateAvailable, "可更新"],
-          [stats.unsupported, "不支持"],
-          [currentCount, "当前结果"]
-        ].map(([value, label]) => (
-          <span key={label}>
-            <strong>{loading && items.length === 0 ? <i className="skeleton skeleton-stat" /> : value}</strong>
-            <small>{label}</small>
-          </span>
-        ))}
-      </div>
-      <div className="split-layout skills-layout">
-        <Panel className="list-panel">
-          <div className="table-head market-grid"><span>远程 Skill</span><span>来源</span><span>状态</span><span>下载</span><span className="table-action-heading">操作</span></div>
-          {loading && items.length === 0 && <MarketListSkeleton />}
-          {!loading && items.map((item) => {
-            const key = `${item.source}/${item.skillId}`;
-            const taskForItem = installTask?.key === key ? installTask : null;
-            const installing = taskForItem?.status === "running";
-            const installedByTask = taskForItem?.status === "succeeded" && !item.installedDirectoryName;
-            const uninstalling = uninstallingKey === key;
-            return (
-              <div
-                className={`table-row market-grid ${selectedKey === key ? "selected" : ""}`}
-                key={key}
-                role="button"
-                tabIndex={0}
-                onClick={() => onSelect(item)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") onSelect(item);
-                }}
-              >
-                <span className="title-cell"><strong>{item.name}</strong><small>{item.description || item.skillId}</small></span>
-                <span className="path">{item.source}</span>
-                <SkillStatusIndicator status={marketItemStatus(item)} />
-                <span>{formatInstallCount(item.installs)}</span>
-                <span className="row-actions table-actions install-action">
-                  {installing ? (
-                    <Button disabled><RefreshCcw className="spin" size={14} />安装中 {taskForItem?.progress ?? 8}%</Button>
-                  ) : installedByTask ? (
-                    <Button disabled><CircleCheck size={14} />安装完成</Button>
-                  ) : item.installedDirectoryName ? (
-                    <Button
-                      variant="danger"
-                      disabled={installTask?.status === "running" || uninstalling}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onUninstall(item);
-                      }}
-                    >
-                      <Trash2 size={14} />{uninstalling ? "卸载中" : "卸载"}
-                    </Button>
-                  ) : !item.installable ? (
-                    <span className="action-muted" aria-label="不可安装">不可安装</span>
-                  ) : (
-                    <Button
-                      disabled={installTask?.status === "running"}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onInstall(item);
-                      }}
-                    >
-                      <PackagePlus size={14} />安装
-                    </Button>
-                  )}
-                  {installing && <i style={{ width: `${taskForItem?.progress ?? 8}%` }} />}
-                </span>
-              </div>
-            );
-          })}
-        </Panel>
-        <Panel className="detail-panel market-detail-panel">
-          {loading && items.length === 0 ? (
-            <MarketDetailSkeleton />
-          ) : selectedItem ? (
-            <>
-              <div className="market-detail-hero">
-                <div>
-                  <span className="market-detail-kicker">skills.sh</span>
-                  <DetailHeader title={selectedItem.name} actions={repositoryUrl ? <IconButton title="打开来源仓库" onClick={() => onOpenSource(repositoryUrl)}><ExternalLink size={14} /></IconButton> : undefined} />
-                </div>
-              </div>
-              <p className="market-detail-description">{detail?.item.description || selectedItem.description || "暂无远程描述。"}</p>
-              <dl className="market-detail-list">
-                <div><dt>安装状态</dt><dd><SkillStatusIndicator status={marketItemStatus(selectedItem)} /></dd></div>
-                <div><dt>skills.sh 包</dt><dd><code>{selectedItem.source}/{selectedItem.skillId}</code></dd></div>
-                <div><dt>Skill ID</dt><dd><code>{selectedItem.skillId}</code></dd></div>
-                <div><dt>来源仓库</dt><dd><code>{repositoryUrl || "非 GitHub owner/repo 来源，暂不支持 Workbench 安装"}</code></dd></div>
-                <div><dt>参考命令</dt><dd><code>{detail?.installCommand || `npx -y skills add ${selectedItem.source} --skill ${selectedItem.skillId} -g --agent codex -y --copy`}</code></dd></div>
-              </dl>
-              <div className="warning market-detail-warning">{detail?.securityNote || "Workbench 调用 skills.sh 官方安装器完成获取和展开，再复制到统一 Skills 根目录；第三方 Skill 仍需自行确认来源可信。"}</div>
-              {detail?.skillMarkdownPreview && <div className="market-preview"><h3>SKILL.md 预览</h3><p>{detail.skillMarkdownPreview}</p></div>}
-            </>
-          ) : (
-            <div className="notice compact-empty">暂无市场条目。</div>
-          )}
-        </Panel>
-      </div>
-    </>
-  );
-}
 
-function SkillUpdatesView({
-  statuses,
-  selectedNames,
-  checking,
-  updatingNames,
-  results,
-  onCheck,
-  onSelectNames,
-  onUpdateSelected,
-  onUpdateAll,
-  onUpdateOne,
-  onOpenMarket
-}: {
-  statuses: SkillUpdateStatus[];
-  selectedNames: string[];
-  checking: boolean;
-  updatingNames: string[];
-  results: SkillUpdateResult[];
-  onCheck: () => void;
-  onSelectNames: (names: string[]) => void;
-  onUpdateSelected: () => void;
-  onUpdateAll: () => void;
-  onUpdateOne: (directoryName: string) => void;
-  onOpenMarket: () => void;
-}) {
-  const updateable = statuses.filter((status) => status.status === "update_available");
-  const selectedUpdateable = selectedNames.filter((directoryName) =>
-    updateable.some((status) => status.source.directoryName === directoryName)
-  );
-  const allUpdateableSelected = updateable.length > 0 && updateable.every((status) => selectedNames.includes(status.source.directoryName));
-  function toggleUpdateSelection(directoryName: string, checked: boolean) {
-    onSelectNames(
-      checked
-        ? Array.from(new Set([...selectedNames, directoryName]))
-        : selectedNames.filter((name) => name !== directoryName)
-    );
-  }
-  return (
-    <>
-      <div className="bulk-bar">
-        <span><strong>更新检查</strong><small>仅管理从 skills.sh 安装的 Skill。更新前会备份统一根目录中的旧版本。</small></span>
-        <div className="bulk-actions">
-          <Button onClick={onCheck}><RefreshCcw size={15} />{checking ? "检查中" : "检查全部"}</Button>
-          <Button variant="primary" disabled={selectedUpdateable.length === 0 || updatingNames.length > 0} onClick={onUpdateSelected}>更新选中项</Button>
-          <Button disabled={updateable.length === 0 || updatingNames.length > 0} onClick={onUpdateAll}>更新全部可更新项</Button>
-        </div>
-      </div>
-      <div className="split-layout skills-layout">
-        <Panel className="list-panel">
-          <div className="table-head update-grid">
-            <span><input type="checkbox" aria-label="选择全部可更新项" checked={allUpdateableSelected} disabled={updateable.length === 0 || updatingNames.length > 0} onClick={(event) => event.stopPropagation()} onChange={(event) => onSelectNames(event.target.checked ? updateable.map((status) => status.source.directoryName) : [])} /></span>
-            <span>Skill</span><span>本地版本</span><span>远端状态</span><span>最近检查</span><span className="table-action-heading">操作</span>
-          </div>
-          {statuses.length === 0 && (
-            <div className="empty-state update-empty-state">
-              <span className="empty-state-icon"><RefreshCcw size={18} /></span>
-              <strong>暂无可检查的 skills.sh Skill</strong>
-              <small>从技能市场安装的 Skill 会出现在这里，用于检查和执行更新。</small>
-              <Button onClick={onOpenMarket}>去技能市场</Button>
-            </div>
-          )}
-          {statuses.map((status) => {
-            const directoryName = status.source.directoryName;
-            const checked = selectedNames.includes(directoryName);
-            const updateableStatus = status.status === "update_available";
-            return (
-              <div className="table-row update-grid" key={directoryName}>
-                <span><input type="checkbox" aria-label={`选择 ${directoryName}`} disabled={!updateableStatus || updatingNames.length > 0} checked={updateableStatus && checked} onClick={(event) => event.stopPropagation()} onChange={(event) => toggleUpdateSelection(directoryName, event.target.checked)} /></span>
-                <span className="title-cell"><strong>{status.name}</strong><small>{status.source.packageSlug}</small></span>
-                <span className="path">{status.source.installedHash}</span>
-                <SkillStatusIndicator status={status.status} label={updateStatusLabel(status.status)} />
-                <span>{status.source.lastCheckedAt || "未检查"}</span>
-                <span className="row-actions table-actions">
-                  <Button disabled={!updateableStatus || updatingNames.includes(directoryName)} onClick={() => onUpdateOne(directoryName)}>
-                    {updatingNames.includes(directoryName) ? "更新中" : "更新"}
-                  </Button>
-                </span>
-              </div>
-            );
-          })}
-        </Panel>
-        <Panel className="detail-panel">
-          <DetailHeader title={updateable.length === 0 ? "等待可更新项" : "批量更新确认"} />
-          <p className="description">
-            {updateable.length === 0
-              ? "检查后发现可更新 Skill 时，可在左侧选择并批量更新。"
-              : `已选择 ${selectedUpdateable.length} 个可更新 Skill。批量更新逐项执行，单项失败会保留旧版本并继续处理其他项。`}
-          </p>
-          <div className="warning">更新不会自动启用到任何 Agent 工具目录；已启用的 Copy 副本也不会在本次自动重同步。</div>
-          {results.length > 0 && (
-            <div className="update-result-list">
-              <h3>最近结果</h3>
-              {results.map((result) => (
-                <div key={result.directoryName}><strong>{result.directoryName}</strong><small>{result.message}</small></div>
-              ))}
-            </div>
-          )}
-        </Panel>
-      </div>
-    </>
-  );
-}
 
-function marketItemStatus(item: SkillMarketItem): SkillUpdateState {
-  if (!item.installable) return "unsupported";
-  if (item.updateStatus === "update_available") return "update_available";
-  if (item.installedDirectoryName) return "installed";
-  return "not_installed";
-}
 
-function marketRepositoryUrl(item: SkillMarketItem) {
-  return item.installable ? `https://github.com/${item.source}` : "";
-}
 
-function localMarketDetail(item: SkillMarketItem): SkillMarketDetail {
-  return {
-    item,
-    repositoryUrl: "",
-    installCommand: `npx -y skills add ${item.source} --skill ${item.skillId} -g --agent codex -y --copy`,
-    skillMarkdownPreview: "",
-    securityNote: "该来源不是 GitHub owner/repo 格式，Workbench 暂不请求远程详情，也不支持安装。"
-  };
-}
 
-function buildMarketStats(items: SkillMarketItem[]) {
-  return items.reduce(
-    (stats, item) => {
-      stats.total += 1;
-      if (!item.installable) {
-        stats.unsupported += 1;
-      } else if (item.updateStatus === "update_available") {
-        stats.updateAvailable += 1;
-        stats.installed += 1;
-      } else if (item.installedDirectoryName) {
-        stats.installed += 1;
-      } else {
-        stats.notInstalled += 1;
-      }
-      return stats;
-    },
-    { total: 0, installed: 0, notInstalled: 0, updateAvailable: 0, unsupported: 0 }
-  );
-}
 
-function updateStatusLabel(status: SkillUpdateState) {
-  if (status === "update_available") return "可更新";
-  if (status === "up_to_date") return "已是最新";
-  if (status === "check_failed") return "检查失败";
-  if (status === "unsupported") return "不支持";
-  if (status === "installed") return "未检查";
-  return "未安装";
-}
 
-function formatInstallCount(value: number) {
-  if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
-  if (value >= 1000) return `${(value / 1000).toFixed(1)}K`;
-  return String(value);
-}
 
 function SwitchControl({
   checked,

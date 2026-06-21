@@ -19,6 +19,9 @@ Do not read `docs/plans/`, `docs/audits/`, or archived directories by default.
 - `src/views/radar/RadarView.tsx`：资源 Radar 前端列表、详情、筛选和增删弹窗。
 - `src/views/settings/SettingsView.tsx`：设置页前端视图。
 - `src/views/settings/settingsFormatters.ts`：设置页展示格式化逻辑。
+- `src/views/skills/SkillsMarketView.tsx`：skills.sh 市场前端列表、详情、安装和卸载入口。
+- `src/views/skills/SkillUpdatesView.tsx`：skills.sh 已安装 Skill 的更新检查和批量更新视图。
+- `src/views/skills/skillMarketFormatters.ts`、`src/views/skills/SkillStatusIndicator.tsx`：Skills 市场和更新视图展示格式化与状态标识。
 - `src/components/dialogs/projects/`：项目编辑与启动配置表单弹窗。
 - `src/components/dialogs/settings/`：设置页相关的自定义工具、项目打开方式、托盘提示和目录创建弹窗。
 - `src/components/dialogs/skills/`：Skills 分类、导入、迁移、删除和市场卸载弹窗。
