@@ -83,7 +83,9 @@ Workbench/
 │  ├─ components/
 │  ├─ lib/
 │  │  ├─ api/
+│  │  ├─ ui/
 │  │  ├─ types/
+│  ├─ views/
 │  ├─ App.tsx
 │  ├─ main.tsx
 │  └─ styles.css
@@ -111,6 +113,8 @@ Workbench/
 - `docs/capabilities/`、`docs/audits/`、`docs/adr/` 保存后续可沉淀的能力、审核和架构决策记录。
 - `UI/` 保存讨论用静态原型，不作为正式前端代码入口。
 - `src/lib/api/` 封装 Tauri `invoke` 调用。
+- `src/lib/ui/` 保存跨页面复用的前端 UI 辅助组件和资源映射。
+- `src/views/` 保存从 `App.tsx` 拆出的页面级视图模块。
 - `src-tauri/src/skills.rs` 是当前 Skills command facade；类型、SQLite、文件系统同步、工具目标、分类、自定义工具、导入、根目录迁移、skills.sh 市场和 CLI 适配位于 `src-tauri/src/skills/`。
 
 ## 4. 前端模块说明

@@ -13,7 +13,9 @@ Do not read `docs/plans/`, `docs/audits/`, or archived directories by default.
 ## 架构与实现
 
 - `docs/ARCHITECTURE.md`：技术栈、目录结构、核心模块、数据模型和关键流程。
-- `src/App.tsx`：当前前端页面和主要交互入口。
+- `src/App.tsx`：当前前端应用壳、全局状态和主要交互入口。
+- `src/views/radar/RadarView.tsx`：资源 Radar 前端列表、详情、筛选和增删弹窗。
+- `src/lib/ui/toolIcons.tsx`：Agent 工具图标资源映射、自定义图标路径转换和图标回退显示。
 - `src/lib/types/domain.ts`：前端领域类型。
 - `src/lib/api/workbenchApi.ts`：前端到 Tauri commands 的 API 边界。
 - `src-tauri/src/lib.rs`：Tauri command 注册入口。
