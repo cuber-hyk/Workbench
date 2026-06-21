@@ -2,7 +2,7 @@
 artifact_type: plan
 status: active
 created: 2026-06-21
-updated: 2026-06-21
+updated: 2026-06-22
 owner: codex
 ---
 
@@ -57,11 +57,11 @@ Reduce maintenance pressure in the largest Workbench source files by splitting a
 
 | File | Lines | Assessment |
 |---|---:|---|
-| `src/App.tsx` | 4597 | Worth splitting, but start with leaf views/dialogs and pure helpers. |
-| `src-tauri/src/skills.rs` | 4446 | Highest-priority split; responsibilities are already separable. |
-| `src/App.test.tsx` | 2116 | Split after component paths stabilize; do not split first. |
+| `src/App.test.tsx` | 2124 | Still a large test file, but imports now target owner modules. Further test-file splitting is deferred unless future test work makes a clean behavior boundary obvious. |
+| `src-tauri/src/skills.rs` | 1888 | Split into a command facade plus focused `src-tauri/src/skills/` modules; no follow-up split needed in this round. |
 | `src-tauri/src/projects.rs` | 1824 | Possible later split; still cohesive around project records, profiles, and launch sessions. |
 | `src-tauri/src/radar.rs` | 1487 | Possible later split; cohesive around resource CRUD, GitHub Stars sync, and duplicate merging. |
+| `src/App.tsx` | 1216 | Leaf UI, dialogs, and pure helpers have been moved out. Remaining size is mostly `WorkbenchApp` app-level state and side-effect orchestration; defer further split to a separate state-ownership plan. |
 
 ## Execution Steps
 
@@ -70,8 +70,8 @@ Reduce maintenance pressure in the largest Workbench source files by splitting a
 | PLAN-1 | done | Capture the baseline before code changes: run the existing verification most relevant to the first target and record any pre-existing failures. | Baseline `cargo test --manifest-path src-tauri/Cargo.toml --no-fail-fast` passed: 71 passed. |
 | PLAN-2 | done | Split `src-tauri/src/skills.rs` into a facade plus focused modules: `types`, `db`, `filesystem`, `tool_targets`, `market`, and `cli`. Keep `skills::...` command exports stable for `lib.rs`. | `cargo fmt --manifest-path src-tauri/Cargo.toml --check`, `cargo test --manifest-path src-tauri/Cargo.toml --no-fail-fast`, and `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings` passed. |
 | PLAN-3 | done | Review the `skills.rs` split for import cycles, duplicated logic, visibility leaks, and tests that moved with the wrong responsibility. | `rg "pub\\(super\\)|pub\\(crate\\)|^pub " src-tauri/src/skills src-tauri/src/skills.rs`; manual review of facade and module imports completed. |
-| PLAN-4 | todo | Split `src/App.tsx` leaf UI code without changing `WorkbenchApp` state ownership: move `ProjectsView`, launch helpers, `SkillsView`, market/update views, `RadarView`, `SettingsView`, and dialogs into focused frontend modules. | `pnpm test`; `pnpm build` |
-| PLAN-5 | todo | Move frontend tests to follow component ownership only after imports stabilize. Keep shell/integration checks in `src/App.test.tsx`; move view-specific tests next to their view modules. | `pnpm test`; confirm test names still map to business behavior rather than implementation structure |
+| PLAN-4 | done | Split `src/App.tsx` leaf UI code without changing `WorkbenchApp` state ownership: move `ProjectsView`, launch helpers, `SkillsView`, market/update views, `RadarView`, `SettingsView`, and dialogs into focused frontend modules. | Observed on App split branches and final integration review: `pnpm build`; `pnpm test`; `git diff --check`. |
+| PLAN-5 | done | Retarget frontend tests to follow component ownership after imports stabilized. Keep shell/integration checks in `src/App.test.tsx`; import view-specific checks from owner modules. | Observed on APP-SPLIT-5 and final integration review: `pnpm test`; `pnpm build`; tests continue to assert behavior rather than module layout. |
 | PLAN-6 | todo | Re-evaluate `projects.rs` and `radar.rs` after the first two rounds. Split only if there is a near-term maintenance benefit and a clean facade can preserve command registrations. | Updated candidate scan; targeted Rust tests for project launch/profile and Radar sync/merge behavior |
 | PLAN-7 | todo | Update durable documentation only if module boundaries changed meaningfully. Keep capability docs focused on behavior, not file churn. | `node C:\Users\胡运宽\.codex\plugins\cache\cuberhyk-plugins\cuberhyk-dev-flow\0.7.2\bin\dev-flow.js validate-docs E:\Development\12-工具-Utility\Workbench`; `git diff -- docs` |
 
@@ -110,12 +110,19 @@ Planned structure:
 ```text
 src/App.tsx
 src/views/projects/ProjectsView.tsx
-src/views/projects/launch.ts
+src/views/projects/launchState.ts
 src/views/skills/SkillsView.tsx
-src/views/skills/market.tsx
+src/views/skills/SkillsMarketView.tsx
+src/views/skills/SkillUpdatesView.tsx
+src/views/skills/skillFilters.ts
+src/views/skills/skillMarketFormatters.ts
+src/views/skills/SkillStatusIndicator.tsx
 src/views/radar/RadarView.tsx
 src/views/settings/SettingsView.tsx
-src/components/dialogs/*.tsx
+src/views/settings/settingsFormatters.ts
+src/components/dialogs/projects/
+src/components/dialogs/settings/
+src/components/dialogs/skills/
 ```
 
 Rules:
@@ -124,6 +131,7 @@ Rules:
 - Move only components and pure helpers with clear props.
 - Avoid introducing a global store or context just to make the split easier.
 - Preserve existing UI component reuse from `src/components/ui.tsx`.
+- Final split review: no `part1`/`part2`, `utils`, `misc`, or generic glue modules were introduced; remaining `App.tsx` size is a deliberate deferred state/shell boundary, not a failed leaf UI split.
 
 ### `src-tauri/src/projects.rs`
 

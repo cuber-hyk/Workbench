@@ -1,8 +1,8 @@
 ---
 artifact_type: plan
-status: active
+status: archived
 created: 2026-06-21
-updated: 2026-06-21
+updated: 2026-06-22
 owner: codex
 ---
 
@@ -150,7 +150,7 @@ node C:\Users\胡运宽\.codex\plugins\cache\cuberhyk-plugins\cuberhyk-dev-flow\
 ## Artifact Routing
 
 - Parent plan: `docs/plans/2026-06-21-large-code-split.md`
-- Focused plan: `docs/plans/2026-06-21-app-projects-launch-split.md`
+- Focused plan: `docs/plans/archived/2026-06-21-app-projects-launch-split.md`
 - Source changes: `src/App.tsx`, `src/views/projects/ProjectsView.tsx`, `src/views/projects/launchState.ts`
 - Tests: keep in `src/App.test.tsx` for this round
 - Capability docs: not expected
@@ -161,4 +161,4 @@ node C:\Users\胡运宽\.codex\plugins\cache\cuberhyk-plugins\cuberhyk-dev-flow\
 
 ## Closeout
 
-This plan is complete when the focused Projects/launch split is implemented, verified, reviewed, committed if approved, and the parent large-code split plan can mark the corresponding Projects/launch portion of PLAN-4 as done or partially done.
+This plan is complete. The focused Projects/launch split was implemented, verified, reviewed, committed, and later included in the full App leaf UI split series.

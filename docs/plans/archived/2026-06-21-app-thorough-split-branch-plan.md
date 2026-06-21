@@ -1,8 +1,8 @@
 ---
 artifact_type: plan
-status: active
+status: archived
 created: 2026-06-21
-updated: 2026-06-21
+updated: 2026-06-22
 owner: codex
 ---
 
@@ -54,7 +54,7 @@ Finish the `src/App.tsx` frontend split in reviewable, low-risk task branches so
 - `docs/ai/context-map.md`
 - `docs/ARCHITECTURE.md`
 - `docs/plans/2026-06-21-large-code-split.md`
-- `docs/plans/2026-06-21-app-projects-launch-split.md`
+- `docs/plans/archived/2026-06-21-app-projects-launch-split.md`
 - `src/App.tsx`
 - `src/App.test.tsx`
 - `src/views/projects/ProjectsView.tsx`
@@ -67,16 +67,11 @@ Finish the `src/App.tsx` frontend split in reviewable, low-risk task branches so
 
 ## Current State
 
-- `src/App.tsx` has already had Radar and tool icon logic extracted.
-- The Projects/launch extraction is currently implemented on `task/20260621-split-app-tsx` and awaits commit approval.
-- `src/App.tsx` still contains:
-  - `WorkbenchApp` app-level state and side effects.
-  - `SkillsView`.
-  - Skills market and update subviews.
-  - Settings view.
-  - Skills, settings, import, migration, delete, and project dialogs.
-  - Formatting/filter helpers for Skills and Settings.
-- `src/App.test.tsx` still imports several components and helpers through `src/App.tsx`.
+- The App leaf UI split series has been merged into `task/20260621-split-app-tsx`.
+- `src/App.tsx` now contains `App`, `AppErrorBoundary`, `WorkbenchApp`, App-level data loading, Tauri event subscriptions, toast/update handling, navigation, and dialog orchestration.
+- Project, Radar, Settings, and Skills views now live under `src/views/<feature>/`.
+- Project, Settings, and Skills dialogs now live under `src/components/dialogs/<feature>/`.
+- `src/App.test.tsx` imports view helpers and components from their owner modules; `src/App.tsx` exports only App shell helpers that are still owned there.
 
 ## Target Structure
 
@@ -95,7 +90,8 @@ src/views/skills/
   SkillsMarketView.tsx
   SkillUpdatesView.tsx
   skillFilters.ts
-  skillMarketState.ts
+  skillMarketFormatters.ts
+  SkillStatusIndicator.tsx
 src/components/dialogs/
   projects/
   settings/
@@ -173,7 +169,7 @@ Rules:
 | APP-SPLIT-3 | done | `task/20260621-split-app-skills-market` | Move `SkillsMarketView`, `SkillUpdatesView`, skeletons, status indicators, market stats, market detail helpers, update labels, and install count formatting into `src/views/skills/`. Keep `SkillsView` state ownership unchanged. | `pnpm build`; `pnpm test`; verify market install progress and update tests still pass |
 | APP-SPLIT-4 | done | `task/20260621-split-app-skills-view` | Move the remaining local `SkillsView`, `SwitchControl`, `GlobalToolIcons`, `SkillCategorySelect`, `SkillConflictPanel`, and skill filter/status helpers into `src/views/skills/`. | `pnpm build`; `pnpm test`; `rg` confirms Skills view helpers no longer live in `App.tsx` |
 | APP-SPLIT-5 | done | `task/20260621-split-app-tests` | Move or retarget tests after module paths stabilize. Import view tests from their owning modules and keep only App shell/integration tests importing from `src/App.tsx`. Remove unnecessary temporary re-exports from `App.tsx`. | `pnpm test`; `pnpm build`; test names still describe behavior rather than implementation structure |
-| APP-SPLIT-6 | todo | `task/20260621-split-app-tsx` | Final integration review before merging to `master`: confirm App ownership boundaries, context map routing, active plans, and final diff stack. | `pnpm build`; `pnpm test`; Dev Flow docs validation; manual independent review |
+| APP-SPLIT-6 | done | `task/20260621-split-app-tsx` | Final integration review before merging to `master`: confirm App ownership boundaries, context map routing, active plans, final diff stack, and split-skill compliance. | Observed 2026-06-22: `pnpm build`; `pnpm test`; `git diff --check`; Dev Flow docs validation; split candidate scan; manual independent review |
 
 ## Branch Details
 
@@ -342,11 +338,29 @@ Review checklist for each branch:
 - `docs/ai/context-map.md` identifies durable source files after each durable path move.
 - The final integration branch has no unrelated files and is ready for one reviewed merge to `master`.
 
+## Final Split-Skill Review
+
+Split scan with the skill script still reports `src/App.tsx` and `WorkbenchApp` as line-count candidates. Manual classification:
+
+- `src/App.tsx`: defer further splitting. The remaining large block is the App shell and application state/side-effect owner, not mixed leaf UI. Splitting it now would be a state-ownership refactor and needs a separate plan.
+- `src/App.test.tsx`: defer further splitting. Tests now import owner modules directly where appropriate; additional file movement should follow future behavior-focused test changes.
+- `src/views/projects/ProjectsView.tsx` and `src/views/skills/SkillsView.tsx`: no split in this round. Both are feature-scoped view modules under the confirmed ownership boundary and are below the current candidate threshold.
+- Naming compliance: moved modules use feature names (`projects`, `settings`, `skills`, `dialogs`) and concrete responsibilities (`launchState`, `skillFilters`, `skillMarketFormatters`); no `part`, `misc`, or generic `utils` split was introduced.
+- Import direction: `App.tsx` imports views/dialogs and `lib` APIs/types; views/dialogs do not import `App.tsx`.
+
+Final verification observed on `task/20260621-split-app-tsx`:
+
+- `pnpm build`: passed.
+- `pnpm test`: passed, 3 test files and 61 tests.
+- `git diff --check`: passed, with existing LF/CRLF normalization warnings only.
+- Dev Flow docs validation: passed with pre-existing repository warnings only.
+- Split script scan: recorded candidates above; no immediate follow-up split required for this App leaf UI round.
+
 ## Artifact Routing
 
 - Parent plan: `docs/plans/2026-06-21-large-code-split.md`
-- Current focused plan: `docs/plans/2026-06-21-app-projects-launch-split.md`
-- Thorough branch plan: `docs/plans/2026-06-21-app-thorough-split-branch-plan.md`
+- Current focused plan: `docs/plans/archived/2026-06-21-app-projects-launch-split.md`
+- Thorough branch plan: `docs/plans/archived/2026-06-21-app-thorough-split-branch-plan.md`
 - Source routing updates: `docs/ai/context-map.md`
 - Capability docs: not expected unless behavior changes
 - Changelog: not expected for pure internal refactors
@@ -355,4 +369,4 @@ Review checklist for each branch:
 
 ## Closeout
 
-This plan is complete when all sub-branches are committed, merged into `task/20260621-split-app-tsx`, verified together, and then merged to `master` after explicit approval. After final merge, run Dev Flow check and close or archive App split plans according to the repository lifecycle rules.
+This plan is complete. All App split sub-branches were committed, merged into `task/20260621-split-app-tsx`, verified together, and reviewed for split-skill compliance. Merging the integration branch onward remains a Git operation outside this archived implementation plan.

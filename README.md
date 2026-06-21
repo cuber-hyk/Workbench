@@ -151,8 +151,8 @@ Workbench/
 │  └─ PRD.md
 ├─ src/
 │  ├─ components/
-│  ├─ contexts/
 │  ├─ lib/
+│  ├─ views/
 │  ├─ App.tsx
 │  ├─ main.tsx
 │  └─ styles.css
