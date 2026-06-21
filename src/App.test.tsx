@@ -1889,6 +1889,37 @@ describe("Workbench UI interactions", () => {
     }
   });
 
+  it("keeps the market visible when update refresh fails after a successful install", async () => {
+    const user = userEvent.setup();
+    const listMarket = vi.spyOn(workbenchApi, "listSkillMarket").mockResolvedValue(testMarketItems());
+    const installSkill = vi.spyOn(workbenchApi, "installSkillFromMarket").mockImplementation(async (_source, _skillId, onProgress) => {
+      const { projectOpenProfiles: _missingProjectOpenProfiles, ...settingsWithoutProjectProfiles } = installedSkillsState().settings;
+      void _missingProjectOpenProfiles;
+      onProgress?.(100);
+      return {
+        ...installedSkillsState(),
+        settings: settingsWithoutProjectProfiles as SkillsState["settings"]
+      };
+    });
+    const listUpdates = vi.spyOn(workbenchApi, "listSkillUpdates").mockRejectedValue(new Error("update refresh failed"));
+
+    try {
+      renderWithUpdateProvider(<App />);
+      const navigation = await screen.findByRole("navigation", { name: "主导航" });
+      await user.click(within(navigation).getByRole("button", { name: "Skills" }));
+      await user.click(await screen.findByRole("button", { name: "技能市场" }));
+      await user.click(await screen.findByRole("button", { name: "安装" }));
+
+      expect(await screen.findByText(/更新状态刷新失败：update refresh failed/)).toBeInTheDocument();
+      expect(screen.getByLabelText("技能市场统计")).toBeInTheDocument();
+      expect(screen.queryByText("页面渲染失败")).not.toBeInTheDocument();
+    } finally {
+      listMarket.mockRestore();
+      installSkill.mockRestore();
+      listUpdates.mockRestore();
+    }
+  });
+
   it("supports selected batch updates for skills.sh installed skills", async () => {
     const user = userEvent.setup();
     const updateSkills = vi.spyOn(workbenchApi, "updateMarketSkills").mockResolvedValue([
