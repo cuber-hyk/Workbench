@@ -26,6 +26,7 @@ Workbench App 已完成第一阶段基础能力验证，当前进入进阶开发
 - Skills：扫描、分类、导入、skills.sh 市场安装/卸载、skills.sh 来源更新、全局启用、项目启用、冲突解决和删除已接入真实后端。
 - 资源 Radar：本地增删改查、搜索筛选、收藏、打开链接和 GitHub Stars 手动同步已接入 SQLite 与 Tauri commands。
 - 设置：展示数据位置、Skills 根目录、工具目录和主题。
+- 前端模块：`src/App.tsx` 保留应用壳、全局状态、副作用、导航、toast 和弹窗编排；项目、Radar、设置、Skills 视图位于 `src/views/`，功能弹窗位于 `src/components/dialogs/`。
 - 验证：统一 `pnpm verify` 覆盖前端构建、Rust 格式、测试和 Clippy；Tauri Release 构建与 Windows 安装包构建通过。
 
 ## 重要约束

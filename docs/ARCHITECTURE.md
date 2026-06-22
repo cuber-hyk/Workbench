@@ -81,9 +81,16 @@ Workbench/
 │  └─ app.js
 ├─ src/
 │  ├─ components/
+│  │  └─ dialogs/
 │  ├─ lib/
 │  │  ├─ api/
+│  │  ├─ ui/
 │  │  ├─ types/
+│  ├─ views/
+│  │  ├─ projects/
+│  │  ├─ radar/
+│  │  ├─ settings/
+│  │  └─ skills/
 │  ├─ App.tsx
 │  ├─ main.tsx
 │  └─ styles.css
@@ -91,6 +98,10 @@ Workbench/
 │  ├─ src/
 │  │  ├─ main.rs
 │  │  ├─ lib.rs
+│  │  ├─ projects.rs
+│  │  ├─ projects/
+│  │  ├─ radar.rs
+│  │  ├─ radar/
 │  │  ├─ skills.rs
 │  │  └─ skills/
 │  ├─ tauri.conf.json
@@ -111,6 +122,10 @@ Workbench/
 - `docs/capabilities/`、`docs/audits/`、`docs/adr/` 保存后续可沉淀的能力、审核和架构决策记录。
 - `UI/` 保存讨论用静态原型，不作为正式前端代码入口。
 - `src/lib/api/` 封装 Tauri `invoke` 调用。
+- `src/lib/ui/` 保存跨页面复用的前端 UI 辅助组件和资源映射。
+- `src/views/` 保存从 `App.tsx` 拆出的页面级视图模块。
+- `src/components/dialogs/` 保存按功能域拆分的项目、设置和 Skills 弹窗。
+- `src-tauri/src/projects.rs` 是当前 Project command facade；类型、SQLite、项目打开方式 Profiles 和启动会话进程管理位于 `src-tauri/src/projects/`。
 - `src-tauri/src/skills.rs` 是当前 Skills command facade；类型、SQLite、文件系统同步、工具目标、分类、自定义工具、导入、根目录迁移、skills.sh 市场和 CLI 适配位于 `src-tauri/src/skills/`。
 
 ## 4. 前端模块说明
@@ -123,6 +138,9 @@ Workbench/
 - 顶部页面标题和主要操作。
 - 浅色 / 深色主题切换。
 - 右侧工作区布局。
+- 应用级数据加载、Tauri 事件订阅、toast、更新提示和弹窗编排。
+
+`src/App.tsx` 不承载各业务视图的具体列表、表单或详情实现；项目、Skills、Radar 和设置视图分别位于 `src/views/<feature>/`，功能弹窗位于 `src/components/dialogs/<feature>/`。`WorkbenchApp` 仍是应用级状态与副作用的所有者，后续如需拆分状态或 hooks 需要单独计划。
 
 当前导航模块：
 

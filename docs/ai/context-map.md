@@ -13,16 +13,29 @@ Do not read `docs/plans/`, `docs/audits/`, or archived directories by default.
 ## 架构与实现
 
 - `docs/ARCHITECTURE.md`：技术栈、目录结构、核心模块、数据模型和关键流程。
-- `src/App.tsx`：当前前端页面和主要交互入口。
+- `src/App.tsx`：当前前端应用壳、全局状态和主要交互入口。
+- `src/views/projects/ProjectsView.tsx`：项目列表、详情、启动项面板和本次启动日志前端视图。
+- `src/views/projects/launchState.ts`：项目启动状态、启动事件归并、停止状态标记和启动配置筛选的前端纯逻辑。
+- `src/views/radar/RadarView.tsx`：资源 Radar 前端列表、详情、筛选和增删弹窗。
+- `src/views/settings/SettingsView.tsx`：设置页前端视图。
+- `src/views/settings/settingsFormatters.ts`：设置页展示格式化逻辑。
+- `src/views/skills/SkillsView.tsx`：Skills 本地列表、项目启用、市场/更新子视图编排和 Skills 前端交互入口。
+- `src/views/skills/SkillsMarketView.tsx`：skills.sh 市场前端列表、详情、安装和卸载入口。
+- `src/views/skills/SkillUpdatesView.tsx`：skills.sh 已安装 Skill 的更新检查和批量更新视图。
+- `src/views/skills/skillFilters.ts`、`src/views/skills/skillMarketFormatters.ts`、`src/views/skills/SkillStatusIndicator.tsx`：Skills 筛选、展示格式化与状态标识。
+- `src/components/dialogs/projects/`：项目编辑与启动配置表单弹窗。
+- `src/components/dialogs/settings/`：设置页相关的自定义工具、项目打开方式、托盘提示和目录创建弹窗。
+- `src/components/dialogs/skills/`：Skills 分类、导入、迁移、删除和市场卸载弹窗。
+- `src/lib/ui/toolIcons.tsx`：Agent 工具图标资源映射、自定义图标路径转换和图标回退显示。
 - `src/lib/types/domain.ts`：前端领域类型。
 - `src/lib/api/workbenchApi.ts`：前端到 Tauri commands 的 API 边界。
 - `src-tauri/src/lib.rs`：Tauri command 注册入口。
-- `src-tauri/src/projects.rs`：项目持久化、目录选择和启动逻辑。
+- `src-tauri/src/projects.rs`、`src-tauri/src/projects/`：项目 command facade、类型、SQLite 持久化、项目打开方式 Profiles 和启动会话进程管理。
 - `docs/capabilities/project-management.md`：项目管理当前能力、启动项、外部工具打开 Profiles、数据所有权和错误边界。
 - `docs/adr/2026-06-16-project-open-profiles.md`：项目打开方式使用全局 Profiles、并与启动配置分离的决策。
 - `docs/capabilities/app-update.md`：应用更新入口、Tauri updater 配置、GitHub Releases 更新来源和发布签名边界。
 - `docs/capabilities/app-lifecycle.md`：主窗口关闭行为、关闭偏好持久化、系统托盘显示和退出入口。
-- `src-tauri/src/radar.rs`：资源 Radar 持久化、GitHub Stars 手动同步、URL 去重、重复组合并、校验和链接打开逻辑。
+- `src-tauri/src/radar.rs`、`src-tauri/src/radar/`：资源 Radar command facade、类型、SQLite 持久化、GitHub Stars 手动同步、URL/source 规范化、重复组合并、校验和链接打开逻辑。
 - `docs/capabilities/resource-radar.md`：资源 Radar 当前能力、领域分类、数据所有权、同步规则和重复组合并规则。
 - `docs/adr/2026-06-16-resource-radar-duplicate-merge.md`：资源 Radar 重复组合并后删除副资源的长期决策。
 - `src-tauri/src/skills.rs`、`src-tauri/src/skills/`：Skills command 入口、类型、SQLite、文件系统同步、工具目标、分类、自定义工具目标、导入、根目录迁移、受管目标重建、skills.sh 市场/CLI、启用、冲突和删除逻辑。
