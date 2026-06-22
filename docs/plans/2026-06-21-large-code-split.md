@@ -59,7 +59,7 @@ Reduce maintenance pressure in the largest Workbench source files by splitting a
 |---|---:|---|
 | `src/App.test.tsx` | 2124 | Still a large test file, but imports now target owner modules. Further test-file splitting is deferred unless future test work makes a clean behavior boundary obvious. |
 | `src-tauri/src/skills.rs` | 1888 | Split into a command facade plus focused `src-tauri/src/skills/` modules; no follow-up split needed in this round. |
-| `src-tauri/src/projects.rs` | 1824 | Possible later split; still cohesive around project records, profiles, and launch sessions. |
+| `src-tauri/src/projects.rs` | 558 | Split into a command facade plus focused `src-tauri/src/projects/` modules for types, DB, Profiles, and launch sessions. |
 | `src-tauri/src/radar.rs` | 1487 | Possible later split; cohesive around resource CRUD, GitHub Stars sync, and duplicate merging. |
 | `src/App.tsx` | 1216 | Leaf UI, dialogs, and pure helpers have been moved out. Remaining size is mostly `WorkbenchApp` app-level state and side-effect orchestration; defer further split to a separate state-ownership plan. |
 
@@ -72,7 +72,7 @@ Reduce maintenance pressure in the largest Workbench source files by splitting a
 | PLAN-3 | done | Review the `skills.rs` split for import cycles, duplicated logic, visibility leaks, and tests that moved with the wrong responsibility. | `rg "pub\\(super\\)|pub\\(crate\\)|^pub " src-tauri/src/skills src-tauri/src/skills.rs`; manual review of facade and module imports completed. |
 | PLAN-4 | done | Split `src/App.tsx` leaf UI code without changing `WorkbenchApp` state ownership: move `ProjectsView`, launch helpers, `SkillsView`, market/update views, `RadarView`, `SettingsView`, and dialogs into focused frontend modules. | Observed on App split branches and final integration review: `pnpm build`; `pnpm test`; `git diff --check`. |
 | PLAN-5 | done | Retarget frontend tests to follow component ownership after imports stabilized. Keep shell/integration checks in `src/App.test.tsx`; import view-specific checks from owner modules. | Observed on APP-SPLIT-5 and final integration review: `pnpm test`; `pnpm build`; tests continue to assert behavior rather than module layout. |
-| PLAN-6 | todo | Re-evaluate `projects.rs` and `radar.rs` after the first two rounds. Split only if there is a near-term maintenance benefit and a clean facade can preserve command registrations. | Updated candidate scan; targeted Rust tests for project launch/profile and Radar sync/merge behavior |
+| PLAN-6 | todo | Re-evaluate `projects.rs` and `radar.rs` after the first two rounds. `projects.rs` has been split with a clean facade; Radar remains a follow-up candidate. | Projects split observed: `cargo test --manifest-path src-tauri/Cargo.toml --no-fail-fast`; `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings` |
 | PLAN-7 | todo | Update durable documentation only if module boundaries changed meaningfully. Keep capability docs focused on behavior, not file churn. | `node C:\Users\胡运宽\.codex\plugins\cache\cuberhyk-plugins\cuberhyk-dev-flow\0.7.2\bin\dev-flow.js validate-docs E:\Development\12-工具-Utility\Workbench`; `git diff -- docs` |
 
 ## Detailed Target Boundaries
@@ -145,7 +145,7 @@ src-tauri/src/projects/profiles.rs
 src-tauri/src/projects/launch.rs
 ```
 
-Split only when touching project management or launch-session behavior.
+Implemented in `docs/plans/2026-06-22-projects-rs-split.md`. `projects.rs` remains the command facade; `types`, `db`, `profiles`, and `launch` modules own the moved implementation. Existing project tests remain in `projects.rs` for this round as cross-module behavior coverage.
 
 ### `src-tauri/src/radar.rs`
 

@@ -30,7 +30,7 @@ Do not read `docs/plans/`, `docs/audits/`, or archived directories by default.
 - `src/lib/types/domain.ts`：前端领域类型。
 - `src/lib/api/workbenchApi.ts`：前端到 Tauri commands 的 API 边界。
 - `src-tauri/src/lib.rs`：Tauri command 注册入口。
-- `src-tauri/src/projects.rs`：项目持久化、目录选择和启动逻辑。
+- `src-tauri/src/projects.rs`、`src-tauri/src/projects/`：项目 command facade、类型、SQLite 持久化、项目打开方式 Profiles 和启动会话进程管理。
 - `docs/capabilities/project-management.md`：项目管理当前能力、启动项、外部工具打开 Profiles、数据所有权和错误边界。
 - `docs/adr/2026-06-16-project-open-profiles.md`：项目打开方式使用全局 Profiles、并与启动配置分离的决策。
 - `docs/capabilities/app-update.md`：应用更新入口、Tauri updater 配置、GitHub Releases 更新来源和发布签名边界。

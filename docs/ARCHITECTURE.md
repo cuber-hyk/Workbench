@@ -98,6 +98,8 @@ Workbench/
 │  ├─ src/
 │  │  ├─ main.rs
 │  │  ├─ lib.rs
+│  │  ├─ projects.rs
+│  │  ├─ projects/
 │  │  ├─ skills.rs
 │  │  └─ skills/
 │  ├─ tauri.conf.json
@@ -121,6 +123,7 @@ Workbench/
 - `src/lib/ui/` 保存跨页面复用的前端 UI 辅助组件和资源映射。
 - `src/views/` 保存从 `App.tsx` 拆出的页面级视图模块。
 - `src/components/dialogs/` 保存按功能域拆分的项目、设置和 Skills 弹窗。
+- `src-tauri/src/projects.rs` 是当前 Project command facade；类型、SQLite、项目打开方式 Profiles 和启动会话进程管理位于 `src-tauri/src/projects/`。
 - `src-tauri/src/skills.rs` 是当前 Skills command facade；类型、SQLite、文件系统同步、工具目标、分类、自定义工具、导入、根目录迁移、skills.sh 市场和 CLI 适配位于 `src-tauri/src/skills/`。
 
 ## 4. 前端模块说明
