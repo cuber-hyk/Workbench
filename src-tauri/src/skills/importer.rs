@@ -121,6 +121,57 @@ pub(super) fn import_skill_directory(
     })
 }
 
+pub(super) fn import_skill_directory_with_overwrite(
+    source: &Path,
+    target_root: &Path,
+    overwrite: bool,
+    workbench_root: &Path,
+) -> SkillResult<ImportResult> {
+    let directory_name = source
+        .file_name()
+        .ok_or_else(|| "导入来源没有目录名称".to_string())?
+        .to_string_lossy()
+        .to_string();
+
+    if !source.join("SKILL.md").is_file() {
+        return Ok(ImportResult {
+            directory_name,
+            status: ImportStatus::Invalid,
+            message: "目录中不存在 SKILL.md".to_string(),
+        });
+    }
+    validate_directory_name(&directory_name)?;
+
+    fs::create_dir_all(target_root).map_err(error_message)?;
+    let target = target_root.join(&directory_name);
+    if target.exists() || target.symlink_metadata().is_ok() {
+        if !overwrite {
+            return Ok(ImportResult {
+                directory_name,
+                status: ImportStatus::Conflict,
+                message: "统一根目录中已存在同名 Skill".to_string(),
+            });
+        }
+        let backup = super::backup_path(workbench_root, "workbench", &directory_name)?;
+        super::copy_path_to_backup(&target, &backup)?;
+        super::replace_directory_from(source, &target)?;
+        let connection = open_database(workbench_root)?;
+        connection
+            .execute(
+                "DELETE FROM skill_sources WHERE directory_name = ?1",
+                [&directory_name],
+            )
+            .map_err(error_message)?;
+        return Ok(ImportResult {
+            directory_name,
+            status: ImportStatus::Imported,
+            message: format!("已覆盖，旧版本已备份到 {}", backup.to_string_lossy()),
+        });
+    }
+
+    import_skill_directory(source, target_root)
+}
+
 pub(super) fn skill_directory_metadata(
     source: &Path,
     fallback: &str,
@@ -212,17 +263,41 @@ pub(super) fn scan_one_level_skill_candidates(root: &Path) -> SkillResult<Vec<Pa
 
 pub(super) fn import_skills_from_folder_state(
     source_path: String,
+    overwrite_directory_names: Option<Vec<String>>,
 ) -> SkillResult<Vec<ImportResult>> {
     let settings = current_settings()?;
     let source = PathBuf::from(source_path);
     let candidates = discover_skill_sources(&source)?;
+    let overwrite_directory_names = overwrite_directory_names.unwrap_or_default();
+    for directory_name in &overwrite_directory_names {
+        validate_directory_name(directory_name)?;
+    }
+    let overwrite_directory_names = overwrite_directory_names
+        .into_iter()
+        .collect::<HashSet<_>>();
+    let target_root = Path::new(&settings.skills_root);
+    let workbench_root = Path::new(&settings.workbench_root);
     candidates
         .iter()
-        .map(|candidate| import_skill_directory(candidate, Path::new(&settings.skills_root)))
+        .map(|candidate| {
+            let directory_name = candidate
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string())
+                .unwrap_or_default();
+            import_skill_directory_with_overwrite(
+                candidate,
+                target_root,
+                overwrite_directory_names.contains(&directory_name),
+                workbench_root,
+            )
+        })
         .collect()
 }
 
-pub(super) fn import_skills_from_zip_state(zip_path: String) -> SkillResult<Vec<ImportResult>> {
+pub(super) fn import_skills_from_zip_state(
+    zip_path: String,
+    overwrite_directory_names: Option<Vec<String>>,
+) -> SkillResult<Vec<ImportResult>> {
     let file = fs::File::open(zip_path).map_err(error_message)?;
     let mut archive = ZipArchive::new(file).map_err(error_message)?;
     let temporary = tempdir().map_err(error_message)?;
@@ -242,7 +317,10 @@ pub(super) fn import_skills_from_zip_state(zip_path: String) -> SkillResult<Vec<
         let mut output = fs::File::create(destination).map_err(error_message)?;
         io::copy(&mut entry, &mut output).map_err(error_message)?;
     }
-    import_skills_from_folder_state(temporary.path().to_string_lossy().to_string())
+    import_skills_from_folder_state(
+        temporary.path().to_string_lossy().to_string(),
+        overwrite_directory_names,
+    )
 }
 
 pub(super) fn discover_external_skills_state() -> SkillResult<Vec<ExternalSkillCandidateGroup>> {

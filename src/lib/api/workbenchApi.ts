@@ -532,11 +532,11 @@ export const workbenchApi = {
     }
     return invokeSkillsState("merge_skill_category", { sourceCategoryId, targetCategoryId });
   },
-  async importSkillsFromFolder(sourcePath: string) {
-    return invoke<ImportResult[]>("import_skills_from_folder", { sourcePath });
+  async importSkillsFromFolder(sourcePath: string, overwriteDirectoryNames?: string[]) {
+    return invoke<ImportResult[]>("import_skills_from_folder", { sourcePath, overwriteDirectoryNames });
   },
-  async importSkillsFromZip(zipPath: string) {
-    return invoke<ImportResult[]>("import_skills_from_zip", { zipPath });
+  async importSkillsFromZip(zipPath: string, overwriteDirectoryNames?: string[]) {
+    return invoke<ImportResult[]>("import_skills_from_zip", { zipPath, overwriteDirectoryNames });
   },
   async selectSkillImportSource(kind: "zip" | "folder") {
     return invoke<string | null>("select_skill_import_source", { kind });

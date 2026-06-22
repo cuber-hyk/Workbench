@@ -33,5 +33,6 @@ export function managedTargetStatusLabel(status: ManagedTargetRebuildResult["sta
 export function importStatusLabel(status: ImportResult["status"]) {
   if (status === "imported") return "已导入";
   if (status === "invalid") return "无效";
+  if (status === "conflict") return "冲突";
   return "已跳过";
 }

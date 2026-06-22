@@ -62,5 +62,5 @@ pnpm tauri:verify-build
 Dev Flow 文档检查：
 
 ```bash
-node C:\Users\胡运宽\.codex\plugins\cache\cuberhyk-plugins\cuberhyk-dev-flow\0.7.2\bin\dev-flow.js validate-docs E:\Development\12-工具-Utility\Workbench
+node C:\Users\胡运宽\.codex\plugins\cache\cuberhyk-plugins\cuberhyk-dev-flow\0.9.0\bin\dev-flow.js validate-docs E:\Development\12-工具-Utility\Workbench
 ```
