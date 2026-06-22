@@ -3,7 +3,7 @@ artifact_type: capability
 status: current
 created: 2026-06-15
 updated: 2026-06-20
-source_of_truth: src-tauri/src/radar.rs
+source_of_truth: src-tauri/src/radar.rs; src-tauri/src/radar/
 ---
 
 # 资源 Radar
