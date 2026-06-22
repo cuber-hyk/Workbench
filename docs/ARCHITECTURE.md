@@ -100,6 +100,8 @@ Workbench/
 │  │  ├─ lib.rs
 │  │  ├─ projects.rs
 │  │  ├─ projects/
+│  │  ├─ radar.rs
+│  │  ├─ radar/
 │  │  ├─ skills.rs
 │  │  └─ skills/
 │  ├─ tauri.conf.json

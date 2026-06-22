@@ -35,7 +35,7 @@ Do not read `docs/plans/`, `docs/audits/`, or archived directories by default.
 - `docs/adr/2026-06-16-project-open-profiles.md`：项目打开方式使用全局 Profiles、并与启动配置分离的决策。
 - `docs/capabilities/app-update.md`：应用更新入口、Tauri updater 配置、GitHub Releases 更新来源和发布签名边界。
 - `docs/capabilities/app-lifecycle.md`：主窗口关闭行为、关闭偏好持久化、系统托盘显示和退出入口。
-- `src-tauri/src/radar.rs`：资源 Radar 持久化、GitHub Stars 手动同步、URL 去重、重复组合并、校验和链接打开逻辑。
+- `src-tauri/src/radar.rs`、`src-tauri/src/radar/`：资源 Radar command facade、类型、SQLite 持久化、GitHub Stars 手动同步、URL/source 规范化、重复组合并、校验和链接打开逻辑。
 - `docs/capabilities/resource-radar.md`：资源 Radar 当前能力、领域分类、数据所有权、同步规则和重复组合并规则。
 - `docs/adr/2026-06-16-resource-radar-duplicate-merge.md`：资源 Radar 重复组合并后删除副资源的长期决策。
 - `src-tauri/src/skills.rs`、`src-tauri/src/skills/`：Skills command 入口、类型、SQLite、文件系统同步、工具目标、分类、自定义工具目标、导入、根目录迁移、受管目标重建、skills.sh 市场/CLI、启用、冲突和删除逻辑。
