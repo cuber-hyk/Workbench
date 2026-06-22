@@ -1,6 +1,6 @@
 ---
 artifact_type: plan
-status: active
+status: archived
 created: 2026-06-21
 updated: 2026-06-22
 owner: codex
@@ -149,7 +149,7 @@ Implemented in `docs/plans/2026-06-22-projects-rs-split.md`. `projects.rs` remai
 
 ### `src-tauri/src/radar.rs`
 
-Potential structure if later approved:
+Implemented structure:
 
 ```text
 src-tauri/src/radar.rs
@@ -199,4 +199,4 @@ Implemented in `docs/plans/2026-06-22-radar-rs-split.md`. `radar.rs` remains the
 
 ## Completion
 
-This plan is complete when all non-deferred steps are done, verification results are recorded, and any durable documentation updates have either been made or explicitly marked unnecessary.
+Archived on 2026-06-22 after all non-deferred steps were completed, verification results were recorded, and durable documentation routing was updated. `src/App.tsx` state-shell extraction and `src/App.test.tsx` splitting remain deferred until a future task has a clear behavior or state-ownership boundary.

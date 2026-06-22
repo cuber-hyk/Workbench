@@ -1,6 +1,6 @@
 ---
 artifact_type: plan
-status: active
+status: archived
 created: 2026-06-22
 updated: 2026-06-22
 owner: codex
@@ -165,4 +165,4 @@ node C:\Users\胡运宽\.codex\plugins\cache\cuberhyk-plugins\cuberhyk-dev-flow\
 
 ## Closeout
 
-This plan is complete when the split is reviewed, committed if approved, and the parent large-code split plan records `projects.rs` as complete.
+Archived on 2026-06-22. `src-tauri/src/projects.rs` is now a command facade, with implementation owned by `src-tauri/src/projects/types.rs`, `db.rs`, `profiles.rs`, and `launch.rs`; the parent large-code split plan records the Projects split as complete.
