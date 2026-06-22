@@ -565,13 +565,19 @@ pub fn merge_skill_category(
 }
 
 #[tauri::command]
-pub fn import_skills_from_folder(source_path: String) -> SkillResult<Vec<ImportResult>> {
-    import_skills_from_folder_state(source_path)
+pub fn import_skills_from_folder(
+    source_path: String,
+    overwrite_directory_names: Option<Vec<String>>,
+) -> SkillResult<Vec<ImportResult>> {
+    import_skills_from_folder_state(source_path, overwrite_directory_names)
 }
 
 #[tauri::command]
-pub fn import_skills_from_zip(zip_path: String) -> SkillResult<Vec<ImportResult>> {
-    import_skills_from_zip_state(zip_path)
+pub fn import_skills_from_zip(
+    zip_path: String,
+    overwrite_directory_names: Option<Vec<String>>,
+) -> SkillResult<Vec<ImportResult>> {
+    import_skills_from_zip_state(zip_path, overwrite_directory_names)
 }
 
 #[tauri::command]
@@ -1024,6 +1030,7 @@ mod tests {
     use std::fs;
     use std::io;
     use tempfile::tempdir;
+    use walkdir::WalkDir;
 
     fn in_memory_settings_connection() -> Connection {
         let connection = Connection::open_in_memory().unwrap();
@@ -1580,6 +1587,37 @@ mod tests {
             fs::read_to_string(target.join("SKILL.md")).unwrap(),
             "existing"
         );
+    }
+
+    #[test]
+    fn importing_same_directory_name_with_overwrite_replaces_and_backs_up() {
+        let source_root = tempdir().unwrap();
+        let target_root = tempdir().unwrap();
+        let workbench_root = tempdir().unwrap();
+        let source = source_root.path().join("shared");
+        let target = target_root.path().join("shared");
+        fs::create_dir_all(&source).unwrap();
+        fs::create_dir_all(&target).unwrap();
+        fs::write(source.join("SKILL.md"), "new").unwrap();
+        fs::write(target.join("SKILL.md"), "existing").unwrap();
+
+        let result = import_skill_directory_with_overwrite(
+            &source,
+            target_root.path(),
+            true,
+            workbench_root.path(),
+        )
+        .unwrap();
+
+        assert_eq!(result.status, ImportStatus::Imported);
+        assert_eq!(fs::read_to_string(target.join("SKILL.md")).unwrap(), "new");
+        let backup_root = workbench_root.path().join("backups/skills");
+        let backup = WalkDir::new(backup_root)
+            .into_iter()
+            .filter_map(Result::ok)
+            .find(|entry| entry.file_name() == "SKILL.md")
+            .expect("old Skill should be backed up");
+        assert_eq!(fs::read_to_string(backup.path()).unwrap(), "existing");
     }
 
     #[test]

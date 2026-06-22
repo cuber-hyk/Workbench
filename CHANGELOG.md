@@ -8,12 +8,23 @@
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Security
+
+## [0.2.0] - 2026-06-22
+
+### Added
+
 - Skills 支持发现已注册工具全局目录中的既有 Skills，并可由用户显式导入到当前统一 Skills 根目录。
 - 设置页支持切换统一 Skills 根目录后的旧根目录迁移检查、显式迁移和 Workbench 受管启用目标重建。
 - 资源 Radar 在同步 GitHub Stars 时检查 GitHub CLI 状态，未配置或未登录时通过右下角提示告知用户运行 `gh auth login`。
 
 ### Changed
 
+- ZIP / 文件夹导入遇到同名 Skill 时不再只能跳过，导入结果弹窗允许用户选择冲突项并显式覆盖，覆盖前会备份旧版本。
 - 切换统一 Skills 根目录时会先确认，并记录上一个根目录；切换动作本身不会自动迁移内容、重建链接或删除旧目录。
 - Toast 通知改为主题适配的卡片样式，支持 neutral、success、warning 和 danger 语义，并提供关闭入口和命令 chip 展示。
 - Skills 更新页在没有可检查的 `skills.sh` 来源 Skill 时显示可操作空状态，并将批量确认面板切换为等待可更新项说明。

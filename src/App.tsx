@@ -57,6 +57,11 @@ type ToastState = {
   onAction?: () => void;
 };
 
+type SkillImportRequest = {
+  kind: "zip" | "folder";
+  source: string;
+};
+
 export function App() {
   return (
     <AppErrorBoundary>
@@ -122,6 +127,7 @@ function WorkbenchApp() {
   const [deleteCustomToolKey, setDeleteCustomToolKey] = useState("");
   const [editingRadarId, setEditingRadarId] = useState("");
   const [importResults, setImportResults] = useState<ImportResult[]>([]);
+  const [skillImportRequest, setSkillImportRequest] = useState<SkillImportRequest | null>(null);
   const [externalSkillCandidates, setExternalSkillCandidates] = useState<ExternalSkillCandidateGroup[]>([]);
   const [migrationState, setMigrationState] = useState<SkillsRootMigrationState | null>(null);
   const [rebuildResults, setRebuildResults] = useState<ManagedTargetRebuildResult[]>([]);
@@ -316,6 +322,17 @@ function WorkbenchApp() {
     }
   }
 
+  async function runSkillImport(request: SkillImportRequest, overwriteDirectoryNames?: string[]) {
+    const results =
+      request.kind === "zip"
+        ? await workbenchApi.importSkillsFromZip(request.source, overwriteDirectoryNames)
+        : await workbenchApi.importSkillsFromFolder(request.source, overwriteDirectoryNames);
+    setSkillImportRequest(request);
+    setImportResults(results);
+    setActiveDialog("skills-import");
+    await refreshSkills();
+  }
+
   async function openExternalSkillsDialog() {
     try {
       const candidates = await workbenchApi.discoverExternalSkills();
@@ -329,6 +346,7 @@ function WorkbenchApp() {
   async function importExternalSkillSelections(selections: ExternalSkillImportSelection[]) {
     try {
       const results = await workbenchApi.importExternalSkills(selections);
+      setSkillImportRequest(null);
       setImportResults(results);
       await refreshSkills();
       setActiveDialog("skills-import");
@@ -365,6 +383,7 @@ function WorkbenchApp() {
   async function migrateRootSkills(directoryNames: string[]) {
     try {
       const results = await workbenchApi.migrateSkillsRoot(directoryNames.map((directoryName) => ({ directoryName })));
+      setSkillImportRequest(null);
       setImportResults(results);
       await refreshSkills();
       setMigrationState(await workbenchApi.inspectSkillsRootMigration());
@@ -738,13 +757,7 @@ function WorkbenchApp() {
               try {
                 const source = await workbenchApi.selectSkillImportSource(kind);
                 if (!source) return;
-                const results =
-                  kind === "zip"
-                    ? await workbenchApi.importSkillsFromZip(source)
-                    : await workbenchApi.importSkillsFromFolder(source);
-                setImportResults(results);
-                setActiveDialog("skills-import");
-                await refreshSkills();
+                await runSkillImport({ kind, source });
               } catch (error) {
                 showToast(String(error));
               }
@@ -969,9 +982,20 @@ function WorkbenchApp() {
         <SkillsImportDialog
           results={importResults}
           skillsRoot={settings?.skillsRoot ?? ""}
+          canResolveConflicts={Boolean(skillImportRequest)}
+          onOverwriteConflicts={async (directoryNames) => {
+            if (!skillImportRequest) return;
+            try {
+              await runSkillImport(skillImportRequest, directoryNames);
+              showToast("冲突 Skill 已覆盖");
+            } catch (error) {
+              showToast(String(error));
+            }
+          }}
           onClose={() => {
             setActiveDialog(null);
             setImportResults([]);
+            setSkillImportRequest(null);
           }}
         />
       )}
