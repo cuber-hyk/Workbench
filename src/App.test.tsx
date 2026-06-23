@@ -2007,6 +2007,14 @@ describe("Workbench UI interactions", () => {
     );
 
     const globalRow = screen.getByRole("group", { name: "global-codex Skill" });
+    const projectRow = screen.getByRole("group", { name: "project-claude-active Skill" });
+    await user.click(within(globalRow).getByRole("button", { name: "+3" }));
+    expect(within(globalRow).getByText("Pi Agent")).toBeInTheDocument();
+    await user.click(within(projectRow).getByRole("button", { name: "+3" }));
+    expect(within(globalRow).queryByText("Pi Agent")).not.toBeInTheDocument();
+    expect(within(projectRow).getByText("Pi Agent")).toBeInTheDocument();
+    await user.click(screen.getByRole("heading", { name: "Skills" }));
+    expect(within(projectRow).queryByText("Pi Agent")).not.toBeInTheDocument();
     await user.click(within(globalRow).getByRole("button", { name: "+3" }));
     await user.click(within(globalRow).getByTitle("Pi Agent · 未启用"));
 
@@ -2117,6 +2125,7 @@ describe("Workbench UI interactions", () => {
     expect(screen.getByText("系统")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "重命名 未分类" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "删除 未分类" })).toBeDisabled();
+    expect(screen.getAllByRole("button", { name: "关闭" })).toHaveLength(1);
   }, 10_000);
 
   it("does not repeat the skill category in the detail panel", () => {

@@ -265,7 +265,7 @@ export function Modal({
 }: PropsWithChildren<{
   title: string;
   description?: string;
-  footer: ReactNode;
+  footer?: ReactNode;
   onClose: () => void;
   actions?: ReactNode;
   large?: boolean;
@@ -291,7 +291,7 @@ export function Modal({
           </span>
         </header>
         <div className="dialog-body">{children}</div>
-        <footer>{footer}</footer>
+        {footer && <footer>{footer}</footer>}
       </section>
     </div>
   );

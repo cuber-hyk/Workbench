@@ -71,7 +71,6 @@ export function SkillCategoryDialog({
       description="分类只用于 Workbench 内整理，删除或合并分类不会删除 Skills。"
       large
       onClose={onClose}
-      footer={<><Button onClick={onClose}>关闭</Button></>}
     >
       <form className="category-create-row" onSubmit={submitNew}>
         <input aria-label="新分类名称" value={newName} onChange={(event) => setNewName(event.target.value)} placeholder="新分类名称" />

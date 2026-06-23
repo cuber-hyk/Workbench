@@ -83,6 +83,7 @@ export function SkillsView({
   const [updateResults, setUpdateResults] = useState<SkillUpdateResult[]>([]);
   const [localPage, setLocalPage] = useState(1);
   const [localPageSize, setLocalPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [expandedToolSkillId, setExpandedToolSkillId] = useState("");
   const handledMarketInstallRef = useRef("");
   const handleMarketInstall = onInstallMarketSkill ?? ((item: SkillMarketItem) => {
     void workbenchApi.installSkillFromMarket(item.source, item.skillId, () => undefined)
@@ -153,6 +154,10 @@ export function SkillsView({
   useEffect(() => {
     setLocalPage(1);
   }, [query, categoryFilter, statusFilter, toolFilter, projectFilter, localPageSize]);
+
+  useEffect(() => {
+    setExpandedToolSkillId("");
+  }, [activeSkillsTab, query, categoryFilter, statusFilter, toolFilter, projectFilter, localCurrentPage]);
 
   useEffect(() => {
     if (localPage !== localCurrentPage) setLocalPage(localCurrentPage);
@@ -351,6 +356,8 @@ export function SkillsView({
                 <GlobalToolIcons
                   skill={skill}
                   tools={settings.toolTargets}
+                  expanded={expandedToolSkillId === skill.id}
+                  onExpandedChange={(expanded) => setExpandedToolSkillId(expanded ? skill.id : "")}
                   onToggle={(tool, enabled) => onToggleSkillGlobal(skill.directoryName, tool, enabled)}
                 />
                 <span>{skill.enabledProjects.length ? `${skill.enabledProjects.length} 个项目` : "未启用"}</span>
@@ -527,15 +534,30 @@ export function SwitchControl({
 export function GlobalToolIcons({
   skill,
   tools,
+  expanded,
+  onExpandedChange,
   onToggle
 }: {
   skill: Skill;
   tools: ToolTarget[];
+  expanded: boolean;
+  onExpandedChange: (expanded: boolean) => void;
   onToggle: (tool: ToolKey, enabled: boolean) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const moreRef = useRef<HTMLSpanElement>(null);
   const visibleTools = tools.slice(0, 4);
   const hiddenTools = tools.slice(4);
+
+  useEffect(() => {
+    if (!expanded) return;
+    function closeOnOutsidePointerDown(event: PointerEvent) {
+      if (moreRef.current?.contains(event.target as Node)) return;
+      onExpandedChange(false);
+    }
+    document.addEventListener("pointerdown", closeOnOutsidePointerDown);
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePointerDown);
+  }, [expanded, onExpandedChange]);
+
   const renderToolButton = (tool: ToolTarget) => {
     const state = skill.globalToolStates.find((entry) => entry.tool === tool.key);
     const enabled = state?.status === "managed";
@@ -559,13 +581,13 @@ export function GlobalToolIcons({
     <span className="tool-icons">
       {visibleTools.map(renderToolButton)}
       {hiddenTools.length > 0 && (
-        <span className="tool-more">
+        <span className="tool-more" ref={moreRef}>
           <button
             className="more"
             title="显示全部工具"
             onClick={(event) => {
               event.stopPropagation();
-              setExpanded((current) => !current);
+              onExpandedChange(!expanded);
             }}
           >
             +{hiddenTools.length}
