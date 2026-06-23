@@ -163,11 +163,45 @@ pub enum ExternalSkillCandidateStatus {
     Unreadable,
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ExternalSkillSyncAction {
+    Sync,
+    UseWorkbench,
+    UseExternal,
+    Skip,
+}
+
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct ExternalSkillImportSelection {
+pub struct ExternalSkillSyncSelection {
     pub directory_name: String,
     pub source_path: String,
+    pub tool: String,
+    pub action: ExternalSkillSyncAction,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ExternalSkillSyncStatus {
+    Synced,
+    Skipped,
+    Conflict,
+    Invalid,
+    Failed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalSkillSyncResult {
+    pub directory_name: String,
+    pub tool: String,
+    pub tool_name: String,
+    pub source_path: String,
+    pub status: ExternalSkillSyncStatus,
+    pub sync_method: Option<SyncMethod>,
+    pub backup_path: Option<String>,
+    pub message: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

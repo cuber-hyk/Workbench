@@ -581,15 +581,19 @@ pub fn import_skills_from_zip(
 }
 
 #[tauri::command]
-pub fn discover_external_skills() -> SkillResult<Vec<ExternalSkillCandidateGroup>> {
-    discover_external_skills_state()
+pub async fn discover_external_skills() -> SkillResult<Vec<ExternalSkillCandidateGroup>> {
+    tauri::async_runtime::spawn_blocking(discover_external_skills_state)
+        .await
+        .map_err(error_message)?
 }
 
 #[tauri::command]
-pub fn import_external_skills(
-    selections: Vec<ExternalSkillImportSelection>,
-) -> SkillResult<Vec<ImportResult>> {
-    import_external_skills_state(selections)
+pub async fn sync_external_skills(
+    selections: Vec<ExternalSkillSyncSelection>,
+) -> SkillResult<Vec<ExternalSkillSyncResult>> {
+    tauri::async_runtime::spawn_blocking(move || sync_external_skills_state(selections))
+        .await
+        .map_err(error_message)?
 }
 
 #[tauri::command]
@@ -1888,6 +1892,169 @@ mod tests {
         assert_eq!(
             fs::read_to_string(backup.join("SKILL.md")).unwrap(),
             "workbench"
+        );
+    }
+
+    #[test]
+    fn syncing_external_skill_imports_backs_up_and_takes_over_tool_target() {
+        let root = tempdir().unwrap();
+        let workbench_root = root.path().join("workbench");
+        let skills_root = workbench_root.join("skills");
+        let tool_root = root.path().join("tool-skills");
+        let tool_skill = tool_root.join("external-skill");
+        fs::create_dir_all(&tool_skill).unwrap();
+        fs::write(tool_skill.join("SKILL.md"), "# External").unwrap();
+
+        let connection = open_database(&workbench_root).unwrap();
+        connection
+            .execute(
+                "INSERT INTO custom_tool_targets(key, name, global_skills_dir, icon_path)
+                 VALUES('my-agent', 'My Agent', ?1, '')",
+                [tool_root.to_string_lossy().to_string()],
+            )
+            .unwrap();
+
+        let results = sync_external_skills_in(
+            &connection,
+            &workbench_root,
+            &skills_root,
+            vec![ExternalSkillSyncSelection {
+                directory_name: "external-skill".to_string(),
+                source_path: tool_skill.to_string_lossy().to_string(),
+                tool: "my-agent".to_string(),
+                action: ExternalSkillSyncAction::Sync,
+            }],
+        )
+        .unwrap();
+
+        assert_eq!(results[0].status, ExternalSkillSyncStatus::Synced);
+        assert!(results[0].backup_path.is_some());
+        assert_eq!(
+            fs::read_to_string(skills_root.join("external-skill").join("SKILL.md")).unwrap(),
+            "# External"
+        );
+        assert_eq!(
+            fs::read_to_string(tool_skill.join("SKILL.md")).unwrap(),
+            "# External"
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT COUNT(*) FROM skill_enablements
+                     WHERE directory_name = 'external-skill' AND tool = 'my-agent'",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            1
+        );
+        assert!(PathBuf::from(results[0].backup_path.as_ref().unwrap())
+            .join("SKILL.md")
+            .is_file());
+    }
+
+    #[test]
+    fn syncing_same_content_external_skill_skips_without_taking_over_tool_target() {
+        let root = tempdir().unwrap();
+        let workbench_root = root.path().join("workbench");
+        let skills_root = workbench_root.join("skills");
+        let workbench_skill = skills_root.join("shared");
+        let tool_root = root.path().join("tool-skills");
+        let tool_skill = tool_root.join("shared");
+        fs::create_dir_all(&workbench_skill).unwrap();
+        fs::create_dir_all(&tool_skill).unwrap();
+        fs::write(workbench_skill.join("SKILL.md"), "# Shared").unwrap();
+        fs::write(tool_skill.join("SKILL.md"), "# Shared").unwrap();
+
+        let connection = open_database(&workbench_root).unwrap();
+        connection
+            .execute(
+                "INSERT INTO custom_tool_targets(key, name, global_skills_dir, icon_path)
+                 VALUES('my-agent', 'My Agent', ?1, '')",
+                [tool_root.to_string_lossy().to_string()],
+            )
+            .unwrap();
+
+        let results = sync_external_skills_in(
+            &connection,
+            &workbench_root,
+            &skills_root,
+            vec![ExternalSkillSyncSelection {
+                directory_name: "shared".to_string(),
+                source_path: tool_skill.to_string_lossy().to_string(),
+                tool: "my-agent".to_string(),
+                action: ExternalSkillSyncAction::Sync,
+            }],
+        )
+        .unwrap();
+
+        assert_eq!(results[0].status, ExternalSkillSyncStatus::Skipped);
+        assert!(results[0].backup_path.is_none());
+        assert_eq!(
+            fs::read_to_string(tool_skill.join("SKILL.md")).unwrap(),
+            "# Shared"
+        );
+        assert_eq!(
+            connection
+                .query_row("SELECT COUNT(*) FROM skill_enablements", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn syncing_conflicting_external_skill_requires_version_choice() {
+        let root = tempdir().unwrap();
+        let workbench_root = root.path().join("workbench");
+        let skills_root = workbench_root.join("skills");
+        let workbench_skill = skills_root.join("shared");
+        let tool_root = root.path().join("tool-skills");
+        let tool_skill = tool_root.join("shared");
+        fs::create_dir_all(&workbench_skill).unwrap();
+        fs::create_dir_all(&tool_skill).unwrap();
+        fs::write(workbench_skill.join("SKILL.md"), "workbench").unwrap();
+        fs::write(tool_skill.join("SKILL.md"), "external").unwrap();
+
+        let connection = open_database(&workbench_root).unwrap();
+        connection
+            .execute(
+                "INSERT INTO custom_tool_targets(key, name, global_skills_dir, icon_path)
+                 VALUES('my-agent', 'My Agent', ?1, '')",
+                [tool_root.to_string_lossy().to_string()],
+            )
+            .unwrap();
+
+        let results = sync_external_skills_in(
+            &connection,
+            &workbench_root,
+            &skills_root,
+            vec![ExternalSkillSyncSelection {
+                directory_name: "shared".to_string(),
+                source_path: tool_skill.to_string_lossy().to_string(),
+                tool: "my-agent".to_string(),
+                action: ExternalSkillSyncAction::Sync,
+            }],
+        )
+        .unwrap();
+
+        assert_eq!(results[0].status, ExternalSkillSyncStatus::Conflict);
+        assert_eq!(
+            fs::read_to_string(workbench_skill.join("SKILL.md")).unwrap(),
+            "workbench"
+        );
+        assert_eq!(
+            fs::read_to_string(tool_skill.join("SKILL.md")).unwrap(),
+            "external"
+        );
+        assert_eq!(
+            connection
+                .query_row("SELECT COUNT(*) FROM skill_enablements", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .unwrap(),
+            0
         );
     }
 

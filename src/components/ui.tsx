@@ -185,7 +185,8 @@ export function Modal({
   footer,
   onClose,
   actions,
-  large = false
+  large = false,
+  className = ""
 }: PropsWithChildren<{
   title: string;
   description?: string;
@@ -193,11 +194,12 @@ export function Modal({
   onClose: () => void;
   actions?: ReactNode;
   large?: boolean;
+  className?: string;
 }>) {
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
       <section
-        className={`dialog-card ${large ? "large" : ""}`}
+        className={`dialog-card ${large ? "large" : ""} ${className}`.trim()}
         role="dialog"
         aria-modal="true"
         aria-label={title}

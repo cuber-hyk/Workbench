@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { projects, radarItems, settings, skillCategories, skills } from "./mockData";
-import type { CloseBehavior, CustomToolTargetInput, ExternalSkillCandidateGroup, ExternalSkillImportSelection, GitHubCliStatus, GitHubStarsSyncResult, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, ManagedTargetRebuildResult, ManagedTargetRebuildSelection, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, RootSkillMigrationCandidate, SkillInstallProgress, SkillMarketDetail, SkillMarketItem, SkillUpdateResult, SkillUpdateStatus, SkillVersionSource, SkillsRootMigrationState, SkillsState, ToolKey } from "../types/domain";
+import type { CloseBehavior, CustomToolTargetInput, ExternalSkillCandidateGroup, ExternalSkillSyncResult, ExternalSkillSyncSelection, GitHubCliStatus, GitHubStarsSyncResult, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, ManagedTargetRebuildResult, ManagedTargetRebuildSelection, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, RootSkillMigrationCandidate, SkillInstallProgress, SkillMarketDetail, SkillMarketItem, SkillUpdateResult, SkillUpdateStatus, SkillVersionSource, SkillsRootMigrationState, SkillsState, ToolKey } from "../types/domain";
 
 const delay = async () => new Promise((resolve) => window.setTimeout(resolve, 80));
 const isTauri = "__TAURI_INTERNALS__" in window;
@@ -405,16 +405,21 @@ export const workbenchApi = {
     }
     return invoke<ExternalSkillCandidateGroup[]>("discover_external_skills");
   },
-  async importExternalSkills(selections: ExternalSkillImportSelection[]) {
+  async syncExternalSkills(selections: ExternalSkillSyncSelection[]) {
     if (!isTauri) {
       await delay();
       return selections.map((selection) => ({
         directoryName: selection.directoryName,
-        status: "imported",
-        message: "导入成功"
-      })) satisfies ImportResult[];
+        tool: selection.tool,
+        toolName: selection.tool,
+        sourcePath: selection.sourcePath,
+        status: selection.action === "skip" ? "skipped" : "synced",
+        syncMethod: selection.action === "skip" ? null : "copy",
+        backupPath: selection.action === "skip" ? null : "C:\\Users\\dev\\.workbench\\backups\\skills\\preview",
+        message: selection.action === "skip" ? "已跳过" : "已导入并接管工具目录目标"
+      })) satisfies ExternalSkillSyncResult[];
     }
-    return invoke<ImportResult[]>("import_external_skills", { selections });
+    return invoke<ExternalSkillSyncResult[]>("sync_external_skills", { selections });
   },
   async inspectSkillsRootMigration() {
     if (!isTauri) {

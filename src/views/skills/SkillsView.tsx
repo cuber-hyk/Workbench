@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Ban, ChevronDown, CircleAlert, CircleCheck, Download, FileText, FolderOpen, RefreshCcw, Settings, Sparkles, Trash2 } from "lucide-react";
+import { Ban, ChevronDown, CircleAlert, CircleCheck, Download, FileText, FolderOpen, RefreshCcw, Settings, Trash2 } from "lucide-react";
 import { ActionGroup, Button, DetailHeader, IconButton, Panel, SearchInput, StatusBadge, Toolbar } from "../../components/ui";
 import { DeleteMarketSkillDialog } from "../../components/dialogs/skills/DeleteMarketSkillDialog";
 import { workbenchApi } from "../../lib/api/workbenchApi";
@@ -27,7 +27,8 @@ export function SkillsView({
   onRefresh,
   marketInstallTask,
   onInstallMarketSkill,
-  onDiscoverExternalSkills = () => undefined,
+  onSyncSkills = () => undefined,
+  isSyncingSkills = false,
   onManageCategories,
   onToggle,
   onToggleSkillGlobal,
@@ -47,7 +48,8 @@ export function SkillsView({
   onRefresh: () => void | Promise<void>;
   marketInstallTask?: MarketInstallTask | null;
   onInstallMarketSkill?: (item: SkillMarketItem) => void;
-  onDiscoverExternalSkills?: () => void;
+  onSyncSkills?: () => void;
+  isSyncingSkills?: boolean;
   onManageCategories: () => void;
   onToggle: (tool: ToolKey, enabled: boolean, project?: Project) => void;
   onToggleSkillGlobal: (directoryName: string, tool: ToolKey, enabled: boolean) => void;
@@ -259,9 +261,8 @@ export function SkillsView({
         </div>
         <div className="skills-header-actions">
           <div className="header-actions">
-            <Button onClick={onRefresh}><RefreshCcw size={15} />扫描</Button>
+            <Button disabled={isSyncingSkills} onClick={onSyncSkills}><RefreshCcw className={isSyncingSkills ? "spin" : ""} size={15} />{isSyncingSkills ? "同步中" : "同步 Skills"}</Button>
             <Button onClick={onManageCategories}><Settings size={15} />管理分类</Button>
-            <Button onClick={onDiscoverExternalSkills}><Sparkles size={15} />发现已有工具 Skills</Button>
             <div className="import-control">
               <Button variant="primary" onClick={() => setImportMenuOpen(!importMenuOpen)}>
                 <Download size={15} />导入 Skills<ChevronDown size={14} />

@@ -108,7 +108,7 @@ pub fn run() {
             skills::update_skill_from_market,
             skills::update_market_skills,
             skills::discover_external_skills,
-            skills::import_external_skills,
+            skills::sync_external_skills,
             skills::inspect_skills_root_migration,
             skills::migrate_skills_root,
             skills::rebuild_managed_skill_targets,

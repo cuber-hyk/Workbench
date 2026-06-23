@@ -39,7 +39,7 @@ import { applyLaunchSessionEvent, applyPendingLaunchEvents, enabledLaunchConfigs
 import { DeleteRadarDialog, RadarDialog, RadarView } from "./views/radar/RadarView";
 import { clearSkillMarketRuntimeCache, SkillsView } from "./views/skills/SkillsView";
 import type { MarketInstallTask } from "./views/skills/SkillsMarketView";
-import type { AppSettings, CloseBehavior, CustomToolTargetInput, ExternalSkillCandidateGroup, ExternalSkillImportSelection, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, ManagedTargetRebuildResult, ManagedTargetRebuildSelection, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, Skill, SkillCategory, SkillMarketItem, SkillsRootMigrationState, ToolKey, ViewKey } from "./lib/types/domain";
+import type { AppSettings, CloseBehavior, CustomToolTargetInput, ExternalSkillCandidateGroup, ExternalSkillSyncResult, ExternalSkillSyncSelection, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, ManagedTargetRebuildResult, ManagedTargetRebuildSelection, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, Skill, SkillCategory, SkillMarketItem, SkillsRootMigrationState, ToolKey, ViewKey } from "./lib/types/domain";
 
 const views: Array<{ key: ViewKey; label: string; icon: JSX.Element }> = [
   { key: "projects", label: "项目", icon: <Box size={16} /> },
@@ -129,6 +129,11 @@ function WorkbenchApp() {
   const [importResults, setImportResults] = useState<ImportResult[]>([]);
   const [skillImportRequest, setSkillImportRequest] = useState<SkillImportRequest | null>(null);
   const [externalSkillCandidates, setExternalSkillCandidates] = useState<ExternalSkillCandidateGroup[]>([]);
+  const [externalSyncResults, setExternalSyncResults] = useState<ExternalSkillSyncResult[]>([]);
+  const [externalSyncLoading, setExternalSyncLoading] = useState(false);
+  const [externalSyncApplying, setExternalSyncApplying] = useState(false);
+  const externalSyncInFlightRef = useRef(false);
+  const externalSyncApplyInFlightRef = useRef(false);
   const [migrationState, setMigrationState] = useState<SkillsRootMigrationState | null>(null);
   const [rebuildResults, setRebuildResults] = useState<ManagedTargetRebuildResult[]>([]);
   const [pendingSkillsRoot, setPendingSkillsRoot] = useState("");
@@ -333,26 +338,76 @@ function WorkbenchApp() {
     await refreshSkills();
   }
 
-  async function openExternalSkillsDialog() {
+  async function openSkillsSyncDialog(options: { preserveCurrent?: boolean } = {}) {
+    if (externalSyncInFlightRef.current) return;
+    externalSyncInFlightRef.current = true;
+    if (!options.preserveCurrent) {
+      setExternalSkillCandidates([]);
+      setExternalSyncResults([]);
+    }
+    setExternalSyncLoading(true);
     try {
+      await refreshSkills();
       const candidates = await workbenchApi.discoverExternalSkills();
+      const pendingCandidates = candidates.filter((candidate) =>
+        candidate.status === "new" ||
+        candidate.status === "conflict" ||
+        candidate.status === "invalid" ||
+        candidate.status === "unreadable"
+      );
+      const sameCount = candidates.filter((candidate) => candidate.status === "same_as_current").length;
+      if (pendingCandidates.length === 0) {
+        setActiveDialog(null);
+        setExternalSkillCandidates([]);
+        setExternalSyncResults([]);
+        if (candidates.length === 0) {
+          showToast("Skills 已同步，未发现外部工具 Skills");
+        } else {
+          showToast(`Skills 已同步，无待处理项；${sameCount} 项已存在相同内容`);
+        }
+        return;
+      }
       setExternalSkillCandidates(candidates);
+      setExternalSyncResults([]);
       setActiveDialog("external-skills");
     } catch (error) {
       showToast(String(error));
+    } finally {
+      setExternalSyncLoading(false);
+      externalSyncInFlightRef.current = false;
     }
   }
 
-  async function importExternalSkillSelections(selections: ExternalSkillImportSelection[]) {
+  async function syncExternalSkillSelections(selections: ExternalSkillSyncSelection[]) {
+    if (externalSyncApplyInFlightRef.current) return;
+    externalSyncApplyInFlightRef.current = true;
+    setExternalSyncApplying(true);
     try {
-      const results = await workbenchApi.importExternalSkills(selections);
-      setSkillImportRequest(null);
-      setImportResults(results);
+      const results = await workbenchApi.syncExternalSkills(selections);
       await refreshSkills();
-      setActiveDialog("skills-import");
-      showToast("外部 Skills 导入完成");
+      const blockingResults = results.filter((result) =>
+        result.status === "conflict" ||
+        result.status === "invalid" ||
+        result.status === "failed"
+      );
+      if (blockingResults.length > 0) {
+        setExternalSyncResults(blockingResults);
+        showToast(`Skills 同步完成，${blockingResults.length} 项需要处理`);
+        return;
+      }
+      setActiveDialog(null);
+      setExternalSkillCandidates([]);
+      setExternalSyncResults([]);
+      const syncedCount = results.filter((result) => result.status === "synced").length;
+      const skippedCount = results.filter((result) => result.status === "skipped").length;
+      showToast(skippedCount > 0
+        ? `Skills 已同步：接管 ${syncedCount} 项，跳过 ${skippedCount} 项`
+        : `Skills 已同步：接管 ${syncedCount} 项`);
     } catch (error) {
       showToast(String(error));
+    } finally {
+      setExternalSyncApplying(false);
+      externalSyncApplyInFlightRef.current = false;
     }
   }
 
@@ -762,7 +817,8 @@ function WorkbenchApp() {
                 showToast(String(error));
               }
             }}
-            onDiscoverExternalSkills={() => void openExternalSkillsDialog()}
+            onSyncSkills={() => void openSkillsSyncDialog()}
+            isSyncingSkills={externalSyncLoading}
             onRefresh={() => void runSkillAction(refreshSkills, "Skills 已重新扫描")}
             marketInstallTask={marketInstallTask}
             onInstallMarketSkill={(item) => void installMarketSkill(item)}
@@ -854,7 +910,7 @@ function WorkbenchApp() {
             error={loadError}
             emptyTitle="暂无 Skills"
             emptyDescription="配置统一根目录并扫描后，可以在这里管理 Skills。"
-            action={<Button onClick={() => void openExternalSkillsDialog()}><Sparkles size={15} />发现已有工具 Skills</Button>}
+            action={<Button disabled={externalSyncLoading} onClick={() => void openSkillsSyncDialog()}><Sparkles className={externalSyncLoading ? "spin" : ""} size={15} />{externalSyncLoading ? "同步中" : "同步 Skills"}</Button>}
           />
         )}
         {activeView === "radar" && (
@@ -1002,12 +1058,18 @@ function WorkbenchApp() {
       {activeDialog === "external-skills" && settings && (
         <ExternalSkillsDialog
           candidates={externalSkillCandidates}
+          results={externalSyncResults}
+          loading={externalSyncLoading}
+          syncing={externalSyncApplying}
           skillsRoot={settings.skillsRoot}
-          onRefresh={() => void openExternalSkillsDialog()}
-          onImport={(selections) => void importExternalSkillSelections(selections)}
+          onRefresh={() => void openSkillsSyncDialog({ preserveCurrent: true })}
+          onSync={(selections) => void syncExternalSkillSelections(selections)}
           onClose={() => {
+            if (externalSyncApplying) return;
             setActiveDialog(null);
             setExternalSkillCandidates([]);
+            setExternalSyncResults([]);
+            setExternalSyncLoading(false);
           }}
         />
       )}

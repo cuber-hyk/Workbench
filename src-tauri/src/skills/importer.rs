@@ -10,11 +10,13 @@ use walkdir::WalkDir;
 use zip::ZipArchive;
 
 use super::{
-    current_settings, db::open_database, directories_match, error_message, tool_targets,
-    validate_directory_name, ExternalSkillCandidateGroup, ExternalSkillCandidateSource,
-    ExternalSkillCandidateStatus, ExternalSkillImportSelection, ImportResult, ImportStatus,
-    SkillMetadata, SkillRecord, SkillResult, UNCATEGORIZED_CATEGORY_ID,
-    UNCATEGORIZED_CATEGORY_NAME,
+    backup_path, copy_path_to_backup, create_directory_symlink, current_settings,
+    db::open_database, directories_match, error_message, remove_existing_target,
+    save_global_enablement, sync_directory_auto_with, tool_targets, validate_directory_name,
+    ExternalSkillCandidateGroup, ExternalSkillCandidateSource, ExternalSkillCandidateStatus,
+    ExternalSkillSyncAction, ExternalSkillSyncResult, ExternalSkillSyncSelection,
+    ExternalSkillSyncStatus, ImportResult, ImportStatus, SkillMetadata, SkillRecord, SkillResult,
+    SyncMethod, UNCATEGORIZED_CATEGORY_ID, UNCATEGORIZED_CATEGORY_NAME,
 };
 
 #[derive(Debug, serde::Deserialize)]
@@ -421,44 +423,277 @@ pub(super) fn discover_external_skills_in(
     Ok(groups)
 }
 
-pub(super) fn import_external_skills_state(
-    selections: Vec<ExternalSkillImportSelection>,
-) -> SkillResult<Vec<ImportResult>> {
+pub(super) fn sync_external_skills_state(
+    selections: Vec<ExternalSkillSyncSelection>,
+) -> SkillResult<Vec<ExternalSkillSyncResult>> {
     let settings = current_settings()?;
     let workbench_root = PathBuf::from(&settings.workbench_root);
+    let skills_root = PathBuf::from(&settings.skills_root);
     let connection = open_database(&workbench_root)?;
-    let discovered = discover_external_skills_in(&connection, Path::new(&settings.skills_root))?;
-    let allowed: HashSet<String> = discovered
+    sync_external_skills_in(&connection, &workbench_root, &skills_root, selections)
+}
+
+pub(super) fn sync_external_skills_in(
+    connection: &Connection,
+    workbench_root: &Path,
+    skills_root: &Path,
+    selections: Vec<ExternalSkillSyncSelection>,
+) -> SkillResult<Vec<ExternalSkillSyncResult>> {
+    let discovered = discover_external_skills_in(connection, skills_root)?;
+    let allowed = discovered
         .iter()
-        .flat_map(|group| group.sources.iter())
-        .map(|source| normalized_path_key(Path::new(&source.path)))
-        .collect();
-    selections
-        .iter()
-        .map(|selection| {
-            validate_directory_name(&selection.directory_name)?;
-            let source = PathBuf::from(&selection.source_path);
-            let source_name = source
-                .file_name()
-                .map(|name| name.to_string_lossy().to_string())
-                .unwrap_or_default();
-            if source_name != selection.directory_name {
-                return Ok(ImportResult {
-                    directory_name: selection.directory_name.clone(),
-                    status: ImportStatus::Invalid,
-                    message: "导入来源与 Skill 目录名不一致".to_string(),
-                });
-            }
-            if !allowed.contains(&normalized_path_key(&source)) {
-                return Ok(ImportResult {
-                    directory_name: selection.directory_name.clone(),
-                    status: ImportStatus::Invalid,
-                    message: "导入来源不在已发现的工具目录候选中".to_string(),
-                });
-            }
-            import_skill_directory_allow_skipped(&source, Path::new(&settings.skills_root))
+        .flat_map(|group| {
+            group.sources.iter().map(|source| {
+                (
+                    normalized_path_key(Path::new(&source.path)),
+                    (
+                        group.directory_name.clone(),
+                        group.status,
+                        source.tool.clone(),
+                        source.tool_name.clone(),
+                    ),
+                )
+            })
         })
-        .collect()
+        .collect::<HashMap<_, _>>();
+
+    Ok(selections
+        .into_iter()
+        .map(|selection| {
+            let fallback = ExternalSkillSyncResult {
+                directory_name: selection.directory_name.clone(),
+                tool: selection.tool.clone(),
+                tool_name: selection.tool.clone(),
+                source_path: selection.source_path.clone(),
+                status: ExternalSkillSyncStatus::Failed,
+                sync_method: None,
+                backup_path: None,
+                message: String::new(),
+            };
+            match sync_one_external_skill(
+                connection,
+                workbench_root,
+                skills_root,
+                &allowed,
+                selection,
+            ) {
+                Ok(result) => result,
+                Err(error) => ExternalSkillSyncResult {
+                    message: error,
+                    ..fallback
+                },
+            }
+        })
+        .collect())
+}
+
+fn sync_one_external_skill(
+    connection: &Connection,
+    workbench_root: &Path,
+    skills_root: &Path,
+    allowed: &HashMap<String, (String, ExternalSkillCandidateStatus, String, String)>,
+    selection: ExternalSkillSyncSelection,
+) -> SkillResult<ExternalSkillSyncResult> {
+    validate_directory_name(&selection.directory_name)?;
+    let source = PathBuf::from(&selection.source_path);
+    let source_key = normalized_path_key(&source);
+    let Some((discovered_name, discovered_status, discovered_tool, tool_name)) =
+        allowed.get(&source_key)
+    else {
+        return Ok(sync_result(
+            &selection,
+            "",
+            ExternalSkillSyncStatus::Invalid,
+            None,
+            None,
+            "同步来源不在已发现的工具目录候选中",
+        ));
+    };
+    if discovered_name != &selection.directory_name {
+        return Ok(sync_result(
+            &selection,
+            tool_name,
+            ExternalSkillSyncStatus::Invalid,
+            None,
+            None,
+            "同步来源与 Skill 目录名不一致",
+        ));
+    }
+    if discovered_tool != &selection.tool {
+        return Ok(sync_result(
+            &selection,
+            tool_name,
+            ExternalSkillSyncStatus::Invalid,
+            None,
+            None,
+            "同步来源与工具不一致",
+        ));
+    }
+    if selection.action == ExternalSkillSyncAction::Skip {
+        return Ok(sync_result(
+            &selection,
+            tool_name,
+            ExternalSkillSyncStatus::Skipped,
+            None,
+            None,
+            "已跳过",
+        ));
+    }
+    if !source.join("SKILL.md").is_file() {
+        return Ok(sync_result(
+            &selection,
+            tool_name,
+            ExternalSkillSyncStatus::Invalid,
+            None,
+            None,
+            "同步来源中不存在 SKILL.md",
+        ));
+    }
+
+    let workbench_source = skills_root.join(&selection.directory_name);
+    let workbench_exists = workbench_source.join("SKILL.md").is_file();
+    match selection.action {
+        ExternalSkillSyncAction::Sync => match discovered_status {
+            ExternalSkillCandidateStatus::New => {
+                if workbench_exists {
+                    let source_hash = directory_content_hash(&source)?;
+                    let workbench_hash = directory_content_hash(&workbench_source)?;
+                    if source_hash == workbench_hash {
+                        return Ok(sync_result(
+                            &selection,
+                            tool_name,
+                            ExternalSkillSyncStatus::Skipped,
+                            None,
+                            None,
+                            "统一根目录中已存在相同内容，本次自动跳过",
+                        ));
+                    }
+                    return Ok(sync_result(
+                        &selection,
+                        tool_name,
+                        ExternalSkillSyncStatus::Conflict,
+                        None,
+                        None,
+                        "统一根目录中已存在同名不同内容 Skill，请重新扫描后选择版本来源",
+                    ));
+                }
+                let result = import_skill_directory(&source, skills_root)?;
+                if result.status != ImportStatus::Imported {
+                    return Ok(sync_result(
+                        &selection,
+                        tool_name,
+                        ExternalSkillSyncStatus::Failed,
+                        None,
+                        None,
+                        result.message,
+                    ));
+                }
+            }
+            ExternalSkillCandidateStatus::SameAsCurrent => {
+                return Ok(sync_result(
+                    &selection,
+                    tool_name,
+                    ExternalSkillSyncStatus::Skipped,
+                    None,
+                    None,
+                    "统一根目录中已存在相同内容，本次自动跳过",
+                ));
+            }
+            ExternalSkillCandidateStatus::Conflict => {
+                return Ok(sync_result(
+                    &selection,
+                    tool_name,
+                    ExternalSkillSyncStatus::Conflict,
+                    None,
+                    None,
+                    "同名内容冲突，必须选择保留 Workbench 版本或使用外部版本",
+                ));
+            }
+            ExternalSkillCandidateStatus::Invalid | ExternalSkillCandidateStatus::Unreadable => {
+                return Ok(sync_result(
+                    &selection,
+                    tool_name,
+                    ExternalSkillSyncStatus::Invalid,
+                    None,
+                    None,
+                    "候选不可同步",
+                ));
+            }
+        },
+        ExternalSkillSyncAction::UseWorkbench => {
+            if !workbench_exists {
+                return Ok(sync_result(
+                    &selection,
+                    tool_name,
+                    ExternalSkillSyncStatus::Invalid,
+                    None,
+                    None,
+                    "统一根目录中不存在可保留的 Workbench 版本",
+                ));
+            }
+        }
+        ExternalSkillSyncAction::UseExternal => {
+            import_skill_directory_with_overwrite(&source, skills_root, true, workbench_root)?;
+        }
+        ExternalSkillSyncAction::Skip => unreachable!(),
+    }
+
+    if !workbench_source.join("SKILL.md").is_file() {
+        return Ok(sync_result(
+            &selection,
+            tool_name,
+            ExternalSkillSyncStatus::Invalid,
+            None,
+            None,
+            "统一根目录中不存在同步后的 Skill",
+        ));
+    }
+
+    let backup = backup_path(workbench_root, &selection.tool, &selection.directory_name)?;
+    copy_path_to_backup(&source, &backup)?;
+    remove_existing_target(&source)?;
+    let sync_method =
+        sync_directory_auto_with(&workbench_source, &source, create_directory_symlink)?;
+    save_global_enablement(
+        connection,
+        &selection.directory_name,
+        &selection.tool,
+        &source,
+        sync_method,
+    )?;
+
+    Ok(sync_result(
+        &selection,
+        tool_name,
+        ExternalSkillSyncStatus::Synced,
+        Some(sync_method),
+        Some(backup.to_string_lossy().to_string()),
+        "已导入并接管工具目录目标",
+    ))
+}
+
+fn sync_result(
+    selection: &ExternalSkillSyncSelection,
+    tool_name: &str,
+    status: ExternalSkillSyncStatus,
+    sync_method: Option<SyncMethod>,
+    backup_path: Option<String>,
+    message: impl Into<String>,
+) -> ExternalSkillSyncResult {
+    ExternalSkillSyncResult {
+        directory_name: selection.directory_name.clone(),
+        tool: selection.tool.clone(),
+        tool_name: if tool_name.is_empty() {
+            selection.tool.clone()
+        } else {
+            tool_name.to_string()
+        },
+        source_path: selection.source_path.clone(),
+        status,
+        sync_method,
+        backup_path,
+        message: message.into(),
+    }
 }
 
 fn normalized_path_key(path: &Path) -> String {
