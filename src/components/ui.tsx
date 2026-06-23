@@ -1,5 +1,5 @@
 import { X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ButtonHTMLAttributes, InputHTMLAttributes, PropsWithChildren, ReactNode } from "react";
 import { pageCount, PAGE_SIZE_OPTIONS } from "../lib/ui/pagination";
 
@@ -145,8 +145,20 @@ export function FilterMore({
   label?: string;
   onToggle: () => void;
 }>) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!expanded) return;
+    function closeOnOutsidePointerDown(event: PointerEvent) {
+      if (containerRef.current?.contains(event.target as Node)) return;
+      onToggle();
+    }
+    document.addEventListener("pointerdown", closeOnOutsidePointerDown);
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePointerDown);
+  }, [expanded, onToggle]);
+
   return (
-    <div className="filter-more">
+    <div className="filter-more" ref={containerRef}>
       <Button aria-expanded={expanded} onClick={onToggle}>{label}</Button>
       {expanded && <div className="filter-popover">{children}</div>}
     </div>

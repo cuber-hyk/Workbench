@@ -1,8 +1,8 @@
-# Workbench App Context
+# Workbench Context
 
 ## 当前阶段
 
-Workbench App 已完成第一阶段基础能力验证，当前进入进阶开发阶段。正式工程已经建立，项目管理、Skills 管理和资源 Radar 均已接入本地 Tauri 后端与 SQLite。
+Workbench 已完成第一阶段基础能力验证，当前进入进阶开发阶段。正式工程已经建立，项目管理、Skills 管理和资源 Radar 均已接入本地 Tauri 后端与 SQLite。
 
 ## 核心产品边界
 

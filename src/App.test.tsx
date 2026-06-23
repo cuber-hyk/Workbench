@@ -7,14 +7,17 @@ import { ProjectDialog } from "./components/dialogs/projects/ProjectDialog";
 import { CustomToolDialog } from "./components/dialogs/settings/CustomToolDialog";
 import { ExternalSkillsDialog } from "./components/dialogs/skills/ExternalSkillsDialog";
 import { SkillCategoryDialog } from "./components/dialogs/skills/SkillCategoryDialog";
+import { SkillsRootMigrationDialog } from "./components/dialogs/skills/SkillsRootMigrationDialog";
 import { AppUpdateProvider } from "./contexts/AppUpdateContext";
 import { workbenchApi } from "./lib/api/workbenchApi";
-import type { AppSettings, ExternalSkillCandidateGroup, LaunchSessionEvent, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, Skill, SkillCategory, SkillMarketItem, SkillsState } from "./lib/types/domain";
+import type { AppSettings, ExternalSkillCandidateGroup, LaunchSessionEvent, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, Skill, SkillCategory, SkillMarketItem, SkillUpdateResult, SkillsRootMigrationState, SkillsState } from "./lib/types/domain";
 import { ProjectsView } from "./views/projects/ProjectsView";
 import { applyPendingLaunchEvents, markLaunchRunStopped, mergeLaunchRunSnapshots } from "./views/projects/launchState";
 import { RadarView } from "./views/radar/RadarView";
 import { SettingsView } from "./views/settings/SettingsView";
-import { SkillsView } from "./views/skills/SkillsView";
+import { SkillsMarketView } from "./views/skills/SkillsMarketView";
+import { clearSkillMarketRuntimeCache, SkillsView } from "./views/skills/SkillsView";
+import { buildMarketStats } from "./views/skills/skillMarketFormatters";
 
 const activeProject: Project = {
   id: "active",
@@ -800,6 +803,36 @@ describe("Workbench UI interactions", () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
+  it("keeps only one project open-profile menu open and closes it from outside", async () => {
+    const user = userEvent.setup();
+    render(
+      <ProjectsView
+        projects={[activeProject, secondActiveProject]}
+        selectedProject={activeProject}
+        projectLaunchTimes={{}}
+        projectOpenProfiles={projectOpenProfiles}
+        loading={false}
+        loadError=""
+        onSelect={vi.fn()}
+        onOpenWithProfile={vi.fn()}
+        onLaunch={vi.fn()}
+        onStopLaunchSession={vi.fn()}
+        onStopLaunchRun={vi.fn()}
+        onEdit={vi.fn()}
+        onArchive={vi.fn()}
+        onAdd={vi.fn()}
+      />
+    );
+
+    await user.click(within(screen.getByRole("group", { name: "Active Project 项目" })).getByRole("button", { name: "用工具打开 Active Project" }));
+    expect(screen.getByRole("menu", { name: "Active Project 打开方式" })).toBeInTheDocument();
+    await user.click(within(screen.getByRole("group", { name: "Second Project 项目" })).getByRole("button", { name: "用工具打开 Second Project" }));
+    expect(screen.queryByRole("menu", { name: "Active Project 打开方式" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menu", { name: "Second Project 打开方式" })).toBeInTheDocument();
+    await user.click(screen.getByRole("heading", { name: "项目" }));
+    expect(screen.queryByRole("menu", { name: "Second Project 打开方式" })).not.toBeInTheDocument();
+  });
+
   it("shows project open profiles in settings actions", async () => {
     const user = userEvent.setup();
     const onAddProjectOpenProfile = vi.fn();
@@ -833,6 +866,81 @@ describe("Workbench UI interactions", () => {
     expect(onAddProjectOpenProfile).toHaveBeenCalled();
     expect(onEditProjectOpenProfile).toHaveBeenCalledWith(projectOpenProfiles[0]);
     expect(onDeleteProjectOpenProfile).toHaveBeenCalledWith(projectOpenProfiles[0]);
+  });
+
+  it("spins the settings migration check while inspecting root migration", () => {
+    renderWithUpdateProvider(
+      <SettingsView
+        settings={appSettings}
+        theme="dark"
+        onOpenUpdateDetails={vi.fn()}
+        onThemeToggle={vi.fn()}
+        onRootChange={vi.fn()}
+        onInspectRootMigration={vi.fn()}
+        inspectingRootMigration
+        onReorderToolTargets={vi.fn()}
+        onCloseBehaviorChange={vi.fn()}
+        onOpenPath={vi.fn()}
+        onAddCustomTool={vi.fn()}
+        onEditCustomTool={vi.fn()}
+        onDeleteCustomTool={vi.fn()}
+        onAddProjectOpenProfile={vi.fn()}
+        onEditProjectOpenProfile={vi.fn()}
+        onDeleteProjectOpenProfile={vi.fn()}
+      />
+    );
+
+    const checkButton = screen.getByRole("button", { name: "检查中" });
+    expect(checkButton).toBeDisabled();
+    expect(checkButton.querySelector("svg")).toHaveClass("spin");
+  });
+
+  it("groups root migration footer actions and spins while refreshing", () => {
+    const migrationState: SkillsRootMigrationState = {
+      previousSkillsRoot: "C:\\Users\\dev\\.old-workbench\\skills",
+      currentSkillsRoot: "C:\\Users\\dev\\.workbench\\skills",
+      canMigrate: true,
+      candidates: [{
+        directoryName: "new-skill",
+        displayName: "new-skill",
+        description: "New skill",
+        status: "new",
+        sourcePath: "C:\\Users\\dev\\.old-workbench\\skills\\new-skill",
+        message: "可迁移"
+      }],
+      managedTargets: [{
+        directoryName: "new-skill",
+        tool: "codex",
+        scope: "global",
+        projectName: "",
+        projectPath: "",
+        linkPath: "C:\\Users\\dev\\.codex\\skills\\new-skill",
+        syncMethod: "symlink",
+        status: "ready",
+        message: "可重建"
+      }]
+    };
+
+    const { container } = render(
+      <SkillsRootMigrationDialog
+        state={migrationState}
+        rebuildResults={[]}
+        refreshing
+        onMigrate={vi.fn()}
+        onRebuild={vi.fn()}
+        onRefresh={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    const refreshButton = screen.getByRole("button", { name: "检查中" });
+    expect(refreshButton).toBeDisabled();
+    expect(refreshButton.querySelector("svg")).toHaveClass("spin");
+    const footerActions = container.querySelector(".migration-footer-actions");
+    expect(footerActions).not.toBeNull();
+    expect(within(footerActions as HTMLElement).getByRole("button", { name: "关闭" })).toBeInTheDocument();
+    expect(within(footerActions as HTMLElement).getByRole("button", { name: "迁移可迁移项" })).toBeInTheDocument();
+    expect(within(footerActions as HTMLElement).getByRole("button", { name: "重建受管目标" })).toBeInTheDocument();
   });
 
   it("shows custom tool actions and icon in settings", async () => {
@@ -1411,7 +1519,9 @@ describe("Workbench UI interactions", () => {
         onMergeDuplicateGroup={vi.fn()}
       />
     );
-    expect(screen.getByRole("button", { name: "同步中" })).toBeDisabled();
+    const syncingButton = screen.getByRole("button", { name: "同步中" });
+    expect(syncingButton).toBeDisabled();
+    expect(syncingButton.querySelector("svg")).toHaveClass("spin");
   });
 
   it("toggles favorite from the resource list star without selecting the row", async () => {
@@ -1508,6 +1618,10 @@ describe("Workbench UI interactions", () => {
     expect(screen.queryAllByRole("button", { name: /nano-vllm/ })).toHaveLength(0);
 
     await user.selectOptions(screen.getByLabelText("按领域筛选"), "全部领域");
+    await user.click(screen.getByRole("button", { name: "更多筛选" }));
+    expect(screen.getByLabelText("按语言筛选")).toBeInTheDocument();
+    await user.click(screen.getByRole("heading", { name: "资源 Radar" }));
+    expect(screen.queryByLabelText("按语言筛选")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "更多筛选" }));
     await user.selectOptions(screen.getByLabelText("按语言筛选"), "Python");
     expect(screen.getAllByRole("button", { name: /nano-vllm/ }).length).toBeGreaterThan(0);
@@ -1653,11 +1767,14 @@ describe("Workbench UI interactions", () => {
     );
 
     expect(screen.getByRole("button", { name: "同步中" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "同步中" }).querySelector("svg")).toHaveClass("spin");
   });
 
   it("exposes the enabled skills sync action", async () => {
     const user = userEvent.setup();
     const onSyncSkills = vi.fn();
+    const onManageCategories = vi.fn();
+    const onImport = vi.fn();
     render(
       <SkillsView
         skills={skillsForView}
@@ -1666,10 +1783,10 @@ describe("Workbench UI interactions", () => {
         settings={skillsSettings}
         projects={[activeProject, secondActiveProject]}
         onSelect={vi.fn()}
-        onImport={vi.fn()}
+        onImport={onImport}
         onRefresh={vi.fn()}
         onSyncSkills={onSyncSkills}
-        onManageCategories={vi.fn()}
+        onManageCategories={onManageCategories}
         onToggle={vi.fn()}
         onToggleSkillGlobal={vi.fn()}
         onToggleProjectAll={vi.fn()}
@@ -1681,8 +1798,54 @@ describe("Workbench UI interactions", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "同步 Skills" }));
+    await user.click(screen.getByRole("button", { name: "管理分类" }));
+    await user.click(screen.getByRole("button", { name: /导入 Skills/ }));
+    expect(screen.getByText("选择 ZIP 文件")).toBeInTheDocument();
+    await user.click(screen.getByRole("heading", { name: "Skills" }));
+    expect(screen.queryByText("选择 ZIP 文件")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /导入 Skills/ }));
+    await user.click(screen.getByText("选择 ZIP 文件"));
 
     expect(onSyncSkills).toHaveBeenCalledTimes(1);
+    expect(onManageCategories).toHaveBeenCalledTimes(1);
+    expect(onImport).toHaveBeenCalledWith("zip");
+  });
+
+  it("keeps local Skills management actions out of market and updates", async () => {
+    const user = userEvent.setup();
+    render(
+      <SkillsView
+        skills={skillsForView}
+        selectedSkill={skillsForView[0]}
+        categories={skillCategoriesForView}
+        settings={skillsSettings}
+        projects={[activeProject, secondActiveProject]}
+        onSelect={vi.fn()}
+        onImport={vi.fn()}
+        onRefresh={vi.fn()}
+        onSyncSkills={vi.fn()}
+        onManageCategories={vi.fn()}
+        onToggle={vi.fn()}
+        onToggleSkillGlobal={vi.fn()}
+        onToggleProjectAll={vi.fn()}
+        onCategorySkill={vi.fn()}
+        onCreateCategorySkill={vi.fn()}
+        onResolve={vi.fn()}
+        onDeleteSkill={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "同步 Skills" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "技能市场" }));
+    expect(screen.queryByRole("button", { name: "同步 Skills" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "管理分类" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /导入 Skills/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /刷新/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "更新" }));
+    expect(screen.queryByRole("button", { name: "同步 Skills" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "管理分类" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /导入 Skills/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /检查/ })).toBeInTheDocument();
   });
 
   it("requires explicit version choices before syncing conflicting external skills", async () => {
@@ -2156,6 +2319,7 @@ describe("Workbench UI interactions", () => {
 
   it("shows skeleton loading while the skills.sh market is loading", async () => {
     const user = userEvent.setup();
+    clearSkillMarketRuntimeCache();
     const listMarket = vi.spyOn(workbenchApi, "listSkillMarket").mockReturnValue(new Promise(() => {}));
     try {
       render(
@@ -2183,9 +2347,44 @@ describe("Workbench UI interactions", () => {
 
       expect(await screen.findByLabelText("正在加载 skills.sh 市场")).toBeInTheDocument();
       expect(screen.getByLabelText("正在加载 Skill 详情")).toBeInTheDocument();
+      const refreshButton = screen.getByRole("button", { name: "刷新中" });
+      expect(refreshButton).toBeDisabled();
+      expect(refreshButton.querySelector("svg")).toHaveClass("spin");
     } finally {
       listMarket.mockRestore();
     }
+  });
+
+  it("shows the market skeleton while refreshing existing skills.sh results", () => {
+    const items = testMarketItems();
+    render(
+      <SkillsMarketView
+        items={items}
+        selectedItem={items[0]}
+        detail={null}
+        query=""
+        statusFilter="全部状态"
+        stats={buildMarketStats(items)}
+        currentCount={items.length}
+        loading
+        error=""
+        installTask={null}
+        uninstallingKey=""
+        onQueryChange={vi.fn()}
+        onStatusFilterChange={vi.fn()}
+        onRefresh={vi.fn()}
+        onSearch={vi.fn()}
+        onSelect={vi.fn()}
+        onInstall={vi.fn()}
+        onUninstall={vi.fn()}
+        onOpenSource={vi.fn()}
+      />
+    );
+
+    expect(screen.getByLabelText("正在加载 skills.sh 市场")).toBeInTheDocument();
+    expect(screen.getByLabelText("正在加载 Skill 详情")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /next-upgrade/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "刷新中" }).querySelector("svg")).toHaveClass("spin");
   });
 
   it("opens the skills.sh market and installs a selected skill through Workbench", async () => {
@@ -2321,12 +2520,14 @@ describe("Workbench UI interactions", () => {
       act(() => {
         reportProgress?.(55);
       });
-      expect(await screen.findByRole("button", { name: "安装中 55%" })).toBeDisabled();
+      expect(await screen.findByRole("button", { name: "安装中" })).toBeDisabled();
+      expect(screen.getByText("55%")).toBeInTheDocument();
 
       await user.click(screen.getByRole("button", { name: "本地 Skills" }));
       await user.click(screen.getByRole("button", { name: "技能市场" }));
 
-      expect(await screen.findByRole("button", { name: "安装中 55%" })).toBeDisabled();
+      expect(await screen.findByRole("button", { name: "安装中" })).toBeDisabled();
+      expect(screen.getByText("55%")).toBeInTheDocument();
 
       await act(async () => {
         finishInstall?.();
@@ -2359,13 +2560,15 @@ describe("Workbench UI interactions", () => {
       act(() => {
         reportProgress?.(55);
       });
-      expect(await screen.findByRole("button", { name: "安装中 55%" })).toBeDisabled();
+      expect(await screen.findByRole("button", { name: "安装中" })).toBeDisabled();
+      expect(screen.getByText("55%")).toBeInTheDocument();
 
       await user.click(within(navigation).getByRole("button", { name: "项目" }));
       await user.click(within(navigation).getByRole("button", { name: "Skills" }));
       await user.click(screen.getByRole("button", { name: "技能市场" }));
 
-      expect(await screen.findByRole("button", { name: "安装中 55%" })).toBeDisabled();
+      expect(await screen.findByRole("button", { name: "安装中" })).toBeDisabled();
+      expect(screen.getByText("55%")).toBeInTheDocument();
 
       await act(async () => {
         finishInstall?.();
@@ -2409,13 +2612,16 @@ describe("Workbench UI interactions", () => {
 
   it("supports selected batch updates for skills.sh installed skills", async () => {
     const user = userEvent.setup();
-    const updateSkills = vi.spyOn(workbenchApi, "updateMarketSkills").mockResolvedValue([
-      {
-        directoryName: "excalidraw-diagram-generator",
-        status: "up_to_date",
-        message: "更新完成"
-      }
-    ]);
+    const updateSkills = vi.spyOn(workbenchApi, "updateMarketSkills").mockImplementation(async (directoryNames, onProgress) => {
+      onProgress?.("excalidraw-diagram-generator", 55);
+      return [
+        {
+          directoryName: "excalidraw-diagram-generator",
+          status: "up_to_date",
+          message: "更新完成"
+        }
+      ];
+    });
     const onRefresh = vi.fn(async () => {});
     render(
       <SkillsView
@@ -2446,10 +2652,96 @@ describe("Workbench UI interactions", () => {
     await user.click(screen.getByRole("button", { name: "更新选中项" }));
 
     await waitFor(() => {
-      expect(updateSkills).toHaveBeenCalledWith(["excalidraw-diagram-generator"]);
+      expect(updateSkills).toHaveBeenCalledWith(["excalidraw-diagram-generator"], expect.any(Function));
       expect(onRefresh).toHaveBeenCalled();
     });
     updateSkills.mockRestore();
+  });
+
+  it("shows progress while updating selected skills", async () => {
+    const user = userEvent.setup();
+    let resolveUpdate: ((results: SkillUpdateResult[]) => void) | undefined;
+    const updateSkills = vi.spyOn(workbenchApi, "updateMarketSkills").mockImplementation((directoryNames, onProgress) => {
+      onProgress?.(directoryNames[0], 55);
+      return new Promise((resolve) => {
+        resolveUpdate = resolve;
+      });
+    });
+    render(
+      <SkillsView
+        skills={skillsForView}
+        selectedSkill={skillsForView[0]}
+        categories={skillCategoriesForView}
+        settings={skillsSettings}
+        projects={[activeProject, secondActiveProject]}
+        onSelect={vi.fn()}
+        onImport={vi.fn()}
+        onRefresh={vi.fn()}
+        onManageCategories={vi.fn()}
+        onToggle={vi.fn()}
+        onToggleSkillGlobal={vi.fn()}
+        onToggleProjectAll={vi.fn()}
+        onCategorySkill={vi.fn()}
+        onCreateCategorySkill={vi.fn()}
+        onResolve={vi.fn()}
+        onDeleteSkill={vi.fn()}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: "更新" }));
+    expect(await screen.findByText("excalidraw-diagram-generator")).toBeInTheDocument();
+    await user.click(screen.getByLabelText("选择 excalidraw-diagram-generator"));
+    await user.click(screen.getByRole("button", { name: "更新选中项" }));
+
+    expect(await screen.findByRole("button", { name: "更新中" })).toBeDisabled();
+    expect(screen.getByText("当前进度")).toBeInTheDocument();
+    expect(screen.getAllByText("更新中 55%").length).toBeGreaterThan(0);
+    expect(screen.getByText("55%")).toBeInTheDocument();
+
+    resolveUpdate?.([
+      {
+        directoryName: "excalidraw-diagram-generator",
+        status: "up_to_date",
+        message: "更新完成"
+      }
+    ]);
+
+    await waitFor(() => expect(screen.queryByText("当前进度")).not.toBeInTheDocument());
+    updateSkills.mockRestore();
+  });
+
+  it("spins the skills update check action while checking", async () => {
+    const user = userEvent.setup();
+    const listUpdates = vi.spyOn(workbenchApi, "listSkillUpdates").mockReturnValue(new Promise(() => {}));
+    try {
+      render(
+        <SkillsView
+          skills={skillsForView}
+          selectedSkill={skillsForView[0]}
+          categories={skillCategoriesForView}
+          settings={skillsSettings}
+          projects={[activeProject, secondActiveProject]}
+          onSelect={vi.fn()}
+          onImport={vi.fn()}
+          onRefresh={vi.fn()}
+          onManageCategories={vi.fn()}
+          onToggle={vi.fn()}
+          onToggleSkillGlobal={vi.fn()}
+          onToggleProjectAll={vi.fn()}
+          onCategorySkill={vi.fn()}
+          onCreateCategorySkill={vi.fn()}
+          onResolve={vi.fn()}
+          onDeleteSkill={vi.fn()}
+        />
+      );
+
+      await user.click(screen.getByRole("button", { name: "更新" }));
+      const checkButton = await screen.findByRole("button", { name: "检查中" });
+      expect(checkButton).toBeDisabled();
+      expect(checkButton.querySelector("svg")).toHaveClass("spin");
+    } finally {
+      listUpdates.mockRestore();
+    }
   });
 
   it("shows an actionable empty state when no skills.sh skills can be checked for updates", async () => {

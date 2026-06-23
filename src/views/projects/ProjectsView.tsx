@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Archive, ArchiveRestore, ArrowLeft, Edit3, FileText, FolderOpen, MonitorUp, Pause, Play, Plus, RefreshCcw, Square, Terminal, X } from "lucide-react";
 import { ActionGroup, Button, DetailHeader, IconButton, PageHeader, PaginationBar, Panel, SearchInput, StatusBadge, TagList, Toolbar } from "../../components/ui";
 import { workbenchApi } from "../../lib/api/workbenchApi";
@@ -54,6 +54,7 @@ export function ProjectsView({
   const [statusFilter, setStatusFilter] = useState("全部状态");
   const [archiveFilter, setArchiveFilter] = useState("活跃项目");
   const [launchLogProjectId, setLaunchLogProjectId] = useState("");
+  const [openProfileProjectId, setOpenProfileProjectId] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const tagOptions = useMemo(
@@ -194,6 +195,8 @@ export function ProjectsView({
                     <ProjectOpenProfileMenu
                       project={project}
                       profiles={projectOpenProfiles}
+                      open={openProfileProjectId === project.id}
+                      onOpenChange={(open) => setOpenProfileProjectId(open ? project.id : "")}
                       onOpen={onOpenWithProfile ?? (() => undefined)}
                     />
                     <IconButton
@@ -316,23 +319,38 @@ export function ProjectsView({
 function ProjectOpenProfileMenu({
   project,
   profiles,
+  open,
+  onOpenChange,
   onOpen
 }: {
   project: Project;
   profiles: ProjectOpenProfile[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   onOpen: (project: Project, profile: ProjectOpenProfile) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLSpanElement>(null);
   const enabledProfiles = profiles.filter((profile) => profile.enabled);
+
+  useEffect(() => {
+    if (!open) return;
+    function closeOnOutsidePointerDown(event: PointerEvent) {
+      if (menuRef.current?.contains(event.target as Node)) return;
+      onOpenChange(false);
+    }
+    document.addEventListener("pointerdown", closeOnOutsidePointerDown);
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePointerDown);
+  }, [open, onOpenChange]);
+
   return (
-    <span className="row-menu">
+    <span className="row-menu" ref={menuRef}>
       <IconButton
         title="用工具打开"
         aria-label={`用工具打开 ${project.name}`}
         aria-expanded={open}
         onClick={(event) => {
           event.stopPropagation();
-          setOpen((current) => !current);
+          onOpenChange(!open);
         }}
       >
         <MonitorUp size={14} />
@@ -346,7 +364,7 @@ function ProjectOpenProfileMenu({
               role="menuitem"
               onClick={(event) => {
                 event.stopPropagation();
-                setOpen(false);
+                onOpenChange(false);
                 onOpen(project, profile);
               }}
             >

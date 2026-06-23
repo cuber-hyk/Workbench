@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { projects, radarItems, settings, skillCategories, skills } from "./mockData";
-import type { CloseBehavior, CustomToolTargetInput, ExternalSkillCandidateGroup, ExternalSkillSyncResult, ExternalSkillSyncSelection, GitHubCliStatus, GitHubStarsSyncResult, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, ManagedTargetRebuildResult, ManagedTargetRebuildSelection, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, RootSkillMigrationCandidate, SkillInstallProgress, SkillMarketDetail, SkillMarketItem, SkillUpdateResult, SkillUpdateStatus, SkillVersionSource, SkillsRootMigrationState, SkillsState, ToolKey } from "../types/domain";
+import type { CloseBehavior, CustomToolTargetInput, ExternalSkillCandidateGroup, ExternalSkillSyncResult, ExternalSkillSyncSelection, GitHubCliStatus, GitHubStarsSyncResult, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, ManagedTargetRebuildResult, ManagedTargetRebuildSelection, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, RootSkillMigrationCandidate, SkillInstallProgress, SkillMarketDetail, SkillMarketItem, SkillUpdateProgress, SkillUpdateResult, SkillUpdateStatus, SkillVersionSource, SkillsRootMigrationState, SkillsState, ToolKey } from "../types/domain";
 
 const delay = async () => new Promise((resolve) => window.setTimeout(resolve, 80));
 const isTauri = "__TAURI_INTERNALS__" in window;
@@ -373,8 +373,12 @@ export const workbenchApi = {
     }
     return invoke<SkillUpdateStatus[]>("check_skill_updates");
   },
-  async updateSkillFromMarket(directoryName: string) {
+  async updateSkillFromMarket(directoryName: string, onProgress?: (progress: number) => void) {
     if (!isTauri) {
+      for (const progress of [8, 45, 72, 82, 92, 100]) {
+        onProgress?.(progress);
+        await delay();
+      }
       await delay();
       return {
         directoryName,
@@ -382,10 +386,25 @@ export const workbenchApi = {
         message: "预览更新完成"
       } satisfies SkillUpdateResult;
     }
-    return invoke<SkillUpdateResult>("update_skill_from_market", { directoryName });
+    const unlisten = await listen<SkillUpdateProgress>("skill-update-progress", (event) => {
+      if (event.payload.directoryName === directoryName) {
+        onProgress?.(event.payload.progress);
+      }
+    });
+    try {
+      return await invoke<SkillUpdateResult>("update_skill_from_market", { directoryName });
+    } finally {
+      unlisten();
+    }
   },
-  async updateMarketSkills(directoryNames: string[]) {
+  async updateMarketSkills(directoryNames: string[], onProgress?: (directoryName: string, progress: number) => void) {
     if (!isTauri) {
+      for (const directoryName of directoryNames) {
+        for (const progress of [8, 45, 72, 82, 92, 100]) {
+          onProgress?.(directoryName, progress);
+          await delay();
+        }
+      }
       await delay();
       return directoryNames.map((directoryName) => ({
         directoryName,
@@ -393,7 +412,17 @@ export const workbenchApi = {
         message: "预览更新完成"
       }));
     }
-    return invoke<SkillUpdateResult[]>("update_market_skills", { directoryNames });
+    const names = new Set(directoryNames);
+    const unlisten = await listen<SkillUpdateProgress>("skill-update-progress", (event) => {
+      if (names.has(event.payload.directoryName)) {
+        onProgress?.(event.payload.directoryName, event.payload.progress);
+      }
+    });
+    try {
+      return await invoke<SkillUpdateResult[]>("update_market_skills", { directoryNames });
+    } finally {
+      unlisten();
+    }
   },
   async setSkillsRoot(path: string) {
     return invokeSkillsState("set_skills_root", { path });

@@ -80,11 +80,13 @@ export function SkillsView({
   const [selectedUpdateNames, setSelectedUpdateNames] = useState<string[]>([]);
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [updatingNames, setUpdatingNames] = useState<string[]>([]);
+  const [updateProgressByName, setUpdateProgressByName] = useState<Record<string, number>>({});
   const [updateResults, setUpdateResults] = useState<SkillUpdateResult[]>([]);
   const [localPage, setLocalPage] = useState(1);
   const [localPageSize, setLocalPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [expandedToolSkillId, setExpandedToolSkillId] = useState("");
   const handledMarketInstallRef = useRef("");
+  const importMenuRef = useRef<HTMLDivElement>(null);
   const handleMarketInstall = onInstallMarketSkill ?? ((item: SkillMarketItem) => {
     void workbenchApi.installSkillFromMarket(item.source, item.skillId, () => undefined)
       .then(() => onRefresh())
@@ -158,6 +160,16 @@ export function SkillsView({
   useEffect(() => {
     setExpandedToolSkillId("");
   }, [activeSkillsTab, query, categoryFilter, statusFilter, toolFilter, projectFilter, localCurrentPage]);
+
+  useEffect(() => {
+    if (!importMenuOpen) return;
+    function closeImportMenuOnOutsidePointerDown(event: PointerEvent) {
+      if (importMenuRef.current?.contains(event.target as Node)) return;
+      setImportMenuOpen(false);
+    }
+    document.addEventListener("pointerdown", closeImportMenuOnOutsidePointerDown);
+    return () => document.removeEventListener("pointerdown", closeImportMenuOnOutsidePointerDown);
+  }, [importMenuOpen]);
 
   useEffect(() => {
     if (localPage !== localCurrentPage) setLocalPage(localCurrentPage);
@@ -237,6 +249,7 @@ export function SkillsView({
   async function loadSkillUpdates(checkRemote: boolean) {
     setCheckingUpdates(true);
     try {
+      await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
       const statuses = checkRemote ? await workbenchApi.checkSkillUpdates() : await workbenchApi.listSkillUpdates();
       setUpdateStatuses(statuses);
       setSelectedUpdateNames((current) =>
@@ -259,14 +272,18 @@ export function SkillsView({
     );
     if (targets.length === 0) return;
     setUpdatingNames(targets);
+    setUpdateProgressByName(Object.fromEntries(targets.map((directoryName) => [directoryName, 8])));
     try {
-      const results = await workbenchApi.updateMarketSkills(targets);
+      const results = await workbenchApi.updateMarketSkills(targets, (directoryName, progress) => {
+        setUpdateProgressByName((current) => ({ ...current, [directoryName]: progress }));
+      });
       setUpdateResults(results);
       await loadSkillUpdates(false);
       await onRefresh();
       setSelectedUpdateNames([]);
     } finally {
       setUpdatingNames([]);
+      setUpdateProgressByName({});
     }
   }
 
@@ -284,29 +301,27 @@ export function SkillsView({
             更新{updateableStatuses.length > 0 ? ` ${updateableStatuses.length}` : ""}
           </button>
         </div>
-        <div className="skills-header-actions">
-          <div className="header-actions">
-            <Button disabled={isSyncingSkills} onClick={onSyncSkills}><RefreshCcw className={isSyncingSkills ? "spin" : ""} size={15} />{isSyncingSkills ? "同步中" : "同步 Skills"}</Button>
-            <Button onClick={onManageCategories}><Settings size={15} />管理分类</Button>
-            <div className="import-control">
-              <Button variant="primary" onClick={() => setImportMenuOpen(!importMenuOpen)}>
-                <Download size={15} />导入 Skills<ChevronDown size={14} />
-              </Button>
-              {importMenuOpen && (
-                <div className="import-menu">
-                  <button onClick={() => { setImportMenuOpen(false); void onImport("zip"); }}>选择 ZIP 文件</button>
-                  <button onClick={() => { setImportMenuOpen(false); void onImport("folder"); }}>选择已解压文件夹</button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
       </header>
       {activeSkillsTab === "local" && (
         <>
           <div className="root-bar">
             <span><strong>统一根目录</strong>{settings.skillsRoot}</span>
-            <Button onClick={() => void workbenchApi.openLocalPath(settings.skillsRoot)}><FolderOpen size={15} />打开目录</Button>
+            <div className="root-bar-actions">
+              <Button disabled={isSyncingSkills} onClick={onSyncSkills}><RefreshCcw className={isSyncingSkills ? "spin" : ""} size={15} />{isSyncingSkills ? "同步中" : "同步 Skills"}</Button>
+              <Button onClick={onManageCategories}><Settings size={15} />管理分类</Button>
+              <div className="import-control" ref={importMenuRef}>
+                <Button variant="primary" onClick={() => setImportMenuOpen(!importMenuOpen)}>
+                  <Download size={15} />导入 Skills<ChevronDown size={14} />
+                </Button>
+                {importMenuOpen && (
+                  <div className="import-menu">
+                    <button onClick={() => { setImportMenuOpen(false); void onImport("zip"); }}>选择 ZIP 文件</button>
+                    <button onClick={() => { setImportMenuOpen(false); void onImport("folder"); }}>选择已解压文件夹</button>
+                  </div>
+                )}
+              </div>
+              <Button onClick={() => void workbenchApi.openLocalPath(settings.skillsRoot)}><FolderOpen size={15} />打开目录</Button>
+            </div>
           </div>
           <Toolbar>
             <SearchInput placeholder="搜索名称或描述" value={query} onChange={(event) => setQuery(event.target.value)} />
@@ -490,6 +505,7 @@ export function SkillsView({
           selectedNames={selectedUpdateNames}
           checking={checkingUpdates}
           updatingNames={updatingNames}
+          updateProgressByName={updateProgressByName}
           results={updateResults}
           onCheck={() => void loadSkillUpdates(true)}
           onSelectNames={setSelectedUpdateNames}

@@ -167,6 +167,11 @@ export interface SkillInstallProgress {
   progress: number;
 }
 
+export interface SkillUpdateProgress {
+  directoryName: string;
+  progress: number;
+}
+
 export interface SkillSourceRecord {
   directoryName: string;
   source: string;

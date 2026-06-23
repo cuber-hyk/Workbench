@@ -40,7 +40,7 @@ fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let mut tray = TrayIconBuilder::new()
         .menu(&menu)
         .show_menu_on_left_click(true)
-        .tooltip("Workbench App")
+        .tooltip("Workbench")
         .on_menu_event(|app, event| match event.id().as_ref() {
             "show" => {
                 let _ = show_main_window(app);
@@ -124,5 +124,5 @@ pub fn run() {
             skills::create_and_open_directory
         ])
         .run(tauri::generate_context!())
-        .expect("failed to run Workbench App");
+        .expect("failed to run Workbench");
 }

@@ -9,6 +9,7 @@ use tempfile::tempdir;
 use super::{directory_content_hash, error_message, market::github_source, SkillResult};
 
 const SKILLS_CLI_TIMEOUT_SECONDS: u64 = 180;
+const SKILLS_CLI_ERROR_DETAIL_LIMIT: usize = 700;
 
 pub(super) fn skills_cli_command_name(command: &str) -> String {
     if cfg!(windows) && matches!(command, "npm" | "npx") {
@@ -83,9 +84,9 @@ fn run_command_with_timeout(command: &mut Command, timeout: Duration) -> SkillRe
 fn skills_cli_output_text(output: &Output) -> String {
     let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
     if !stderr.is_empty() {
-        return stderr;
+        return clean_skills_cli_output(&stderr);
     }
-    String::from_utf8_lossy(&output.stdout).trim().to_string()
+    clean_skills_cli_output(&String::from_utf8_lossy(&output.stdout))
 }
 
 fn skills_cli_failure_message(output: &Output) -> String {
@@ -95,6 +96,74 @@ fn skills_cli_failure_message(output: &Output) -> String {
     } else {
         format!("skills.sh 官方安装器执行失败：{detail}")
     }
+}
+
+pub(super) fn clean_skills_cli_output(value: &str) -> String {
+    let without_ansi = strip_ansi_sequences(value);
+    let without_controls: String = without_ansi
+        .chars()
+        .map(|character| {
+            if character.is_control() && !matches!(character, '\n' | '\t') {
+                ' '
+            } else {
+                character
+            }
+        })
+        .collect();
+    let compact = without_controls
+        .lines()
+        .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" "))
+        .filter(|line| !line.is_empty())
+        .fold(Vec::<String>::new(), |mut lines, line| {
+            if lines.last() != Some(&line) {
+                lines.push(line);
+            }
+            lines
+        })
+        .join("\n");
+    let compact = compact_repeated_fetching(&compact);
+    truncate_for_message(&compact, SKILLS_CLI_ERROR_DETAIL_LIMIT)
+}
+
+fn strip_ansi_sequences(value: &str) -> String {
+    let mut output = String::new();
+    let mut chars = value.chars().peekable();
+    while let Some(character) = chars.next() {
+        if character != '\u{1b}' {
+            output.push(character);
+            continue;
+        }
+        if matches!(chars.peek(), Some('[' | ']')) {
+            let introducer = chars.next();
+            for next in chars.by_ref() {
+                if introducer == Some(']') && next == '\u{7}' {
+                    break;
+                }
+                if introducer == Some('[') && ('@'..='~').contains(&next) {
+                    break;
+                }
+            }
+        }
+    }
+    output
+}
+
+fn compact_repeated_fetching(value: &str) -> String {
+    let mut output = value.to_string();
+    let repeated = "Fetching skills. Fetching skills.";
+    while output.contains(repeated) {
+        output = output.replace(repeated, "Fetching skills.");
+    }
+    output
+}
+
+fn truncate_for_message(value: &str, limit: usize) -> String {
+    if value.chars().count() <= limit {
+        return value.to_string();
+    }
+    let mut truncated = value.chars().take(limit).collect::<String>();
+    truncated.push_str("...");
+    truncated
 }
 
 pub(super) fn extract_skill_with_skills_cli(
@@ -118,6 +187,8 @@ pub(super) fn extract_skill_with_skills_cli(
         .env("HOME", temporary.path())
         .env("USERPROFILE", temporary.path())
         .env("APPDATA", &app_data)
+        .env("NO_COLOR", "1")
+        .env("CI", "1")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     on_progress(45);

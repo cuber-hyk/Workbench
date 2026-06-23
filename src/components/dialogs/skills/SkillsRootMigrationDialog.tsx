@@ -9,6 +9,7 @@ export function SkillsRootMigrationDialog({
   onMigrate,
   onRebuild,
   onRefresh,
+  refreshing = false,
   onClose
 }: {
   state: SkillsRootMigrationState;
@@ -16,6 +17,7 @@ export function SkillsRootMigrationDialog({
   onMigrate: (directoryNames: string[]) => void;
   onRebuild: (selections: ManagedTargetRebuildSelection[]) => void;
   onRefresh: () => void;
+  refreshing?: boolean;
   onClose: () => void;
 }) {
   const migrateTargets = state.candidates
@@ -36,12 +38,14 @@ export function SkillsRootMigrationDialog({
       onClose={onClose}
       large
       footer={
-        <>
-          <Button onClick={onRefresh}><RefreshCcw size={15} />重新检查</Button>
-          <Button onClick={onClose}>关闭</Button>
-          <Button disabled={migrateTargets.length === 0} onClick={() => onMigrate(migrateTargets)}>迁移可迁移项</Button>
-          <Button variant="primary" disabled={rebuildTargets.length === 0} onClick={() => onRebuild(rebuildTargets)}>重建受管目标</Button>
-        </>
+        <div className="migration-footer">
+          <Button disabled={refreshing} onClick={onRefresh}><RefreshCcw className={refreshing ? "spin" : ""} size={15} />{refreshing ? "检查中" : "重新检查"}</Button>
+          <span className="migration-footer-actions">
+            <Button onClick={onClose}>关闭</Button>
+            <Button disabled={migrateTargets.length === 0} onClick={() => onMigrate(migrateTargets)}>迁移可迁移项</Button>
+            <Button variant="primary" disabled={rebuildTargets.length === 0} onClick={() => onRebuild(rebuildTargets)}>重建受管目标</Button>
+          </span>
+        </div>
       }
     >
       <div className="warning">迁移和重建都需要用户显式执行；旧根目录不会被删除，未受管的工具目录内容不会被覆盖。</div>
