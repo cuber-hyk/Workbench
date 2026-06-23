@@ -129,12 +129,12 @@ export function SkillsMarketView({
           <option>可更新</option>
           <option>不可安装</option>
         </select>
-        <Button onClick={onRefresh}><RefreshCcw size={15} />刷新市场</Button>
+        <Button disabled={loading} onClick={onRefresh}><RefreshCcw className={loading ? "spin" : ""} size={15} />{loading ? "刷新中" : "刷新市场"}</Button>
       </Toolbar>
       {error && (
         <div className="warning market-error" role="alert">
           <span>{error}</span>
-          <Button onClick={onRefresh}><RefreshCcw size={14} />重试</Button>
+          <Button disabled={loading} onClick={onRefresh}><RefreshCcw className={loading ? "spin" : ""} size={14} />{loading ? "重试中" : "重试"}</Button>
         </div>
       )}
       <div className="market-stats" aria-label="技能市场统计">
@@ -147,7 +147,7 @@ export function SkillsMarketView({
           [currentCount, "当前结果"]
         ].map(([value, label]) => (
           <span key={label}>
-            <strong>{loading && items.length === 0 ? <i className="skeleton skeleton-stat" /> : value}</strong>
+            <strong>{loading ? <i className="skeleton skeleton-stat" /> : value}</strong>
             <small>{label}</small>
           </span>
         ))}
@@ -156,7 +156,7 @@ export function SkillsMarketView({
         <Panel className="list-panel">
           <div className="table-head market-grid"><span>远程 Skill</span><span>来源</span><span>状态</span><span>下载</span><span className="table-action-heading">操作</span></div>
           <div className="list-body">
-            {loading && items.length === 0 && <MarketListSkeleton />}
+            {loading && <MarketListSkeleton />}
             {!loading && pagedItems.map((item) => {
               const key = `${item.source}/${item.skillId}`;
               const taskForItem = installTask?.key === key ? installTask : null;
@@ -178,9 +178,12 @@ export function SkillsMarketView({
                   <span className="path">{item.source}</span>
                   <SkillStatusIndicator status={marketItemStatus(item)} />
                   <span>{formatInstallCount(item.installs)}</span>
-                  <span className="row-actions table-actions install-action">
+                  <span className={`row-actions table-actions install-action ${installing ? "progressing" : ""}`}>
                     {installing ? (
-                      <Button disabled><RefreshCcw className="spin" size={14} />安装中 {taskForItem?.progress ?? 8}%</Button>
+                      <>
+                        <Button disabled><RefreshCcw className="spin" size={14} />安装中</Button>
+                        <small>{taskForItem?.progress ?? 8}%</small>
+                      </>
                     ) : installedByTask ? (
                       <Button disabled><CircleCheck size={14} />安装完成</Button>
                     ) : item.installedDirectoryName ? (
@@ -225,7 +228,7 @@ export function SkillsMarketView({
           )}
         </Panel>
         <Panel className="detail-panel market-detail-panel">
-          {loading && items.length === 0 ? (
+          {loading ? (
             <MarketDetailSkeleton />
           ) : activeItem ? (
             <>

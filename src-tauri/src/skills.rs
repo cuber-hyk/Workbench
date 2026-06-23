@@ -28,11 +28,20 @@ use self::migration::*;
 use self::tool_targets::*;
 use self::types::*;
 
+const SKILL_UPDATE_CHECK_FRESH_HOURS: i64 = 6;
+
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SkillInstallProgress {
     source: String,
     skill_id: String,
+    progress: u8,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SkillUpdateProgress {
+    directory_name: String,
     progress: u8,
 }
 
@@ -665,6 +674,7 @@ fn install_skill_from_market_sync(
     validate_directory_name(&skill_id)?;
     on_progress(8);
     let settings = current_settings()?;
+    let workbench_root = PathBuf::from(&settings.workbench_root);
     let target_root = PathBuf::from(&settings.skills_root);
     let target = target_root.join(&skill_id);
     if target.exists() {
@@ -674,7 +684,6 @@ fn install_skill_from_market_sync(
         extract_skill_with_skills_cli(&source, &skill_id, on_progress)?;
     copy_to_new_target(&skill_source, &target)?;
     on_progress(92);
-    let workbench_root = PathBuf::from(&settings.workbench_root);
     let connection = open_database(&workbench_root)?;
     let record = SkillSourceRecord {
         directory_name: skill_id.clone(),
@@ -750,11 +759,30 @@ pub fn list_skill_updates() -> SkillResult<Vec<SkillUpdateStatus>> {
 }
 
 #[tauri::command]
-pub fn check_skill_updates() -> SkillResult<Vec<SkillUpdateStatus>> {
+pub async fn check_skill_updates() -> SkillResult<Vec<SkillUpdateStatus>> {
+    tauri::async_runtime::spawn_blocking(check_skill_updates_state)
+        .await
+        .map_err(error_message)?
+}
+
+fn check_skill_updates_state() -> SkillResult<Vec<SkillUpdateStatus>> {
     let workbench_root = default_workbench_root()?;
     let connection = open_database(&workbench_root)?;
     let mut results = Vec::new();
     for record in list_skill_source_records(&connection)? {
+        if is_recent_skill_update_check(&connection, &record.directory_name)?
+            && !record.remote_ref.is_empty()
+        {
+            let status = cached_skill_update_state(&record);
+            results.push(SkillUpdateStatus {
+                name: record.directory_name.clone(),
+                description: String::new(),
+                source: record,
+                status,
+                message: cached_skill_update_message(status),
+            });
+            continue;
+        }
         let mut status = SkillUpdateState::CheckFailed;
         let mut message = "检查失败".to_string();
         let mut next_record = record.clone();
@@ -790,9 +818,68 @@ pub fn check_skill_updates() -> SkillResult<Vec<SkillUpdateStatus>> {
     Ok(results)
 }
 
+fn is_recent_skill_update_check(
+    connection: &Connection,
+    directory_name: &str,
+) -> SkillResult<bool> {
+    let window = format!("-{SKILL_UPDATE_CHECK_FRESH_HOURS} hours");
+    connection
+        .query_row(
+            "SELECT COALESCE(
+                last_checked_at != ''
+                AND datetime(last_checked_at) >= datetime('now', ?1),
+                0
+             )
+             FROM skill_sources
+             WHERE directory_name = ?2",
+            params![window, directory_name],
+            |row| row.get::<_, bool>(0),
+        )
+        .map_err(error_message)
+}
+
+fn cached_skill_update_state(record: &SkillSourceRecord) -> SkillUpdateState {
+    if record.remote_ref == record.installed_hash {
+        SkillUpdateState::UpToDate
+    } else {
+        SkillUpdateState::UpdateAvailable
+    }
+}
+
+fn cached_skill_update_message(status: SkillUpdateState) -> String {
+    match status {
+        SkillUpdateState::UpToDate => "使用最近检查结果：已是最新".to_string(),
+        SkillUpdateState::UpdateAvailable => "使用最近检查结果：发现可更新版本".to_string(),
+        _ => "使用最近检查结果".to_string(),
+    }
+}
+
 #[tauri::command]
-pub fn update_skill_from_market(directory_name: String) -> SkillResult<SkillUpdateResult> {
+pub async fn update_skill_from_market(
+    app: AppHandle,
+    directory_name: String,
+) -> SkillResult<SkillUpdateResult> {
+    tauri::async_runtime::spawn_blocking(move || {
+        update_skill_from_market_state(directory_name, &|directory_name, progress| {
+            let _ = app.emit(
+                "skill-update-progress",
+                SkillUpdateProgress {
+                    directory_name: directory_name.to_string(),
+                    progress,
+                },
+            );
+        })
+    })
+    .await
+    .map_err(error_message)?
+}
+
+fn update_skill_from_market_state(
+    directory_name: String,
+    on_progress: &dyn Fn(&str, u8),
+) -> SkillResult<SkillUpdateResult> {
     validate_directory_name(&directory_name)?;
+    on_progress(&directory_name, 8);
     let settings = current_settings()?;
     let workbench_root = PathBuf::from(&settings.workbench_root);
     let connection = open_database(&workbench_root)?;
@@ -801,9 +888,13 @@ pub fn update_skill_from_market(directory_name: String) -> SkillResult<SkillUpda
         .package_slug
         .rsplit_once('/')
         .ok_or_else(|| "来源记录无效".to_string())?;
+    let progress_directory_name = directory_name.clone();
     let (_temporary, remote_skill, relative, hash) =
-        extract_skill_with_skills_cli(source, skill_id, &|_| {})?;
+        extract_skill_with_skills_cli(source, skill_id, &|progress| {
+            on_progress(&progress_directory_name, progress);
+        })?;
     if hash == record.installed_hash {
+        on_progress(&directory_name, 100);
         return Ok(SkillUpdateResult {
             directory_name,
             status: SkillUpdateState::UpToDate,
@@ -815,7 +906,9 @@ pub fn update_skill_from_market(directory_name: String) -> SkillResult<SkillUpda
         return Err("本地 Skill 目录不存在，无法更新".to_string());
     }
     let backup = source_backup_path(&workbench_root, &record.directory_name)?;
+    on_progress(&directory_name, 82);
     copy_path_to_backup(&target, &backup)?;
+    on_progress(&directory_name, 92);
     replace_directory_from(&remote_skill, &target)?;
     let next_record = SkillSourceRecord {
         installed_ref: hash.clone(),
@@ -825,6 +918,7 @@ pub fn update_skill_from_market(directory_name: String) -> SkillResult<SkillUpda
         ..record
     };
     upsert_skill_source_record(&connection, &next_record)?;
+    on_progress(&directory_name, 100);
     Ok(SkillUpdateResult {
         directory_name: next_record.directory_name,
         status: SkillUpdateState::UpToDate,
@@ -833,10 +927,32 @@ pub fn update_skill_from_market(directory_name: String) -> SkillResult<SkillUpda
 }
 
 #[tauri::command]
-pub fn update_market_skills(directory_names: Vec<String>) -> SkillResult<Vec<SkillUpdateResult>> {
+pub async fn update_market_skills(
+    app: AppHandle,
+    directory_names: Vec<String>,
+) -> SkillResult<Vec<SkillUpdateResult>> {
+    tauri::async_runtime::spawn_blocking(move || {
+        update_market_skills_state(directory_names, &|directory_name, progress| {
+            let _ = app.emit(
+                "skill-update-progress",
+                SkillUpdateProgress {
+                    directory_name: directory_name.to_string(),
+                    progress,
+                },
+            );
+        })
+    })
+    .await
+    .map_err(error_message)?
+}
+
+fn update_market_skills_state(
+    directory_names: Vec<String>,
+    on_progress: &dyn Fn(&str, u8),
+) -> SkillResult<Vec<SkillUpdateResult>> {
     let mut results = Vec::new();
     for directory_name in directory_names {
-        match update_skill_from_market(directory_name.clone()) {
+        match update_skill_from_market_state(directory_name.clone(), on_progress) {
             Ok(result) => results.push(result),
             Err(error) => results.push(SkillUpdateResult {
                 directory_name,
@@ -1157,6 +1273,82 @@ mod tests {
 
         assert!(message.contains("Node.js LTS"));
         assert!(message.contains("npm/npx"));
+    }
+
+    #[test]
+    fn cleans_noisy_skills_cli_failure_output() {
+        let output = clean_skills_cli_output(
+            "\u{1b}[38;5;250mFetching skills.\u{1b}[0m\r\
+             \u{1b}[38;5;250mFetching skills.\u{1b}[0m\n\
+             \u{1b}[31mSource: https://github.com/vercel-labs/agent-browser.git\u{1b}[0m",
+        );
+
+        assert!(!output.contains("\u{1b}"));
+        assert!(!output.contains('\r'));
+        assert_eq!(output.matches("Fetching skills.").count(), 1);
+        assert!(output.contains("Source: https://github.com/vercel-labs/agent-browser.git"));
+    }
+
+    #[test]
+    fn recent_skill_update_check_uses_sqlite_timestamp_window() {
+        let root = tempdir().unwrap();
+        let connection = open_database(root.path()).unwrap();
+        let record = SkillSourceRecord {
+            directory_name: "frontend-design".to_string(),
+            source: "skills_sh".to_string(),
+            package_slug: "anthropics/skills/frontend-design".to_string(),
+            repo_url: "https://github.com/anthropics/skills".to_string(),
+            skill_path: ".agents/skills/frontend-design".to_string(),
+            installed_ref: "local".to_string(),
+            installed_hash: "local".to_string(),
+            remote_ref: "remote".to_string(),
+            last_checked_at: String::new(),
+            installed_at: String::new(),
+            updated_at: String::new(),
+        };
+        upsert_skill_source_record(&connection, &record).unwrap();
+
+        assert!(is_recent_skill_update_check(&connection, "frontend-design").unwrap());
+
+        connection
+            .execute(
+                "UPDATE skill_sources
+                 SET last_checked_at = datetime('now', '-7 hours')
+                 WHERE directory_name = 'frontend-design'",
+                [],
+            )
+            .unwrap();
+
+        assert!(!is_recent_skill_update_check(&connection, "frontend-design").unwrap());
+    }
+
+    #[test]
+    fn cached_skill_update_state_compares_remote_and_installed_hashes() {
+        let mut record = SkillSourceRecord {
+            directory_name: "frontend-design".to_string(),
+            source: "skills_sh".to_string(),
+            package_slug: "anthropics/skills/frontend-design".to_string(),
+            repo_url: "https://github.com/anthropics/skills".to_string(),
+            skill_path: ".agents/skills/frontend-design".to_string(),
+            installed_ref: "same".to_string(),
+            installed_hash: "same".to_string(),
+            remote_ref: "same".to_string(),
+            last_checked_at: String::new(),
+            installed_at: String::new(),
+            updated_at: String::new(),
+        };
+
+        assert_eq!(
+            cached_skill_update_state(&record),
+            SkillUpdateState::UpToDate
+        );
+
+        record.remote_ref = "different".to_string();
+
+        assert_eq!(
+            cached_skill_update_state(&record),
+            SkillUpdateState::UpdateAvailable
+        );
     }
 
     #[test]

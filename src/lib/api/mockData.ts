@@ -3,7 +3,7 @@ import type { AppSettings, Project, ProjectOpenProfile, RadarItem, Skill, SkillC
 export const projects: Project[] = [
   {
     id: "workbench",
-    name: "Workbench App",
+    name: "Workbench",
     path: "E:\\Development\\12-工具-Utility\\Workbench",
     note: "统一管理项目、Skills 与资源 Radar。",
     tags: ["Tauri", "本地工具"],
@@ -79,7 +79,7 @@ export const skills: Skill[] = [
       { tool: "opencode", status: "disabled" }
     ],
     enabledProjects: [
-      { projectName: "Workbench App", projectPath: "E:\\Development\\12-工具-Utility\\Workbench", tool: "codex", syncMethod: "copy" },
+      { projectName: "Workbench", projectPath: "E:\\Development\\12-工具-Utility\\Workbench", tool: "codex", syncMethod: "copy" },
       { projectName: "ai-radar", projectPath: "E:\\Development\\01-Web-全栈\\ai-radar", tool: "codex", syncMethod: "symlink" }
     ]
   },
@@ -98,7 +98,7 @@ export const skills: Skill[] = [
       { tool: "claude", status: "managed", syncMethod: "copy" },
       { tool: "opencode", status: "disabled" }
     ],
-    enabledProjects: [{ projectName: "Workbench App", projectPath: "E:\\Development\\12-工具-Utility\\Workbench", tool: "codex", syncMethod: "copy" }]
+    enabledProjects: [{ projectName: "Workbench", projectPath: "E:\\Development\\12-工具-Utility\\Workbench", tool: "codex", syncMethod: "copy" }]
   },
   {
     id: "design-doc-mermaid",
@@ -133,7 +133,7 @@ export const skills: Skill[] = [
       { tool: "opencode", status: "managed", syncMethod: "copy" }
     ],
     enabledProjects: [
-      { projectName: "Workbench App", projectPath: "E:\\Development\\12-工具-Utility\\Workbench", tool: "codex", syncMethod: "copy" },
+      { projectName: "Workbench", projectPath: "E:\\Development\\12-工具-Utility\\Workbench", tool: "codex", syncMethod: "copy" },
       { projectName: "ai-radar", projectPath: "E:\\Development\\01-Web-全栈\\ai-radar", tool: "opencode", syncMethod: "copy" },
       { projectName: "cc-switch", projectPath: "E:\\Development\\12-工具-Utility\\Agent\\cc-switch", tool: "codex", syncMethod: "symlink" }
     ]

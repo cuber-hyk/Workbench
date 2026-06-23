@@ -12,6 +12,7 @@ export function SettingsView({
   onThemeToggle,
   onRootChange,
   onInspectRootMigration = () => undefined,
+  inspectingRootMigration = false,
   onReorderToolTargets,
   onAddCustomTool,
   onEditCustomTool,
@@ -28,6 +29,7 @@ export function SettingsView({
   onThemeToggle: () => void;
   onRootChange: (path: string) => void;
   onInspectRootMigration?: () => void;
+  inspectingRootMigration?: boolean;
   onReorderToolTargets: (toolKeys: ToolKey[]) => void;
   onAddCustomTool: () => void;
   onEditCustomTool: (tool: ToolTarget) => void;
@@ -74,7 +76,7 @@ export function SettingsView({
               )}
             </div>
             <span className="settings-row-actions">
-              <Button onClick={onInspectRootMigration}><RefreshCcw size={15} />检查迁移</Button>
+              <Button disabled={inspectingRootMigration} onClick={onInspectRootMigration}><RefreshCcw className={inspectingRootMigration ? "spin" : ""} size={15} />{inspectingRootMigration ? "检查中" : "检查迁移"}</Button>
             </span>
           </div>
         </section>

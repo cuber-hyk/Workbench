@@ -104,7 +104,7 @@ export function RadarView({
       <PageHeader
         title="资源 Radar"
         description={`${items.length} 条本地记录`}
-        actions={<div className="header-actions"><Button disabled={syncingGithubStars} onClick={onSyncGithubStars}><RefreshCcw size={15} />{syncingGithubStars ? "同步中" : "同步 GitHub Stars"}</Button><Button variant="primary" onClick={onAdd}><Plus size={15} />添加条目</Button></div>}
+        actions={<div className="header-actions"><Button disabled={syncingGithubStars} onClick={onSyncGithubStars}><RefreshCcw className={syncingGithubStars ? "spin" : ""} size={15} />{syncingGithubStars ? "同步中" : "同步 GitHub Stars"}</Button><Button variant="primary" onClick={onAdd}><Plus size={15} />添加条目</Button></div>}
       />
       <Toolbar>
         <SearchInput placeholder="搜索名称、标签或备注" value={query} onChange={(event) => setQuery(event.target.value)} />

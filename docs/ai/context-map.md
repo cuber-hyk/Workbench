@@ -1,6 +1,6 @@
 # Context Map
 
-本文档用于快速定位 Workbench App 的长期上下文。
+本文档用于快速定位 Workbench 的长期上下文。
 
 Do not read `docs/plans/`, `docs/audits/`, or archived directories by default.
 

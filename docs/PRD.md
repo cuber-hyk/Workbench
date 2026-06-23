@@ -1,8 +1,8 @@
-# Workbench App PRD
+# Workbench PRD
 
 ## 1. 产品概述
 
-Workbench App 是一个本地优先的 AI 开发工作台，用于统一管理个人开发项目、Skills、资源 Radar 和本机 AI 开发环境入口。
+Workbench 是一个本地优先的 AI 开发工作台，用于统一管理个人开发项目、Skills、资源 Radar 和本机 AI 开发环境入口。
 
 它不是目录型工作流，也不是现有工具的插件，而是一个独立桌面软件。参考项目只作为功能、交互和工程经验来源，不合并代码，不拼成 monorepo。
 
@@ -146,7 +146,7 @@ Workbench 使用统一 Skills 根目录保存所有 Skills。该目录是 Skills
 
 ### 5.4 设置
 
-设置模块用于管理 Workbench App 的基础配置。
+设置模块用于管理 Workbench 的基础配置。
 
 已实现能力：
 
@@ -164,7 +164,7 @@ Workbench 使用统一 Skills 根目录保存所有 Skills。该目录是 Skills
 
 ## 6. 页面结构
 
-Workbench App 采用左侧模块导航 + 右侧工作区。
+Workbench 采用左侧模块导航 + 右侧工作区。
 
 左侧导航当前包含：
 
@@ -297,7 +297,7 @@ Workbench App 采用左侧模块导航 + 右侧工作区。
 
 当前版本应持续满足：
 
-- 可以启动 Workbench App 桌面应用。
+- 可以启动 Workbench 桌面应用。
 - 左侧导航和基础页面结构可用。
 - 项目、Skills、资源 Radar 和设置模块可使用真实本地数据。
 - 项目新增、编辑、归档、恢复和启动配置可持久化保存。

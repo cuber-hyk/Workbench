@@ -82,6 +82,19 @@ describe("app update UI", () => {
     expect(onOpenDetails).toHaveBeenCalledOnce();
   });
 
+  it("spins the update check icon while checking", () => {
+    updateState.value = {
+      ...updateState.value,
+      status: "checking"
+    };
+
+    render(<AppUpdatePanel onOpenDetails={vi.fn()} />);
+
+    const checkButton = screen.getByRole("button", { name: "检查中" });
+    expect(checkButton).toBeDisabled();
+    expect(checkButton.querySelector("svg")).toHaveClass("spin");
+  });
+
   it("shows release notes and install action in the update dialog", () => {
     updateState.value = {
       ...updateState.value,
@@ -104,6 +117,19 @@ describe("app update UI", () => {
     expect(screen.getByRole("button", { name: "检查更新" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "稍后" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /下载并安装/ })).toBeInTheDocument();
+  });
+
+  it("spins the update dialog check icon while checking", () => {
+    updateState.value = {
+      ...updateState.value,
+      status: "checking"
+    };
+
+    render(<AppUpdateDialog onClose={vi.fn()} />);
+
+    const checkButton = screen.getByRole("button", { name: "检查中" });
+    expect(checkButton).toBeDisabled();
+    expect(checkButton.querySelector("svg")).toHaveClass("spin");
   });
 
   it("formats single-paragraph release notes into scannable points", () => {

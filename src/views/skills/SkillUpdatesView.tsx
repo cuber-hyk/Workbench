@@ -11,6 +11,7 @@ export function SkillUpdatesView({
   selectedNames,
   checking,
   updatingNames,
+  updateProgressByName,
   results,
   onCheck,
   onSelectNames,
@@ -23,6 +24,7 @@ export function SkillUpdatesView({
   selectedNames: string[];
   checking: boolean;
   updatingNames: string[];
+  updateProgressByName: Record<string, number>;
   results: SkillUpdateResult[];
   onCheck: () => void;
   onSelectNames: (names: string[]) => void;
@@ -38,6 +40,8 @@ export function SkillUpdatesView({
     updateable.some((status) => status.source.directoryName === directoryName)
   );
   const allUpdateableSelected = updateable.length > 0 && updateable.every((status) => selectedNames.includes(status.source.directoryName));
+  const activeUpdatingName = updatingNames.find((directoryName) => updateProgressByName[directoryName] !== undefined) ?? updatingNames[0] ?? "";
+  const activeUpdatingProgress = activeUpdatingName ? updateProgressByName[activeUpdatingName] ?? 8 : 0;
   const currentPage = clampPage(page, statuses.length, pageSize);
   const pagedStatuses = paginateItems(statuses, currentPage, pageSize);
   useEffect(() => {
@@ -58,7 +62,7 @@ export function SkillUpdatesView({
       <div className="bulk-bar">
         <span><strong>更新检查</strong><small>仅管理从 skills.sh 安装的 Skill。更新前会备份统一根目录中的旧版本。</small></span>
         <div className="bulk-actions">
-          <Button onClick={onCheck}><RefreshCcw size={15} />{checking ? "检查中" : "检查全部"}</Button>
+          <Button disabled={checking} onClick={onCheck}><RefreshCcw className={checking ? "spin" : ""} size={15} />{checking ? "检查中" : "检查更新"}</Button>
           <Button variant="primary" disabled={selectedUpdateable.length === 0 || updatingNames.length > 0} onClick={onUpdateSelected}>更新选中项</Button>
           <Button disabled={updateable.length === 0 || updatingNames.length > 0} onClick={onUpdateAll}>更新全部可更新项</Button>
         </div>
@@ -82,6 +86,8 @@ export function SkillUpdatesView({
               const directoryName = status.source.directoryName;
               const checked = selectedNames.includes(directoryName);
               const updateableStatus = status.status === "update_available";
+              const updating = updatingNames.includes(directoryName);
+              const progress = updateProgressByName[directoryName] ?? 8;
               return (
                 <div className="table-row update-grid" key={directoryName}>
                   <span><input type="checkbox" aria-label={`选择 ${directoryName}`} disabled={!updateableStatus || updatingNames.length > 0} checked={updateableStatus && checked} onClick={(event) => event.stopPropagation()} onChange={(event) => toggleUpdateSelection(directoryName, event.target.checked)} /></span>
@@ -89,10 +95,14 @@ export function SkillUpdatesView({
                   <span className="path">{status.source.installedHash}</span>
                   <SkillStatusIndicator status={status.status} label={updateStatusLabel(status.status)} />
                   <span>{status.source.lastCheckedAt || "未检查"}</span>
-                  <span className="row-actions table-actions">
-                    <Button disabled={!updateableStatus || updatingNames.includes(directoryName)} onClick={() => onUpdateOne(directoryName)}>
-                      {updatingNames.includes(directoryName) ? "更新中" : "更新"}
+                  <span className={`row-actions table-actions progress-action ${updating ? "progressing" : ""}`}>
+                    <Button disabled={!updateableStatus || updating} onClick={() => onUpdateOne(directoryName)}>
+                      {updating ? (
+                        <><RefreshCcw className="spin" size={14} />更新中</>
+                      ) : "更新"}
                     </Button>
+                    {updating && <small>{progress}%</small>}
+                    {updating && <i style={{ width: `${progress}%` }} />}
                   </span>
                 </div>
               );
@@ -117,6 +127,15 @@ export function SkillUpdatesView({
               : `已选择 ${selectedUpdateable.length} 个可更新 Skill。批量更新逐项执行，单项失败会保留旧版本并继续处理其他项。`}
           </p>
           <div className="warning">更新不会自动启用到任何 Agent 工具目录；已启用的 Copy 副本也不会在本次自动重同步。</div>
+          {activeUpdatingName && (
+            <div className="update-result-list">
+              <h3>当前进度</h3>
+              <div>
+                <strong>{activeUpdatingName}</strong>
+                <small>更新中 {activeUpdatingProgress}%</small>
+              </div>
+            </div>
+          )}
           {results.length > 0 && (
             <div className="update-result-list">
               <h3>最近结果</h3>

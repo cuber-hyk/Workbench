@@ -44,7 +44,7 @@ export function AppUpdatePanel({
         </span>
         <span className="settings-row-actions">
           <Button onClick={() => void checkUpdate()} disabled={checking}>
-            <RefreshCcw size={15} />
+            <RefreshCcw className={checking ? "spin" : ""} size={15} />
             {checking ? "检查中" : "检查更新"}
           </Button>
           <Button onClick={onOpenDetails} disabled={status === "idle" && !updateInfo}>
@@ -82,7 +82,7 @@ export function AppUpdateDialog({ onClose }: { onClose: () => void }) {
       actions={
         status !== "downloading" && status !== "ready-to-restart" ? (
           <IconButton title={checking ? "检查中" : "检查更新"} onClick={() => void checkUpdate()} disabled={checking}>
-            <RefreshCcw size={16} />
+            <RefreshCcw className={checking ? "spin" : ""} size={16} />
           </IconButton>
         ) : undefined
       }

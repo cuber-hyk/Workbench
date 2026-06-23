@@ -1,6 +1,6 @@
-# Workbench App
+# Workbench
 
-Workbench App 是一个本地优先的 AI 开发工作台，用于集中管理本机开发项目、Skills、资源 Radar 和常用 Agent 工具入口。
+Workbench 是一个本地优先的 AI 开发工作台，用于集中管理本机开发项目、Skills、资源 Radar 和常用 Agent 工具入口。
 
 它不是某个编辑器插件，也不是云端协作平台；它面向长期在本机维护多个项目、多个 Coding Agent 和多套 Skills 的个人开发者，目标是把分散在目录、终端、配置文件和浏览器收藏里的开发资产收拢到一个可见、可控、可恢复的桌面工作台。
 

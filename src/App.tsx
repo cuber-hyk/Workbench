@@ -135,6 +135,7 @@ function WorkbenchApp() {
   const externalSyncInFlightRef = useRef(false);
   const externalSyncApplyInFlightRef = useRef(false);
   const [migrationState, setMigrationState] = useState<SkillsRootMigrationState | null>(null);
+  const [inspectingRootMigration, setInspectingRootMigration] = useState(false);
   const [rebuildResults, setRebuildResults] = useState<ManagedTargetRebuildResult[]>([]);
   const [pendingSkillsRoot, setPendingSkillsRoot] = useState("");
   const [deleteSkillId, setDeleteSkillId] = useState("");
@@ -412,6 +413,7 @@ function WorkbenchApp() {
   }
 
   async function openSkillsRootMigrationDialog() {
+    setInspectingRootMigration(true);
     try {
       const state = await workbenchApi.inspectSkillsRootMigration();
       setMigrationState(state);
@@ -419,6 +421,8 @@ function WorkbenchApp() {
       setActiveDialog("skills-root-migration");
     } catch (error) {
       showToast(String(error));
+    } finally {
+      setInspectingRootMigration(false);
     }
   }
 
@@ -945,6 +949,7 @@ function WorkbenchApp() {
             onThemeToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
             onRootChange={requestSkillsRootChange}
             onInspectRootMigration={() => void openSkillsRootMigrationDialog()}
+            inspectingRootMigration={inspectingRootMigration}
             onReorderToolTargets={(toolKeys) => void runSkillAction(() => workbenchApi.setToolTargetOrder(toolKeys), "工具展示顺序已更新")}
             onAddCustomTool={() => {
               setEditingCustomToolKey("");
@@ -1103,6 +1108,7 @@ function WorkbenchApp() {
           onMigrate={(directoryNames) => void migrateRootSkills(directoryNames)}
           onRebuild={(selections) => void rebuildManagedTargets(selections)}
           onRefresh={() => void openSkillsRootMigrationDialog()}
+          refreshing={inspectingRootMigration}
           onClose={() => {
             setActiveDialog(null);
             setMigrationState(null);
