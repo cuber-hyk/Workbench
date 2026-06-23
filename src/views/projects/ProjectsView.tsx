@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Archive, ArchiveRestore, ArrowLeft, Edit3, FileText, FolderOpen, MonitorUp, Pause, Play, Plus, RefreshCcw, Square, Terminal, X } from "lucide-react";
-import { ActionGroup, Button, DetailHeader, IconButton, PageHeader, Panel, SearchInput, StatusBadge, TagList, Toolbar } from "../../components/ui";
+import { ActionGroup, Button, DetailHeader, IconButton, PageHeader, PaginationBar, Panel, SearchInput, StatusBadge, TagList, Toolbar } from "../../components/ui";
 import { workbenchApi } from "../../lib/api/workbenchApi";
 import type { LaunchRun, LaunchSession, Project, ProjectLaunchConfig, ProjectOpenProfile } from "../../lib/types/domain";
+import { clampPage, DEFAULT_PAGE_SIZE, paginateItems } from "../../lib/ui/pagination";
 import { enabledLaunchConfigs, getProjectLaunchStatus, isActiveLaunchStatus, isProjectRunning } from "./launchState";
 
 export function ProjectsView({
@@ -53,6 +54,8 @@ export function ProjectsView({
   const [statusFilter, setStatusFilter] = useState("全部状态");
   const [archiveFilter, setArchiveFilter] = useState("活跃项目");
   const [launchLogProjectId, setLaunchLogProjectId] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const tagOptions = useMemo(
     () => ["全部标签", ...Array.from(new Set(projects.flatMap((project) => project.tags)))],
     [projects]
@@ -60,7 +63,6 @@ export function ProjectsView({
   const currentLaunchRuns = launchRuns ?? (launchRun ? { [launchRun.projectId]: launchRun } : {});
   const launchLogProject = projects.find((project) => project.id === launchLogProjectId);
   const launchLogRun = launchLogProject ? currentLaunchRuns[launchLogProject.id] ?? null : null;
-  const selectedProjectRunning = selectedProject ? isProjectRunning(selectedProject.id, currentLaunchRuns) : false;
   const visibleProjects = projects.filter((project) => {
     const normalizedQuery = query.trim().toLowerCase();
     const matchesQuery = !normalizedQuery
@@ -75,7 +77,25 @@ export function ProjectsView({
       (archiveFilter === "已归档" && project.archived);
     return matchesQuery && matchesTag && matchesStatus && matchesArchive;
   });
-  const selectedLaunchRun = selectedProject ? currentLaunchRuns[selectedProject.id] ?? null : null;
+  const currentPage = clampPage(page, visibleProjects.length, pageSize);
+  const pagedProjects = paginateItems(visibleProjects, currentPage, pageSize);
+  const detailProject = pagedProjects.find((project) => project.id === selectedProject?.id);
+  const detailProjectRunning = detailProject ? isProjectRunning(detailProject.id, currentLaunchRuns) : false;
+  const selectedLaunchRun = detailProject ? currentLaunchRuns[detailProject.id] ?? null : null;
+
+  useEffect(() => {
+    setPage(1);
+  }, [query, tagFilter, statusFilter, archiveFilter, pageSize]);
+
+  useEffect(() => {
+    if (page !== currentPage) setPage(currentPage);
+  }, [currentPage, page]);
+
+  useEffect(() => {
+    if (loading || loadError || pagedProjects.length === 0) return;
+    if (pagedProjects.some((project) => project.id === selectedProject?.id)) return;
+    onSelect(pagedProjects[0].id);
+  }, [loading, loadError, onSelect, pagedProjects, selectedProject?.id]);
 
   if (launchLogProject && launchLogRun) {
     return (
@@ -124,146 +144,158 @@ export function ProjectsView({
       <div className="split-layout">
         <Panel className="list-panel">
           <div className="table-head projects-grid"><span>项目</span><span>标签</span><span>启动项</span><span>状态</span><span>操作</span></div>
-          {loading && (
-            <div className="empty-state">
-              <strong>正在加载项目</strong>
-              <small>正在读取 Workbench 本地数据库。</small>
-            </div>
-          )}
-          {!loading && loadError && (
-            <div className="empty-state">
-              <strong>项目加载失败</strong>
-              <small>{loadError}</small>
-            </div>
-          )}
-          {!loading && !loadError && visibleProjects.map((project) => {
-            const projectLaunchRun = currentLaunchRuns[project.id] ?? null;
-            const launchStatus = getProjectLaunchStatus(project, projectLaunchTimes, projectLaunchRun);
-            const isRunningProject = Boolean(projectLaunchRun?.sessions.some((session) => isActiveLaunchStatus(session.status)));
-            return (
-              <div
-                key={project.id}
-                className={`table-row projects-grid ${selectedProject?.id === project.id ? "selected" : ""}`}
-                role="group"
-                aria-label={`${project.name} 项目`}
-                aria-current={selectedProject?.id === project.id ? "true" : undefined}
-                tabIndex={0}
-                onClick={() => onSelect(project.id)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") onSelect(project.id);
-                }}
-              >
-                <span className="title-cell">
-                  <strong>{project.name}{project.archived && <i className="archived-inline">已归档</i>}</strong>
-                  <small>{project.path}</small>
-                </span>
-                <TagList tags={project.tags} />
-                <span className="command-cell">{formatLaunchConfigSummary(project)}</span>
-                <span><StatusBadge tone={projectStatusTone(launchStatus)}>{launchStatus}</StatusBadge></span>
-                <ActionGroup className="row-actions">
-                  <IconButton
-                    title="打开目录"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      void workbenchApi.openLocalPath(project.path);
-                    }}
-                  >
-                    <FolderOpen size={14} />
-                  </IconButton>
-                  <ProjectOpenProfileMenu
-                    project={project}
-                    profiles={projectOpenProfiles}
-                    onOpen={onOpenWithProfile ?? (() => undefined)}
-                  />
-                  <IconButton
-                    title={isRunningProject ? "停止项目" : "启动项目"}
-                    disabled={enabledLaunchConfigs(project).length === 0}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      if (isRunningProject && projectLaunchRun) {
-                        onStopLaunchRun(projectLaunchRun.id);
-                      } else {
-                        onLaunch(project);
-                      }
-                    }}
-                  >
-                    {isRunningProject ? <Pause size={14} /> : <Play size={14} />}
-                  </IconButton>
-                  <IconButton
-                    title="编辑项目"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onEdit(project);
-                    }}
-                  >
-                    <Edit3 size={14} />
-                  </IconButton>
-                  <IconButton
-                    title={!project.archived && isRunningProject ? "运行中不可归档" : project.archived ? "恢复项目" : "归档项目"}
-                    disabled={!project.archived && isRunningProject}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      if (!project.archived && isRunningProject) return;
-                      onArchive(project, !project.archived);
-                    }}
-                  >
-                    {project.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
-                  </IconButton>
-                </ActionGroup>
+          <div className="list-body">
+            {loading && (
+              <div className="empty-state">
+                <strong>正在加载项目</strong>
+                <small>正在读取 Workbench 本地数据库。</small>
               </div>
-            );
-          })}
-          {!loading && !loadError && visibleProjects.length === 0 && (
-            <div className="empty-state">
-              <strong>{projects.length === 0 ? "暂无项目" : "没有匹配的项目"}</strong>
-              <small>{projects.length === 0 ? "点击右上角“添加项目”记录本地项目路径和启动配置。" : "调整搜索、标签、启动状态或归档筛选后重试。"}</small>
-            </div>
+            )}
+            {!loading && loadError && (
+              <div className="empty-state">
+                <strong>项目加载失败</strong>
+                <small>{loadError}</small>
+              </div>
+            )}
+            {!loading && !loadError && pagedProjects.map((project) => {
+              const projectLaunchRun = currentLaunchRuns[project.id] ?? null;
+              const launchStatus = getProjectLaunchStatus(project, projectLaunchTimes, projectLaunchRun);
+              const isRunningProject = Boolean(projectLaunchRun?.sessions.some((session) => isActiveLaunchStatus(session.status)));
+              return (
+                <div
+                  key={project.id}
+                  className={`table-row projects-grid ${selectedProject?.id === project.id ? "selected" : ""}`}
+                  role="group"
+                  aria-label={`${project.name} 项目`}
+                  aria-current={selectedProject?.id === project.id ? "true" : undefined}
+                  tabIndex={0}
+                  onClick={() => onSelect(project.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") onSelect(project.id);
+                  }}
+                >
+                  <span className="title-cell">
+                    <strong>{project.name}{project.archived && <i className="archived-inline">已归档</i>}</strong>
+                    <small>{project.path}</small>
+                  </span>
+                  <TagList tags={project.tags} />
+                  <span className="command-cell">{formatLaunchConfigSummary(project)}</span>
+                  <span><StatusBadge tone={projectStatusTone(launchStatus)}>{launchStatus}</StatusBadge></span>
+                  <ActionGroup className="row-actions">
+                    <IconButton
+                      title="打开目录"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void workbenchApi.openLocalPath(project.path);
+                      }}
+                    >
+                      <FolderOpen size={14} />
+                    </IconButton>
+                    <ProjectOpenProfileMenu
+                      project={project}
+                      profiles={projectOpenProfiles}
+                      onOpen={onOpenWithProfile ?? (() => undefined)}
+                    />
+                    <IconButton
+                      title={isRunningProject ? "停止项目" : "启动项目"}
+                      disabled={enabledLaunchConfigs(project).length === 0}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        if (isRunningProject && projectLaunchRun) {
+                          onStopLaunchRun(projectLaunchRun.id);
+                        } else {
+                          onLaunch(project);
+                        }
+                      }}
+                    >
+                      {isRunningProject ? <Pause size={14} /> : <Play size={14} />}
+                    </IconButton>
+                    <IconButton
+                      title="编辑项目"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onEdit(project);
+                      }}
+                    >
+                      <Edit3 size={14} />
+                    </IconButton>
+                    <IconButton
+                      title={!project.archived && isRunningProject ? "运行中不可归档" : project.archived ? "恢复项目" : "归档项目"}
+                      disabled={!project.archived && isRunningProject}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        if (!project.archived && isRunningProject) return;
+                        onArchive(project, !project.archived);
+                      }}
+                    >
+                      {project.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+                    </IconButton>
+                  </ActionGroup>
+                </div>
+              );
+            })}
+            {!loading && !loadError && visibleProjects.length === 0 && (
+              <div className="empty-state">
+                <strong>{projects.length === 0 ? "暂无项目" : "没有匹配的项目"}</strong>
+                <small>{projects.length === 0 ? "点击右上角“添加项目”记录本地项目路径和启动配置。" : "调整搜索、标签、启动状态或归档筛选后重试。"}</small>
+              </div>
+            )}
+          </div>
+          {!loading && !loadError && visibleProjects.length > pageSize && (
+            <PaginationBar
+              total={visibleProjects.length}
+              page={currentPage}
+              pageSize={pageSize}
+              label="项目列表分页"
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+            />
           )}
         </Panel>
 
         <Panel className="detail-panel">
-          {selectedProject ? (
+          {detailProject ? (
             <>
               <DetailHeader
-                title={selectedProject.name}
-                description={selectedProject.note}
+                title={detailProject.name}
+                description={detailProject.note}
                 actions={
                   <>
-                  <IconButton title="编辑" onClick={() => onEdit(selectedProject)}><Edit3 size={15} /></IconButton>
+                  <IconButton title="编辑" onClick={() => onEdit(detailProject)}><Edit3 size={15} /></IconButton>
                   <IconButton
-                    title={!selectedProject.archived && selectedProjectRunning ? "运行中不可归档" : selectedProject.archived ? "恢复项目" : "归档项目"}
-                    disabled={!selectedProject.archived && selectedProjectRunning}
+                    title={!detailProject.archived && detailProjectRunning ? "运行中不可归档" : detailProject.archived ? "恢复项目" : "归档项目"}
+                    disabled={!detailProject.archived && detailProjectRunning}
                     onClick={() => {
-                      if (!selectedProject.archived && selectedProjectRunning) return;
-                      onArchive(selectedProject, !selectedProject.archived);
+                      if (!detailProject.archived && detailProjectRunning) return;
+                      onArchive(detailProject, !detailProject.archived);
                     }}
                   >
-                    {selectedProject.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />}
+                    {detailProject.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />}
                   </IconButton>
                   </>
                 }
               />
               <div className="form-grid">
-                <label>项目路径<input value={selectedProject.path} readOnly /></label>
-                <label>标签<input value={selectedProject.tags.join(", ")} readOnly /></label>
-                <label className="full">备注<textarea rows={4} value={selectedProject.note} readOnly /></label>
+                <label>项目路径<input value={detailProject.path} readOnly /></label>
+                <label>标签<input value={detailProject.tags.join(", ")} readOnly /></label>
+                <label className="full">备注<textarea rows={4} value={detailProject.note} readOnly /></label>
               </div>
               <div className="detail-meta-grid">
-                <div><small>启动状态</small><strong>{getProjectLaunchStatus(selectedProject, projectLaunchTimes, selectedLaunchRun)}</strong></div>
-                <div><small>最近启动</small><strong>{projectLaunchTimes[selectedProject.id] ?? "暂无"}</strong></div>
-                <div><small>项目状态</small><strong>{selectedProject.archived ? "已归档" : "活跃"}</strong></div>
+                <div><small>启动状态</small><strong>{getProjectLaunchStatus(detailProject, projectLaunchTimes, selectedLaunchRun)}</strong></div>
+                <div><small>最近启动</small><strong>{projectLaunchTimes[detailProject.id] ?? "暂无"}</strong></div>
+                <div><small>项目状态</small><strong>{detailProject.archived ? "已归档" : "活跃"}</strong></div>
                 <div><small>启动方式</small><strong>内嵌启动会话</strong></div>
               </div>
               <LaunchItemsPanel
-                project={selectedProject}
+                project={detailProject}
                 launchRun={selectedLaunchRun}
-                projectLaunchTime={projectLaunchTimes[selectedProject.id]}
+                projectLaunchTime={projectLaunchTimes[detailProject.id]}
                 onLaunch={onLaunch}
                 onStopLaunchSession={onStopLaunchSession}
                 onStopLaunchRun={onStopLaunchRun}
                 onRestartLaunchSession={onRestartLaunchSession}
-                onClearLaunchRun={() => onClearLaunchRun(selectedProject.id)}
-                onOpenLaunchLogs={() => setLaunchLogProjectId(selectedProject.id)}
+                onClearLaunchRun={() => onClearLaunchRun(detailProject.id)}
+                onOpenLaunchLogs={() => setLaunchLogProjectId(detailProject.id)}
               />
               <div className="boundary-note">
                 <span className="status-dot" />

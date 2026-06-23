@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { Edit3, ExternalLink, Plus, RefreshCcw, Star, Trash2 } from "lucide-react";
-import { ActionGroup, Button, ConfirmDeleteModal, DetailHeader, FilterMore, IconButton, Modal, PageHeader, Panel, SearchInput, StatusBadge, Toolbar } from "../../components/ui";
+import { ActionGroup, Button, ConfirmDeleteModal, DetailHeader, FilterMore, IconButton, Modal, PageHeader, PaginationBar, Panel, SearchInput, StatusBadge, Toolbar } from "../../components/ui";
 import type { RadarCategory, RadarDuplicateGroup, RadarItem } from "../../lib/types/domain";
+import { clampPage, DEFAULT_PAGE_SIZE, paginateItems } from "../../lib/ui/pagination";
 
 const radarDomains = ["未分类", "Skills", "Agent", "RAG", "AI 基础", "开发工具", "文档工具", "算法与数据结构", "教程与资源", "前端开发", "Android 开发", "桌面应用", "音视频工具", "安全与网络", "其他"];
 
@@ -46,6 +47,8 @@ export function RadarView({
   const [duplicateState, setDuplicateState] = useState("全部重复状态");
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [showMoreFilters, setShowMoreFilters] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const categories = useMemo(() => ["全部分类", "项目", "资讯", "论文", "其他"], []);
   const domains = useMemo(() => ["全部领域", ...Array.from(new Set([...radarDomains, ...items.map((item) => item.domain || "未分类")]))], [items]);
   const languages = useMemo(
@@ -78,7 +81,23 @@ export function RadarView({
       (!favoritesOnly || item.favorite)
     );
   });
-  const visibleSelectedItem = filteredItems.find((item) => item.id === selectedItem?.id);
+  const currentPage = clampPage(page, filteredItems.length, pageSize);
+  const pagedItems = paginateItems(filteredItems, currentPage, pageSize);
+  const visibleSelectedItem = pagedItems.find((item) => item.id === selectedItem?.id);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query, category, domain, source, language, sourceState, duplicateState, favoritesOnly, pageSize]);
+
+  useEffect(() => {
+    if (page !== currentPage) setPage(currentPage);
+  }, [currentPage, page]);
+
+  useEffect(() => {
+    if (loading || loadError || pagedItems.length === 0) return;
+    if (pagedItems.some((item) => item.id === selectedItem?.id)) return;
+    onSelect(pagedItems[0].id);
+  }, [loading, loadError, onSelect, pagedItems, selectedItem?.id]);
 
   return (
     <section className="view">
@@ -151,72 +170,84 @@ export function RadarView({
         </div>
       )}
       <div className="split-layout">
-        <Panel className="list-panel card-list">
-          {loading && (
-            <div className="empty-state">
-              <strong>正在加载资源 Radar</strong>
-              <small>正在读取 Workbench 本地数据库。</small>
-            </div>
+        <Panel className="list-panel">
+          <div className="list-body card-list-body">
+            {loading && (
+              <div className="empty-state">
+                <strong>正在加载资源 Radar</strong>
+                <small>正在读取 Workbench 本地数据库。</small>
+              </div>
+            )}
+            {!loading && loadError && (
+              <div className="empty-state">
+                <strong>资源 Radar 加载失败</strong>
+                <small>{loadError}</small>
+              </div>
+            )}
+            {!loading && !loadError && filteredItems.length === 0 && (
+              <div className="empty-state">
+                <strong>{items.length === 0 ? "暂无资源条目" : "没有匹配的条目"}</strong>
+                <small>{items.length === 0 ? "点击“添加条目”记录资源，或同步 GitHub Stars。" : "调整搜索词或筛选条件后重试。"}</small>
+              </div>
+            )}
+            {!loading && !loadError && pagedItems.map((item) => (
+              <div
+                key={item.id}
+                className={`row-card ${visibleSelectedItem?.id === item.id ? "selected" : ""}`}
+                role="button"
+                tabIndex={0}
+                onClick={() => onSelect(item.id)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onSelect(item.id);
+                  }
+                }}
+              >
+                <span className="row-main">
+                  <strong>{item.name}</strong>
+                  <ActionGroup className="row-actions">
+                    <button
+                      className={`favorite-star ${item.favorite ? "active" : ""}`}
+                      aria-label={item.favorite ? `取消收藏 ${item.name}` : `收藏 ${item.name}`}
+                      title={item.favorite ? "取消收藏" : "收藏"}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onToggleFavorite(item);
+                      }}
+                    >
+                      <Star size={15} fill="currentColor" />
+                    </button>
+                    <IconButton
+                      variant="danger"
+                      title="删除条目"
+                      aria-label={`删除 ${item.name}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onDelete(item);
+                      }}
+                    >
+                      <Trash2 size={14} />
+                    </IconButton>
+                  </ActionGroup>
+                </span>
+                <span className="meta-line">{item.category} · {item.domain || "未分类"} · {radarSourceLabel(item)}{item.sourceMetadata.language ? ` · ${item.sourceMetadata.language}` : ""}{item.source === "github_star" ? ` · ★ ${item.sourceMetadata.stars}` : ""} · {item.updatedAt}</span>
+                <p>{item.note || item.sourceDescription}</p>
+                {!item.sourceActive && <StatusBadge tone="danger">GitHub Stars 来源已失效</StatusBadge>}
+                {duplicateCandidateIds.has(item.id) && <StatusBadge tone="warning">待合并重复来源</StatusBadge>}
+              </div>
+            ))}
+          </div>
+          {!loading && !loadError && filteredItems.length > pageSize && (
+            <PaginationBar
+              total={filteredItems.length}
+              page={currentPage}
+              pageSize={pageSize}
+              label="资源 Radar 分页"
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+            />
           )}
-          {!loading && loadError && (
-            <div className="empty-state">
-              <strong>资源 Radar 加载失败</strong>
-              <small>{loadError}</small>
-            </div>
-          )}
-          {!loading && !loadError && filteredItems.length === 0 && (
-            <div className="empty-state">
-              <strong>{items.length === 0 ? "暂无资源条目" : "没有匹配的条目"}</strong>
-              <small>{items.length === 0 ? "点击“添加条目”记录资源，或同步 GitHub Stars。" : "调整搜索词或筛选条件后重试。"}</small>
-            </div>
-          )}
-          {!loading && !loadError && filteredItems.map((item) => (
-            <div
-              key={item.id}
-              className={`row-card ${visibleSelectedItem?.id === item.id ? "selected" : ""}`}
-              role="button"
-              tabIndex={0}
-              onClick={() => onSelect(item.id)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  onSelect(item.id);
-                }
-              }}
-            >
-              <span className="row-main">
-                <strong>{item.name}</strong>
-                <ActionGroup className="row-actions">
-                  <button
-                    className={`favorite-star ${item.favorite ? "active" : ""}`}
-                    aria-label={item.favorite ? `取消收藏 ${item.name}` : `收藏 ${item.name}`}
-                    title={item.favorite ? "取消收藏" : "收藏"}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onToggleFavorite(item);
-                    }}
-                  >
-                    <Star size={15} fill="currentColor" />
-                  </button>
-                  <IconButton
-                    variant="danger"
-                    title="删除条目"
-                    aria-label={`删除 ${item.name}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onDelete(item);
-                    }}
-                  >
-                    <Trash2 size={14} />
-                  </IconButton>
-                </ActionGroup>
-              </span>
-              <span className="meta-line">{item.category} · {item.domain || "未分类"} · {radarSourceLabel(item)}{item.sourceMetadata.language ? ` · ${item.sourceMetadata.language}` : ""}{item.source === "github_star" ? ` · ★ ${item.sourceMetadata.stars}` : ""} · {item.updatedAt}</span>
-              <p>{item.note || item.sourceDescription}</p>
-              {!item.sourceActive && <StatusBadge tone="danger">GitHub Stars 来源已失效</StatusBadge>}
-              {duplicateCandidateIds.has(item.id) && <StatusBadge tone="warning">待合并重复来源</StatusBadge>}
-            </div>
-          ))}
         </Panel>
         <Panel className="detail-panel">
           {visibleSelectedItem ? (

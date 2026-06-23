@@ -1,5 +1,7 @@
 import { X } from "lucide-react";
+import { useEffect, useState } from "react";
 import type { ButtonHTMLAttributes, InputHTMLAttributes, PropsWithChildren, ReactNode } from "react";
+import { pageCount, PAGE_SIZE_OPTIONS } from "../lib/ui/pagination";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "default" | "primary" | "danger";
@@ -58,6 +60,79 @@ export function SearchInput(props: InputHTMLAttributes<HTMLInputElement>) {
 
 export function Toolbar({ children }: PropsWithChildren) {
   return <div className="toolbar">{children}</div>;
+}
+
+export function PaginationBar({
+  total,
+  page,
+  pageSize,
+  onPageChange,
+  onPageSizeChange,
+  label = "分页"
+}: {
+  total: number;
+  page: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (pageSize: number) => void;
+  label?: string;
+}) {
+  const totalPages = pageCount(total, pageSize);
+  const start = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const end = Math.min(total, page * pageSize);
+  const [pageInput, setPageInput] = useState(String(page));
+
+  useEffect(() => {
+    setPageInput(String(page));
+  }, [page]);
+
+  function commitPageInput() {
+    const trimmed = pageInput.trim();
+    if (!/^\d+$/.test(trimmed)) {
+      setPageInput(String(page));
+      return;
+    }
+    const requestedPage = Number(trimmed);
+    const nextPage = Math.min(Math.max(1, requestedPage), totalPages);
+    setPageInput(String(nextPage));
+    if (nextPage !== page) onPageChange(nextPage);
+  }
+
+  return (
+    <div className="pagination-bar" aria-label={label}>
+      <span className="pagination-summary">{start}-{end} / {total}</span>
+      <span className="pagination-controls">
+        <label>
+          每页
+          <select
+            aria-label={`${label}每页数量`}
+            value={pageSize}
+            onChange={(event) => onPageSizeChange(Number(event.target.value))}
+          >
+            {PAGE_SIZE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+          </select>
+        </label>
+        <Button disabled={page <= 1} onClick={() => onPageChange(page - 1)}>上一页</Button>
+        <label className="page-jump">
+          第
+          <input
+            aria-label={`${label}当前页`}
+            inputMode="numeric"
+            pattern="[0-9]*"
+            value={pageInput}
+            onChange={(event) => setPageInput(event.target.value)}
+            onBlur={commitPageInput}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") commitPageInput();
+              if (event.key === "Escape") setPageInput(String(page));
+            }}
+          />
+          页 / {totalPages}
+        </label>
+        <Button disabled={page >= totalPages} onClick={() => onPageChange(page + 1)}>下一页</Button>
+      </span>
+    </div>
+  );
 }
 
 export function FilterMore({
