@@ -5,10 +5,11 @@ import { describe, expect, it, vi } from "vitest";
 import { App, ModuleStateView, rememberUpdateNotice, shouldShowUpdateNotice } from "./App";
 import { ProjectDialog } from "./components/dialogs/projects/ProjectDialog";
 import { CustomToolDialog } from "./components/dialogs/settings/CustomToolDialog";
+import { ExternalSkillsDialog } from "./components/dialogs/skills/ExternalSkillsDialog";
 import { SkillCategoryDialog } from "./components/dialogs/skills/SkillCategoryDialog";
 import { AppUpdateProvider } from "./contexts/AppUpdateContext";
 import { workbenchApi } from "./lib/api/workbenchApi";
-import type { AppSettings, LaunchSessionEvent, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, Skill, SkillCategory, SkillMarketItem, SkillsState } from "./lib/types/domain";
+import type { AppSettings, ExternalSkillCandidateGroup, LaunchSessionEvent, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, Skill, SkillCategory, SkillMarketItem, SkillsState } from "./lib/types/domain";
 import { ProjectsView } from "./views/projects/ProjectsView";
 import { applyPendingLaunchEvents, markLaunchRunStopped, mergeLaunchRunSnapshots } from "./views/projects/launchState";
 import { RadarView } from "./views/radar/RadarView";
@@ -1512,9 +1513,8 @@ describe("Workbench UI interactions", () => {
     expect(screen.queryByRole("group", { name: "project-codex-second Skill" })).not.toBeInTheDocument();
   });
 
-  it("exposes the external skills discovery action", async () => {
-    const user = userEvent.setup();
-    const onDiscoverExternalSkills = vi.fn();
+  it("disables the skills sync action while syncing", () => {
+    const onSyncSkills = vi.fn();
     render(
       <SkillsView
         skills={skillsForView}
@@ -1525,7 +1525,8 @@ describe("Workbench UI interactions", () => {
         onSelect={vi.fn()}
         onImport={vi.fn()}
         onRefresh={vi.fn()}
-        onDiscoverExternalSkills={onDiscoverExternalSkills}
+        onSyncSkills={onSyncSkills}
+        isSyncingSkills={true}
         onManageCategories={vi.fn()}
         onToggle={vi.fn()}
         onToggleSkillGlobal={vi.fn()}
@@ -1537,9 +1538,328 @@ describe("Workbench UI interactions", () => {
       />
     );
 
-    await user.click(screen.getByRole("button", { name: "发现已有工具 Skills" }));
+    expect(screen.getByRole("button", { name: "同步中" })).toBeDisabled();
+  });
 
-    expect(onDiscoverExternalSkills).toHaveBeenCalledTimes(1);
+  it("exposes the enabled skills sync action", async () => {
+    const user = userEvent.setup();
+    const onSyncSkills = vi.fn();
+    render(
+      <SkillsView
+        skills={skillsForView}
+        selectedSkill={skillsForView[0]}
+        categories={skillCategoriesForView}
+        settings={skillsSettings}
+        projects={[activeProject, secondActiveProject]}
+        onSelect={vi.fn()}
+        onImport={vi.fn()}
+        onRefresh={vi.fn()}
+        onSyncSkills={onSyncSkills}
+        onManageCategories={vi.fn()}
+        onToggle={vi.fn()}
+        onToggleSkillGlobal={vi.fn()}
+        onToggleProjectAll={vi.fn()}
+        onCategorySkill={vi.fn()}
+        onCreateCategorySkill={vi.fn()}
+        onResolve={vi.fn()}
+        onDeleteSkill={vi.fn()}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: "同步 Skills" }));
+
+    expect(onSyncSkills).toHaveBeenCalledTimes(1);
+  });
+
+  it("requires explicit version choices before syncing conflicting external skills", async () => {
+    const user = userEvent.setup();
+    const onSync = vi.fn();
+    const candidates: ExternalSkillCandidateGroup[] = [
+      {
+        directoryName: "new-skill",
+        displayName: "new-skill",
+        description: "",
+        status: "new",
+        sources: [{
+          tool: "codex",
+          toolName: "Codex",
+          path: "C:\\Users\\dev\\.codex\\skills\\new-skill",
+          contentHash: "new",
+          readable: true
+        }]
+      },
+      {
+        directoryName: "same-skill",
+        displayName: "same-skill",
+        description: "",
+        status: "same_as_current",
+        sources: [{
+          tool: "deveco",
+          toolName: "DevEco Code",
+          path: "C:\\Users\\dev\\.config\\deveco\\skills\\same-skill",
+          contentHash: "same",
+          readable: true
+        }]
+      },
+      {
+        directoryName: "conflict-skill",
+        displayName: "conflict-skill",
+        description: "",
+        status: "conflict",
+        sources: [{
+          tool: "claude",
+          toolName: "Claude Code",
+          path: "C:\\Users\\dev\\.claude\\skills\\conflict-skill",
+          contentHash: "external",
+          readable: true
+        }]
+      }
+    ];
+
+    render(
+      <ExternalSkillsDialog
+        candidates={candidates}
+        results={[]}
+        loading={false}
+        syncing={false}
+        skillsRoot="C:\\Users\\dev\\.workbench\\skills"
+        onRefresh={vi.fn()}
+        onSync={onSync}
+        onClose={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "同步" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "全部跳过" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("same-skill DevEco Code")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "已存在 1" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "冲突 1" }));
+    expect(screen.getByRole("button", { name: "同步" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "全部使用外部" }));
+    expect(screen.getByRole("button", { name: "同步" })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "全部使用外部" }));
+    expect(screen.getByRole("button", { name: "同步" })).toBeDisabled();
+    await user.selectOptions(screen.getByLabelText("conflict-skill Claude Code 同步方式"), "use_external");
+    await user.click(screen.getByRole("button", { name: "同步" }));
+
+    expect(onSync).toHaveBeenCalledWith([
+      {
+        directoryName: "new-skill",
+        sourcePath: "C:\\Users\\dev\\.codex\\skills\\new-skill",
+        tool: "codex",
+        action: "sync"
+      },
+      {
+        directoryName: "conflict-skill",
+        sourcePath: "C:\\Users\\dev\\.claude\\skills\\conflict-skill",
+        tool: "claude",
+        action: "use_external"
+      }
+    ]);
+  });
+
+  it("disables sync actions while applying external skill selections", async () => {
+    render(
+      <ExternalSkillsDialog
+        candidates={[{
+          directoryName: "new-skill",
+          displayName: "new-skill",
+          description: "",
+          status: "new",
+          sources: [{
+            tool: "codex",
+            toolName: "Codex",
+            path: "C:\\Users\\dev\\.codex\\skills\\new-skill",
+            contentHash: "new",
+            readable: true
+          }]
+        }]}
+        results={[]}
+        loading={false}
+        syncing
+        skillsRoot="C:\\Users\\dev\\.workbench\\skills"
+        onRefresh={vi.fn()}
+        onSync={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "同步中" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "重新扫描" })).toBeDisabled();
+    expect(screen.getByLabelText("new-skill Codex")).toBeDisabled();
+  });
+
+  it("shows a toast instead of opening the sync dialog when external skills need no action", async () => {
+    const user = userEvent.setup();
+    const discoverExternalSkills = vi.spyOn(workbenchApi, "discoverExternalSkills").mockResolvedValue([
+      {
+        directoryName: "same-skill",
+        displayName: "same-skill",
+        description: "",
+        status: "same_as_current",
+        sources: [{
+          tool: "codex",
+          toolName: "Codex",
+          path: "C:\\Users\\dev\\.codex\\skills\\same-skill",
+          contentHash: "same",
+          readable: true
+        }]
+      }
+    ]);
+
+    try {
+      renderWithUpdateProvider(<App />);
+      const navigation = await screen.findByRole("navigation", { name: "主导航" });
+      await user.click(within(navigation).getByRole("button", { name: "Skills" }));
+      await user.click(await screen.findByRole("button", { name: "同步 Skills" }));
+
+      expect(await screen.findByText("Skills 已同步，无待处理项；1 项已存在相同内容")).toBeInTheDocument();
+      expect(screen.queryByRole("dialog", { name: "同步外部工具 Skills" })).not.toBeInTheDocument();
+    } finally {
+      discoverExternalSkills.mockRestore();
+    }
+  });
+
+  it("opens the sync dialog only when external skills need user decisions", async () => {
+    const user = userEvent.setup();
+    const discoverExternalSkills = vi.spyOn(workbenchApi, "discoverExternalSkills").mockResolvedValue([
+      {
+        directoryName: "new-skill",
+        displayName: "new-skill",
+        description: "",
+        status: "new",
+        sources: [{
+          tool: "codex",
+          toolName: "Codex",
+          path: "C:\\Users\\dev\\.codex\\skills\\new-skill",
+          contentHash: "new",
+          readable: true
+        }]
+      }
+    ]);
+
+    try {
+      renderWithUpdateProvider(<App />);
+      const navigation = await screen.findByRole("navigation", { name: "主导航" });
+      await user.click(within(navigation).getByRole("button", { name: "Skills" }));
+      await user.click(await screen.findByRole("button", { name: "同步 Skills" }));
+
+      expect(await screen.findByRole("dialog", { name: "同步外部工具 Skills" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "同步" })).toBeEnabled();
+    } finally {
+      discoverExternalSkills.mockRestore();
+    }
+  });
+
+  it("closes the sync dialog and refreshes skills after successful external skill sync", async () => {
+    const user = userEvent.setup();
+    const discoverExternalSkills = vi.spyOn(workbenchApi, "discoverExternalSkills").mockResolvedValue([
+      {
+        directoryName: "new-skill",
+        displayName: "new-skill",
+        description: "",
+        status: "new",
+        sources: [{
+          tool: "codex",
+          toolName: "Codex",
+          path: "C:\\Users\\dev\\.codex\\skills\\new-skill",
+          contentHash: "new",
+          readable: true
+        }]
+      }
+    ]);
+    const syncExternalSkills = vi.spyOn(workbenchApi, "syncExternalSkills").mockResolvedValue([
+      {
+        directoryName: "new-skill",
+        tool: "codex",
+        toolName: "Codex",
+        sourcePath: "C:\\Users\\dev\\.codex\\skills\\new-skill",
+        status: "synced",
+        syncMethod: "symlink",
+        backupPath: "C:\\Users\\dev\\.codex\\skills\\.workbench-backups\\new-skill",
+        message: "已导入并接管"
+      }
+    ]);
+
+    try {
+      renderWithUpdateProvider(<App />);
+      const navigation = await screen.findByRole("navigation", { name: "主导航" });
+      await user.click(within(navigation).getByRole("button", { name: "Skills" }));
+      await user.click(await screen.findByRole("button", { name: "同步 Skills" }));
+      await user.click(await screen.findByRole("button", { name: "同步" }));
+
+      expect(await screen.findByText("Skills 已同步：接管 1 项")).toBeInTheDocument();
+      expect(screen.queryByRole("dialog", { name: "同步外部工具 Skills" })).not.toBeInTheDocument();
+      expect(syncExternalSkills).toHaveBeenCalledWith([{
+        directoryName: "new-skill",
+        sourcePath: "C:\\Users\\dev\\.codex\\skills\\new-skill",
+        tool: "codex",
+        action: "sync"
+      }]);
+    } finally {
+      discoverExternalSkills.mockRestore();
+      syncExternalSkills.mockRestore();
+    }
+  });
+
+  it("keeps current external skill candidates visible while rescanning", async () => {
+    const user = userEvent.setup();
+    let resolveRescan: ((candidates: ExternalSkillCandidateGroup[]) => void) | undefined;
+    const discoverExternalSkills = vi.spyOn(workbenchApi, "discoverExternalSkills")
+      .mockResolvedValueOnce([
+        {
+          directoryName: "first-skill",
+          displayName: "first-skill",
+          description: "",
+          status: "new",
+          sources: [{
+            tool: "codex",
+            toolName: "Codex",
+            path: "C:\\Users\\dev\\.codex\\skills\\first-skill",
+            contentHash: "first",
+            readable: true
+          }]
+        }
+      ])
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveRescan = resolve;
+      }));
+
+    try {
+      renderWithUpdateProvider(<App />);
+      const navigation = await screen.findByRole("navigation", { name: "主导航" });
+      await user.click(within(navigation).getByRole("button", { name: "Skills" }));
+      await user.click(await screen.findByRole("button", { name: "同步 Skills" }));
+
+      expect(await screen.findByText("first-skill")).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "重新扫描" }));
+      expect(await screen.findByRole("button", { name: "扫描中" })).toBeDisabled();
+      expect(screen.getByText("first-skill")).toBeInTheDocument();
+
+      await act(async () => {
+        resolveRescan?.([
+          {
+            directoryName: "second-skill",
+            displayName: "second-skill",
+            description: "",
+            status: "new",
+            sources: [{
+              tool: "codex",
+              toolName: "Codex",
+              path: "C:\\Users\\dev\\.codex\\skills\\second-skill",
+              contentHash: "second",
+              readable: true
+            }]
+          }
+        ]);
+      });
+
+      expect(await screen.findByText("second-skill")).toBeInTheDocument();
+      expect(screen.queryByText("first-skill")).not.toBeInTheDocument();
+    } finally {
+      discoverExternalSkills.mockRestore();
+    }
   });
 
   it("keeps global tool icons compact and toggles hidden tools from the overflow", async () => {

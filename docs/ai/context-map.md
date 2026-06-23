@@ -39,7 +39,7 @@ Do not read `docs/plans/`, `docs/audits/`, or archived directories by default.
 - `docs/capabilities/resource-radar.md`：资源 Radar 当前能力、领域分类、数据所有权、同步规则和重复组合并规则。
 - `docs/adr/2026-06-16-resource-radar-duplicate-merge.md`：资源 Radar 重复组合并后删除副资源的长期决策。
 - `src-tauri/src/skills.rs`、`src-tauri/src/skills/`：Skills command 入口、类型、SQLite、文件系统同步、工具目标、分类、自定义工具目标、导入、根目录迁移、受管目标重建、skills.sh 市场/CLI、启用、冲突和删除逻辑。
-- `docs/capabilities/skills-management.md`：Skills 当前能力、外部发现、根目录迁移、skills.sh 来源、自定义工具目标、分类与筛选语义、数据所有权、同步边界和验证。
+- `docs/capabilities/skills-management.md`：Skills 当前能力、外部同步接管、根目录迁移、skills.sh 来源、自定义工具目标、分类与筛选语义、数据所有权、同步边界和验证。
 - `docs/adr/2026-06-18-skill-categories-table.md`：Skills 分类使用独立分类表和 `category_id` 的长期决策。
 - `docs/adr/2026-06-20-skills-sh-cli-adapter.md`：skills.sh 市场安装/更新通过官方 CLI 临时提取、Workbench 统一落盘和记录的决策。
 - `docs/references/skills-manager-engineering-lessons.md`：从 `E:\Development\12-工具-Utility\Agent\skills-manager` 提炼的工程借鉴，不是当前能力事实。

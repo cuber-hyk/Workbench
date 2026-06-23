@@ -281,9 +281,25 @@ export interface ExternalSkillCandidateGroup {
   sources: ExternalSkillCandidateSource[];
 }
 
-export interface ExternalSkillImportSelection {
+export type ExternalSkillSyncAction = "sync" | "use_workbench" | "use_external" | "skip";
+export type ExternalSkillSyncStatus = "synced" | "skipped" | "conflict" | "invalid" | "failed";
+
+export interface ExternalSkillSyncSelection {
   directoryName: string;
   sourcePath: string;
+  tool: ToolKey;
+  action: ExternalSkillSyncAction;
+}
+
+export interface ExternalSkillSyncResult {
+  directoryName: string;
+  tool: ToolKey;
+  toolName: string;
+  sourcePath: string;
+  status: ExternalSkillSyncStatus;
+  syncMethod?: "symlink" | "copy" | null;
+  backupPath?: string | null;
+  message: string;
 }
 
 export interface RootSkillMigrationCandidate {

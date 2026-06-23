@@ -1,4 +1,4 @@
-import type { ExternalSkillCandidateGroup, ImportResult, ManagedTargetRebuildResult } from "../../../lib/types/domain";
+import type { ExternalSkillCandidateGroup, ExternalSkillSyncResult, ImportResult, ManagedTargetRebuildResult } from "../../../lib/types/domain";
 
 export function candidateStatusImportClass(status: ExternalSkillCandidateGroup["status"]) {
   if (status === "new") return "imported";
@@ -35,4 +35,19 @@ export function importStatusLabel(status: ImportResult["status"]) {
   if (status === "invalid") return "无效";
   if (status === "conflict") return "冲突";
   return "已跳过";
+}
+
+export function syncStatusImportClass(status: ExternalSkillSyncResult["status"]) {
+  if (status === "synced") return "imported";
+  if (status === "skipped") return "skipped";
+  if (status === "conflict") return "conflict";
+  return "invalid";
+}
+
+export function externalSyncStatusLabel(status: ExternalSkillSyncResult["status"]) {
+  if (status === "synced") return "已同步";
+  if (status === "skipped") return "已跳过";
+  if (status === "conflict") return "冲突";
+  if (status === "invalid") return "无效";
+  return "失败";
 }
