@@ -157,7 +157,8 @@ code { font-family: Consolas, monospace; }
 
 .table-head, .table-row { display: grid; align-items: center; width: 100%; max-width: 100%; min-width: 0; gap: 12px; padding: 12px 14px; overflow: hidden; text-align: left; }
 .table-head > *, .table-row > * { min-width: 0; }
-.table-head { position: sticky; top: 0; z-index: 1; color: var(--muted); background: color-mix(in srgb, var(--panel), var(--bg) 45%); font-size: 11px; font-weight: 600; }
+.table-head { position: sticky; top: 0; z-index: 1; min-height: 38px; padding-top: 0; padding-bottom: 0; color: var(--muted); background: color-mix(in srgb, var(--panel), var(--bg) 45%); font-size: 11px; font-weight: 600; line-height: 1; }
+.table-head > * { display: flex; align-items: center; min-height: 38px; }
 .table-row { min-height: 70px; border: 0; border-top: 1px solid var(--border); background: var(--panel); color: var(--text); cursor: pointer; }
 .table-row { overflow: visible; }
 .table-row:hover, .table-row.selected { background: var(--accent-soft); }
