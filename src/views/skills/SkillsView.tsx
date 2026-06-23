@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Ban, ChevronDown, CircleAlert, CircleCheck, Download, FileText, FolderOpen, RefreshCcw, Settings, Trash2 } from "lucide-react";
-import { ActionGroup, Button, DetailHeader, IconButton, Panel, SearchInput, StatusBadge, Toolbar } from "../../components/ui";
+import { ActionGroup, Button, DetailHeader, IconButton, PaginationBar, Panel, SearchInput, StatusBadge, Toolbar } from "../../components/ui";
 import { DeleteMarketSkillDialog } from "../../components/dialogs/skills/DeleteMarketSkillDialog";
 import { workbenchApi } from "../../lib/api/workbenchApi";
 import { ToolIcon } from "../../lib/ui/toolIcons";
+import { clampPage, DEFAULT_PAGE_SIZE, paginateItems } from "../../lib/ui/pagination";
 import type { AppSettings, Project, Skill, SkillCategory, SkillMarketDetail, SkillMarketItem, SkillUpdateResult, SkillUpdateStatus, SkillVersionSource, ToolKey, ToolTarget } from "../../lib/types/domain";
 import { SkillUpdatesView } from "./SkillUpdatesView";
 import { SkillsMarketView, type MarketInstallTask } from "./SkillsMarketView";
@@ -80,6 +81,8 @@ export function SkillsView({
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [updatingNames, setUpdatingNames] = useState<string[]>([]);
   const [updateResults, setUpdateResults] = useState<SkillUpdateResult[]>([]);
+  const [localPage, setLocalPage] = useState(1);
+  const [localPageSize, setLocalPageSize] = useState(DEFAULT_PAGE_SIZE);
   const handledMarketInstallRef = useRef("");
   const handleMarketInstall = onInstallMarketSkill ?? ((item: SkillMarketItem) => {
     void workbenchApi.installSkillFromMarket(item.source, item.skillId, () => undefined)
@@ -99,6 +102,9 @@ export function SkillsView({
     const matchesToolProject = skillMatchesToolProjectFilter(skill, toolFilter, projectFilter);
     return matchesQuery && matchesCategory && matchesStatus && matchesToolProject;
   });
+  const localCurrentPage = clampPage(localPage, visibleSkills.length, localPageSize);
+  const pagedSkills = paginateItems(visibleSkills, localCurrentPage, localPageSize);
+  const visibleSelectedSkill = pagedSkills.find((skill) => skill.id === selectedSkill.id);
   const visibleMarketItems = marketItems.filter((item) => {
     const normalizedQuery = marketQuery.trim().toLowerCase();
     const matchesQuery =
@@ -143,6 +149,20 @@ export function SkillsView({
     }
     setMarketError(marketInstallTask.error || "Skill 安装失败");
   }, [activeSkillsTab, marketInstallTask?.key, marketInstallTask?.status, marketInstallTask?.error]);
+
+  useEffect(() => {
+    setLocalPage(1);
+  }, [query, categoryFilter, statusFilter, toolFilter, projectFilter, localPageSize]);
+
+  useEffect(() => {
+    if (localPage !== localCurrentPage) setLocalPage(localCurrentPage);
+  }, [localCurrentPage, localPage]);
+
+  useEffect(() => {
+    if (activeSkillsTab !== "local" || pagedSkills.length === 0) return;
+    if (pagedSkills.some((skill) => skill.id === selectedSkill.id)) return;
+    onSelect(pagedSkills[0].id);
+  }, [activeSkillsTab, onSelect, pagedSkills, selectedSkill.id]);
 
   useEffect(() => {
     if (!selectedMarketItem) {
@@ -306,103 +326,130 @@ export function SkillsView({
           <div className="split-layout skills-layout">
         <Panel className="list-panel">
           <div className="table-head skills-grid"><span>Skill</span><span>分类</span><span>全局启用</span><span>项目启用</span><span className="table-action-heading">操作</span></div>
-          {visibleSkills.map((skill) => (
-            <div
-              key={skill.id}
-              className={`table-row skills-grid ${selectedSkill.id === skill.id ? "selected" : ""}`}
-              role="group"
-              aria-label={`${skill.name} Skill`}
-              aria-current={selectedSkill.id === skill.id ? "true" : undefined}
-              tabIndex={0}
-              onClick={() => onSelect(skill.id)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") onSelect(skill.id);
-              }}
-            >
-              <span className="title-cell"><strong>{skill.name}</strong><small>{skill.description}</small></span>
-              <SkillCategorySelect
-                skillName={skill.name}
-                categoryId={skill.categoryId}
-                categories={skillCategories}
-                onSave={(categoryId) => onCategorySkill(skill.directoryName, categoryId)}
-                onCreate={(name) => onCreateCategorySkill(skill.directoryName, name)}
-              />
-              <GlobalToolIcons
-                skill={skill}
-                tools={settings.toolTargets}
-                onToggle={(tool, enabled) => onToggleSkillGlobal(skill.directoryName, tool, enabled)}
-              />
-              <span>{skill.enabledProjects.length ? `${skill.enabledProjects.length} 个项目` : "未启用"}</span>
-              <ActionGroup align="start" className="row-actions table-actions">
-                <IconButton
-                  title="打开 SKILL.md"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    void workbenchApi.openLocalPath(skill.skillPath);
-                  }}
-                >
-                  <FileText size={14} />
-                </IconButton>
-                <IconButton
-                  variant="danger"
-                  title="删除 Skill"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onDeleteSkill(skill.id);
-                  }}
-                >
-                  <Trash2 size={14} />
-                </IconButton>
-              </ActionGroup>
-            </div>
-          ))}
+          <div className="list-body">
+            {pagedSkills.map((skill) => (
+              <div
+                key={skill.id}
+                className={`table-row skills-grid ${selectedSkill.id === skill.id ? "selected" : ""}`}
+                role="group"
+                aria-label={`${skill.name} Skill`}
+                aria-current={selectedSkill.id === skill.id ? "true" : undefined}
+                tabIndex={0}
+                onClick={() => onSelect(skill.id)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") onSelect(skill.id);
+                }}
+              >
+                <span className="title-cell"><strong>{skill.name}</strong><small>{skill.description}</small></span>
+                <SkillCategorySelect
+                  skillName={skill.name}
+                  categoryId={skill.categoryId}
+                  categories={skillCategories}
+                  onSave={(categoryId) => onCategorySkill(skill.directoryName, categoryId)}
+                  onCreate={(name) => onCreateCategorySkill(skill.directoryName, name)}
+                />
+                <GlobalToolIcons
+                  skill={skill}
+                  tools={settings.toolTargets}
+                  onToggle={(tool, enabled) => onToggleSkillGlobal(skill.directoryName, tool, enabled)}
+                />
+                <span>{skill.enabledProjects.length ? `${skill.enabledProjects.length} 个项目` : "未启用"}</span>
+                <ActionGroup align="start" className="row-actions table-actions">
+                  <IconButton
+                    title="打开 SKILL.md"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void workbenchApi.openLocalPath(skill.skillPath);
+                    }}
+                  >
+                    <FileText size={14} />
+                  </IconButton>
+                  <IconButton
+                    variant="danger"
+                    title="删除 Skill"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onDeleteSkill(skill.id);
+                    }}
+                  >
+                    <Trash2 size={14} />
+                  </IconButton>
+                </ActionGroup>
+              </div>
+            ))}
+            {visibleSkills.length === 0 && (
+              <div className="empty-state">
+                <strong>{skills.length === 0 ? "暂无 Skills" : "没有匹配的 Skill"}</strong>
+                <small>{skills.length === 0 ? "配置统一根目录并扫描后，可以在这里管理 Skills。" : "调整搜索、分类、状态、项目或工具筛选后重试。"}</small>
+              </div>
+            )}
+          </div>
+          {visibleSkills.length > localPageSize && (
+            <PaginationBar
+              total={visibleSkills.length}
+              page={localCurrentPage}
+              pageSize={localPageSize}
+              label="本地 Skills 分页"
+              onPageChange={setLocalPage}
+              onPageSizeChange={setLocalPageSize}
+            />
+          )}
         </Panel>
 
         <Panel className="detail-panel">
-          <DetailHeader title={selectedSkill.name} />
-          <p className="description">{selectedSkill.description}</p>
-          {selectedSkill.globalToolStates.some((state) => state.status === "conflict") && (
-            <SkillConflictPanel skill={selectedSkill} settings={settings} onResolve={onResolve} />
-          )}
-          <div className="setting-group">
-            <h3>项目启用</h3>
-            {projects.map((project) => (
-              <div className="project-skill-row" key={project.id}>
-                <div className="project-skill-head">
-                  <span><strong>{project.name}</strong><small>{project.path}</small></span>
-                  <SwitchControl
-                    checked={projectToolTargets.length > 0 && projectToolTargets.every((tool) =>
-                      selectedSkill.enabledProjects.some(
-                        (entry) => entry.projectPath === project.path && entry.tool === tool.key
-                      )
-                    )}
-                    onChange={(enabled) => onToggleProjectAll(project, enabled)}
-                    title={`${project.name} 全部工具启用`}
-                  />
-                </div>
-                <div className="project-tool-toggles">
-                  {projectToolTargets.map((tool) => {
-                    const enablement = selectedSkill.enabledProjects.find(
-                      (entry) => entry.projectPath === project.path && entry.tool === tool.key
-                    );
-                    const enabled = Boolean(enablement);
-                    return (
-                      <label key={tool.key} title={`${project.name} · ${tool.name}`}>
-                        <small>{tool.name}{enablement ? ` · ${syncMethodLabel(enablement.syncMethod)}` : ""}</small>
-                        <input
-                          type="checkbox"
-                          checked={enabled}
-                          onChange={(event) => onToggle(tool.key, event.target.checked, project)}
-                        />
-                        <span className="switch" />
-                      </label>
-                    );
-                  })}
-                </div>
+          {visibleSelectedSkill ? (
+            <>
+              <DetailHeader title={visibleSelectedSkill.name} />
+              <p className="description">{visibleSelectedSkill.description}</p>
+              {visibleSelectedSkill.globalToolStates.some((state) => state.status === "conflict") && (
+                <SkillConflictPanel skill={visibleSelectedSkill} settings={settings} onResolve={onResolve} />
+              )}
+              <div className="setting-group">
+                <h3>项目启用</h3>
+                {projects.map((project) => (
+                  <div className="project-skill-row" key={project.id}>
+                    <div className="project-skill-head">
+                      <span><strong>{project.name}</strong><small>{project.path}</small></span>
+                      <SwitchControl
+                        checked={projectToolTargets.length > 0 && projectToolTargets.every((tool) =>
+                          visibleSelectedSkill.enabledProjects.some(
+                            (entry) => entry.projectPath === project.path && entry.tool === tool.key
+                          )
+                        )}
+                        onChange={(enabled) => onToggleProjectAll(project, enabled)}
+                        title={`${project.name} 全部工具启用`}
+                      />
+                    </div>
+                    <div className="project-tool-toggles">
+                      {projectToolTargets.map((tool) => {
+                        const enablement = visibleSelectedSkill.enabledProjects.find(
+                          (entry) => entry.projectPath === project.path && entry.tool === tool.key
+                        );
+                        const enabled = Boolean(enablement);
+                        return (
+                          <label key={tool.key} title={`${project.name} · ${tool.name}`}>
+                            <small>{tool.name}{enablement ? ` · ${syncMethodLabel(enablement.syncMethod)}` : ""}</small>
+                            <input
+                              type="checkbox"
+                              checked={enabled}
+                              onChange={(event) => onToggle(tool.key, event.target.checked, project)}
+                            />
+                            <span className="switch" />
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          <div className="file-block"><span>SKILL.md</span><code>{selectedSkill.skillPath}</code></div>
+              <div className="file-block"><span>SKILL.md</span><code>{visibleSelectedSkill.skillPath}</code></div>
+            </>
+          ) : (
+            <div className="empty-state detail-empty">
+              <strong>选择一个 Skill</strong>
+              <small>查看项目启用状态和文件路径。</small>
+            </div>
+          )}
         </Panel>
       </div>
         </>

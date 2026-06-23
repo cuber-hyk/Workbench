@@ -27,6 +27,7 @@ Do not read `docs/plans/`, `docs/audits/`, or archived directories by default.
 - `src/components/dialogs/settings/`：设置页相关的自定义工具、项目打开方式、托盘提示和目录创建弹窗。
 - `src/components/dialogs/skills/`：Skills 分类、导入、迁移、删除和市场卸载弹窗。
 - `src/lib/ui/toolIcons.tsx`：Agent 工具图标资源映射、自定义图标路径转换和图标回退显示。
+- `src/lib/ui/pagination.ts`：项目、Skills、市场、更新和资源 Radar 列表分页的纯计算规则。
 - `src/lib/types/domain.ts`：前端领域类型。
 - `src/lib/api/workbenchApi.ts`：前端到 Tauri commands 的 API 边界。
 - `src-tauri/src/lib.rs`：Tauri command 注册入口。

@@ -1,5 +1,15 @@
 export type ViewKey = "projects" | "skills" | "radar" | "settings";
 
+export interface PageRequest {
+  page: number;
+  pageSize: number;
+}
+
+export interface PageResult<T> extends PageRequest {
+  total: number;
+  items: T[];
+}
+
 export interface Project {
   id: string;
   name: string;

@@ -410,6 +410,81 @@ describe("Workbench UI interactions", () => {
     expect(screen.queryByRole("group", { name: "Active Project 项目" })).not.toBeInTheDocument();
   });
 
+  it("paginates projects and selects the first project on the new page", async () => {
+    const user = userEvent.setup();
+    const projects = Array.from({ length: 55 }, (_, index) => ({
+      ...activeProject,
+      id: `project-${String(index + 1).padStart(2, "0")}`,
+      name: `Project ${String(index + 1).padStart(2, "0")}`,
+      path: `E:\\Project-${String(index + 1).padStart(2, "0")}`,
+      launchConfigs: []
+    }));
+    const onSelect = vi.fn();
+    render(
+      <ProjectsView
+        projects={projects}
+        selectedProject={projects[0]}
+        projectLaunchTimes={{}}
+        loading={false}
+        loadError=""
+        onSelect={onSelect}
+        onLaunch={vi.fn()}
+        onEdit={vi.fn()}
+        onArchive={vi.fn()}
+        onAdd={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("group", { name: "Project 01 项目" })).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Project 51 项目" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "下一页" }));
+
+    expect(screen.getByRole("group", { name: "Project 51 项目" })).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Project 01 项目" })).not.toBeInTheDocument();
+    await waitFor(() => expect(onSelect).toHaveBeenCalledWith("project-51"));
+  });
+
+  it("jumps to an editable project page within the legal page range", async () => {
+    const user = userEvent.setup();
+    const projects = Array.from({ length: 125 }, (_, index) => ({
+      ...activeProject,
+      id: `project-${String(index + 1).padStart(3, "0")}`,
+      name: `Project ${String(index + 1).padStart(3, "0")}`,
+      path: `E:\\Project-${String(index + 1).padStart(3, "0")}`,
+      launchConfigs: []
+    }));
+    const onSelect = vi.fn();
+    render(
+      <ProjectsView
+        projects={projects}
+        selectedProject={projects[0]}
+        projectLaunchTimes={{}}
+        loading={false}
+        loadError=""
+        onSelect={onSelect}
+        onLaunch={vi.fn()}
+        onEdit={vi.fn()}
+        onArchive={vi.fn()}
+        onAdd={vi.fn()}
+      />
+    );
+
+    const pageInput = screen.getByLabelText("项目列表分页当前页");
+    await user.clear(pageInput);
+    await user.type(pageInput, "3{Enter}");
+
+    expect(screen.getByRole("group", { name: "Project 101 项目" })).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Project 001 项目" })).not.toBeInTheDocument();
+    await waitFor(() => expect(onSelect).toHaveBeenCalledWith("project-101"));
+
+    await user.clear(pageInput);
+    await user.type(pageInput, "99{Enter}");
+
+    expect(pageInput).toHaveValue("3");
+    expect(screen.getByRole("group", { name: "Project 101 项目" })).toBeInTheDocument();
+  });
+
   it("shows the latest launch run summary without inline output", () => {
     render(
       <ProjectsView
@@ -1250,6 +1325,45 @@ describe("Workbench UI interactions", () => {
     expect(screen.getAllByRole("button", { name: /Attention Paper/ }).length).toBeGreaterThan(0);
   });
 
+  it("paginates resource items and moves selection to the current page", async () => {
+    const user = userEvent.setup();
+    const items = Array.from({ length: 55 }, (_, index) => ({
+      ...radarItems[0],
+      id: `radar-${String(index + 1).padStart(2, "0")}`,
+      name: `Radar ${String(index + 1).padStart(2, "0")}`,
+      url: `https://example.com/${index + 1}`,
+      note: `note ${index + 1}`
+    }));
+    const onSelect = vi.fn();
+    render(
+      <RadarView
+        items={items}
+        duplicateGroups={[]}
+        selectedItem={items[0]}
+        loading={false}
+        loadError=""
+        onSelect={onSelect}
+        onAdd={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onToggleFavorite={vi.fn()}
+        onOpenLink={vi.fn()}
+        syncingGithubStars={false}
+        onSyncGithubStars={vi.fn()}
+        onMergeDuplicateGroup={vi.fn()}
+      />
+    );
+
+    expect(screen.getAllByRole("button", { name: /Radar 01/ }).length).toBeGreaterThan(0);
+    expect(screen.queryAllByRole("button", { name: /Radar 51/ })).toHaveLength(0);
+
+    await user.click(screen.getByRole("button", { name: "下一页" }));
+
+    expect(screen.getAllByRole("button", { name: /Radar 51/ }).length).toBeGreaterThan(0);
+    expect(screen.queryAllByRole("button", { name: /Radar 01/ })).toHaveLength(0);
+    await waitFor(() => expect(onSelect).toHaveBeenCalledWith("radar-51"));
+  });
+
   it("filters resources by source and prevents duplicate GitHub sync", async () => {
     const user = userEvent.setup();
     const onSyncGithubStars = vi.fn();
@@ -1806,25 +1920,29 @@ describe("Workbench UI interactions", () => {
   it("keeps current external skill candidates visible while rescanning", async () => {
     const user = userEvent.setup();
     let resolveRescan: ((candidates: ExternalSkillCandidateGroup[]) => void) | undefined;
+    let rescanStarted = false;
+    let rescanPromise: Promise<ExternalSkillCandidateGroup[]> | undefined;
+    const firstCandidate: ExternalSkillCandidateGroup = {
+      directoryName: "first-skill",
+      displayName: "first-skill",
+      description: "",
+      status: "new",
+      sources: [{
+        tool: "codex",
+        toolName: "Codex",
+        path: "C:\\Users\\dev\\.codex\\skills\\first-skill",
+        contentHash: "first",
+        readable: true
+      }]
+    };
     const discoverExternalSkills = vi.spyOn(workbenchApi, "discoverExternalSkills")
-      .mockResolvedValueOnce([
-        {
-          directoryName: "first-skill",
-          displayName: "first-skill",
-          description: "",
-          status: "new",
-          sources: [{
-            tool: "codex",
-            toolName: "Codex",
-            path: "C:\\Users\\dev\\.codex\\skills\\first-skill",
-            contentHash: "first",
-            readable: true
-          }]
-        }
-      ])
-      .mockImplementationOnce(() => new Promise((resolve) => {
-        resolveRescan = resolve;
-      }));
+      .mockImplementation(() => {
+        if (!rescanStarted) return Promise.resolve([firstCandidate]);
+        rescanPromise ??= new Promise((resolve) => {
+          resolveRescan = resolve;
+        });
+        return rescanPromise;
+      });
 
     try {
       renderWithUpdateProvider(<App />);
@@ -1833,25 +1951,27 @@ describe("Workbench UI interactions", () => {
       await user.click(await screen.findByRole("button", { name: "同步 Skills" }));
 
       expect(await screen.findByText("first-skill")).toBeInTheDocument();
+      rescanStarted = true;
       await user.click(screen.getByRole("button", { name: "重新扫描" }));
       expect(await screen.findByRole("button", { name: "扫描中" })).toBeDisabled();
       expect(screen.getByText("first-skill")).toBeInTheDocument();
+      await waitFor(() => expect(resolveRescan).toBeDefined());
 
       await act(async () => {
         resolveRescan?.([
-          {
-            directoryName: "second-skill",
-            displayName: "second-skill",
-            description: "",
-            status: "new",
-            sources: [{
-              tool: "codex",
-              toolName: "Codex",
-              path: "C:\\Users\\dev\\.codex\\skills\\second-skill",
-              contentHash: "second",
-              readable: true
-            }]
-          }
+        {
+          directoryName: "second-skill",
+          displayName: "second-skill",
+          description: "",
+          status: "new",
+          sources: [{
+            tool: "codex",
+            toolName: "Codex",
+            path: "C:\\Users\\dev\\.codex\\skills\\second-skill",
+            contentHash: "second",
+            readable: true
+          }]
+        }
         ]);
       });
 

@@ -1,6 +1,8 @@
+import { useEffect, useState } from "react";
 import { CircleCheck, ExternalLink, PackagePlus, RefreshCcw, Trash2 } from "lucide-react";
-import { Button, DetailHeader, IconButton, Panel, SearchInput, Toolbar } from "../../components/ui";
+import { Button, DetailHeader, IconButton, PaginationBar, Panel, SearchInput, Toolbar } from "../../components/ui";
 import type { SkillMarketDetail, SkillMarketItem } from "../../lib/types/domain";
+import { clampPage, DEFAULT_PAGE_SIZE, paginateItems } from "../../lib/ui/pagination";
 import { SkillStatusIndicator } from "./SkillStatusIndicator";
 import { formatInstallCount, marketItemStatus, marketRepositoryUrl, type MarketStats } from "./skillMarketFormatters";
 
@@ -87,8 +89,28 @@ export function SkillsMarketView({
   onUninstall: (item: SkillMarketItem) => void;
   onOpenSource: (url: string) => void;
 }) {
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const currentPage = clampPage(page, items.length, pageSize);
+  const pagedItems = paginateItems(items, currentPage, pageSize);
   const selectedKey = selectedItem ? `${selectedItem.source}/${selectedItem.skillId}` : "";
-  const repositoryUrl = selectedItem ? detail?.repositoryUrl || marketRepositoryUrl(selectedItem) : "";
+  const pageSelectedItem = pagedItems.find((item) => `${item.source}/${item.skillId}` === selectedKey);
+  const detailItem = pageSelectedItem ?? pagedItems[0];
+  const detailKey = detailItem ? `${detailItem.source}/${detailItem.skillId}` : "";
+  useEffect(() => {
+    setPage(1);
+  }, [query, statusFilter, pageSize]);
+  useEffect(() => {
+    if (page !== currentPage) setPage(currentPage);
+  }, [currentPage, page]);
+  useEffect(() => {
+    if (!detailItem || detailKey === selectedKey) return;
+    onSelect(detailItem);
+  }, [detailItem, detailKey, onSelect, selectedKey]);
+  const activeItem = detailItem ?? selectedItem;
+  const activeKey = activeItem ? `${activeItem.source}/${activeItem.skillId}` : "";
+  const detailMatchesActive = detail ? `${detail.item.source}/${detail.item.skillId}` === activeKey : false;
+  const repositoryUrl = activeItem ? (detailMatchesActive ? detail?.repositoryUrl : "") || marketRepositoryUrl(activeItem) : "";
   return (
     <>
       <Toolbar>
@@ -133,84 +155,96 @@ export function SkillsMarketView({
       <div className="split-layout skills-layout">
         <Panel className="list-panel">
           <div className="table-head market-grid"><span>远程 Skill</span><span>来源</span><span>状态</span><span>下载</span><span className="table-action-heading">操作</span></div>
-          {loading && items.length === 0 && <MarketListSkeleton />}
-          {!loading && items.map((item) => {
-            const key = `${item.source}/${item.skillId}`;
-            const taskForItem = installTask?.key === key ? installTask : null;
-            const installing = taskForItem?.status === "running";
-            const installedByTask = taskForItem?.status === "succeeded" && !item.installedDirectoryName;
-            const uninstalling = uninstallingKey === key;
-            return (
-              <div
-                className={`table-row market-grid ${selectedKey === key ? "selected" : ""}`}
-                key={key}
-                role="button"
-                tabIndex={0}
-                onClick={() => onSelect(item)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") onSelect(item);
-                }}
-              >
-                <span className="title-cell"><strong>{item.name}</strong><small>{item.description || item.skillId}</small></span>
-                <span className="path">{item.source}</span>
-                <SkillStatusIndicator status={marketItemStatus(item)} />
-                <span>{formatInstallCount(item.installs)}</span>
-                <span className="row-actions table-actions install-action">
-                  {installing ? (
-                    <Button disabled><RefreshCcw className="spin" size={14} />安装中 {taskForItem?.progress ?? 8}%</Button>
-                  ) : installedByTask ? (
-                    <Button disabled><CircleCheck size={14} />安装完成</Button>
-                  ) : item.installedDirectoryName ? (
-                    <Button
-                      variant="danger"
-                      disabled={installTask?.status === "running" || uninstalling}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onUninstall(item);
-                      }}
-                    >
-                      <Trash2 size={14} />{uninstalling ? "卸载中" : "卸载"}
-                    </Button>
-                  ) : !item.installable ? (
-                    <span className="action-muted" aria-label="不可安装">不可安装</span>
-                  ) : (
-                    <Button
-                      disabled={installTask?.status === "running"}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onInstall(item);
-                      }}
-                    >
-                      <PackagePlus size={14} />安装
-                    </Button>
-                  )}
-                  {installing && <i style={{ width: `${taskForItem?.progress ?? 8}%` }} />}
-                </span>
-              </div>
-            );
-          })}
+          <div className="list-body">
+            {loading && items.length === 0 && <MarketListSkeleton />}
+            {!loading && pagedItems.map((item) => {
+              const key = `${item.source}/${item.skillId}`;
+              const taskForItem = installTask?.key === key ? installTask : null;
+              const installing = taskForItem?.status === "running";
+              const installedByTask = taskForItem?.status === "succeeded" && !item.installedDirectoryName;
+              const uninstalling = uninstallingKey === key;
+              return (
+                <div
+                  className={`table-row market-grid ${selectedKey === key ? "selected" : ""}`}
+                  key={key}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onSelect(item)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") onSelect(item);
+                  }}
+                >
+                  <span className="title-cell"><strong>{item.name}</strong><small>{item.description || item.skillId}</small></span>
+                  <span className="path">{item.source}</span>
+                  <SkillStatusIndicator status={marketItemStatus(item)} />
+                  <span>{formatInstallCount(item.installs)}</span>
+                  <span className="row-actions table-actions install-action">
+                    {installing ? (
+                      <Button disabled><RefreshCcw className="spin" size={14} />安装中 {taskForItem?.progress ?? 8}%</Button>
+                    ) : installedByTask ? (
+                      <Button disabled><CircleCheck size={14} />安装完成</Button>
+                    ) : item.installedDirectoryName ? (
+                      <Button
+                        variant="danger"
+                        disabled={installTask?.status === "running" || uninstalling}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onUninstall(item);
+                        }}
+                      >
+                        <Trash2 size={14} />{uninstalling ? "卸载中" : "卸载"}
+                      </Button>
+                    ) : !item.installable ? (
+                      <span className="action-muted" aria-label="不可安装">不可安装</span>
+                    ) : (
+                      <Button
+                        disabled={installTask?.status === "running"}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onInstall(item);
+                        }}
+                      >
+                        <PackagePlus size={14} />安装
+                      </Button>
+                    )}
+                    {installing && <i style={{ width: `${taskForItem?.progress ?? 8}%` }} />}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          {!loading && items.length > pageSize && (
+            <PaginationBar
+              total={items.length}
+              page={currentPage}
+              pageSize={pageSize}
+              label="技能市场分页"
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+            />
+          )}
         </Panel>
         <Panel className="detail-panel market-detail-panel">
           {loading && items.length === 0 ? (
             <MarketDetailSkeleton />
-          ) : selectedItem ? (
+          ) : activeItem ? (
             <>
               <div className="market-detail-hero">
                 <div>
                   <span className="market-detail-kicker">skills.sh</span>
-                  <DetailHeader title={selectedItem.name} actions={repositoryUrl ? <IconButton title="打开来源仓库" onClick={() => onOpenSource(repositoryUrl)}><ExternalLink size={14} /></IconButton> : undefined} />
+                  <DetailHeader title={activeItem.name} actions={repositoryUrl ? <IconButton title="打开来源仓库" onClick={() => onOpenSource(repositoryUrl)}><ExternalLink size={14} /></IconButton> : undefined} />
                 </div>
               </div>
-              <p className="market-detail-description">{detail?.item.description || selectedItem.description || "暂无远程描述。"}</p>
+              <p className="market-detail-description">{(detailMatchesActive ? detail?.item.description : "") || activeItem.description || "暂无远程描述。"}</p>
               <dl className="market-detail-list">
-                <div><dt>安装状态</dt><dd><SkillStatusIndicator status={marketItemStatus(selectedItem)} /></dd></div>
-                <div><dt>skills.sh 包</dt><dd><code>{selectedItem.source}/{selectedItem.skillId}</code></dd></div>
-                <div><dt>Skill ID</dt><dd><code>{selectedItem.skillId}</code></dd></div>
+                <div><dt>安装状态</dt><dd><SkillStatusIndicator status={marketItemStatus(activeItem)} /></dd></div>
+                <div><dt>skills.sh 包</dt><dd><code>{activeItem.source}/{activeItem.skillId}</code></dd></div>
+                <div><dt>Skill ID</dt><dd><code>{activeItem.skillId}</code></dd></div>
                 <div><dt>来源仓库</dt><dd><code>{repositoryUrl || "非 GitHub owner/repo 来源，暂不支持 Workbench 安装"}</code></dd></div>
-                <div><dt>参考命令</dt><dd><code>{detail?.installCommand || `npx -y skills add ${selectedItem.source} --skill ${selectedItem.skillId} -g --agent codex -y --copy`}</code></dd></div>
+                <div><dt>参考命令</dt><dd><code>{(detailMatchesActive ? detail?.installCommand : "") || `npx -y skills add ${activeItem.source} --skill ${activeItem.skillId} -g --agent codex -y --copy`}</code></dd></div>
               </dl>
-              <div className="warning market-detail-warning">{detail?.securityNote || "Workbench 调用 skills.sh 官方安装器完成获取和展开，再复制到统一 Skills 根目录；第三方 Skill 仍需自行确认来源可信。"}</div>
-              {detail?.skillMarkdownPreview && <div className="market-preview"><h3>SKILL.md 预览</h3><p>{detail.skillMarkdownPreview}</p></div>}
+              <div className="warning market-detail-warning">{(detailMatchesActive ? detail?.securityNote : "") || "Workbench 调用 skills.sh 官方安装器完成获取和展开，再复制到统一 Skills 根目录；第三方 Skill 仍需自行确认来源可信。"}</div>
+              {detailMatchesActive && detail?.skillMarkdownPreview && <div className="market-preview"><h3>SKILL.md 预览</h3><p>{detail.skillMarkdownPreview}</p></div>}
             </>
           ) : (
             <div className="notice compact-empty">暂无市场条目。</div>

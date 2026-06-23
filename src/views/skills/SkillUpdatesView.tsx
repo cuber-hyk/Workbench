@@ -1,6 +1,8 @@
+import { useEffect, useState } from "react";
 import { RefreshCcw } from "lucide-react";
-import { Button, DetailHeader, Panel } from "../../components/ui";
+import { Button, DetailHeader, PaginationBar, Panel } from "../../components/ui";
 import type { SkillUpdateResult, SkillUpdateStatus } from "../../lib/types/domain";
+import { clampPage, DEFAULT_PAGE_SIZE, paginateItems } from "../../lib/ui/pagination";
 import { SkillStatusIndicator } from "./SkillStatusIndicator";
 import { updateStatusLabel } from "./skillMarketFormatters";
 
@@ -29,11 +31,21 @@ export function SkillUpdatesView({
   onUpdateOne: (directoryName: string) => void;
   onOpenMarket: () => void;
 }) {
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const updateable = statuses.filter((status) => status.status === "update_available");
   const selectedUpdateable = selectedNames.filter((directoryName) =>
     updateable.some((status) => status.source.directoryName === directoryName)
   );
   const allUpdateableSelected = updateable.length > 0 && updateable.every((status) => selectedNames.includes(status.source.directoryName));
+  const currentPage = clampPage(page, statuses.length, pageSize);
+  const pagedStatuses = paginateItems(statuses, currentPage, pageSize);
+  useEffect(() => {
+    setPage(1);
+  }, [statuses, pageSize]);
+  useEffect(() => {
+    if (page !== currentPage) setPage(currentPage);
+  }, [currentPage, page]);
   function toggleUpdateSelection(directoryName: string, checked: boolean) {
     onSelectNames(
       checked
@@ -57,33 +69,45 @@ export function SkillUpdatesView({
             <span><input type="checkbox" aria-label="选择全部可更新项" checked={allUpdateableSelected} disabled={updateable.length === 0 || updatingNames.length > 0} onClick={(event) => event.stopPropagation()} onChange={(event) => onSelectNames(event.target.checked ? updateable.map((status) => status.source.directoryName) : [])} /></span>
             <span>Skill</span><span>本地版本</span><span>远端状态</span><span>最近检查</span><span className="table-action-heading">操作</span>
           </div>
-          {statuses.length === 0 && (
-            <div className="empty-state update-empty-state">
-              <span className="empty-state-icon"><RefreshCcw size={18} /></span>
-              <strong>暂无可检查的 skills.sh Skill</strong>
-              <small>从技能市场安装的 Skill 会出现在这里，用于检查和执行更新。</small>
-              <Button onClick={onOpenMarket}>去技能市场</Button>
-            </div>
-          )}
-          {statuses.map((status) => {
-            const directoryName = status.source.directoryName;
-            const checked = selectedNames.includes(directoryName);
-            const updateableStatus = status.status === "update_available";
-            return (
-              <div className="table-row update-grid" key={directoryName}>
-                <span><input type="checkbox" aria-label={`选择 ${directoryName}`} disabled={!updateableStatus || updatingNames.length > 0} checked={updateableStatus && checked} onClick={(event) => event.stopPropagation()} onChange={(event) => toggleUpdateSelection(directoryName, event.target.checked)} /></span>
-                <span className="title-cell"><strong>{status.name}</strong><small>{status.source.packageSlug}</small></span>
-                <span className="path">{status.source.installedHash}</span>
-                <SkillStatusIndicator status={status.status} label={updateStatusLabel(status.status)} />
-                <span>{status.source.lastCheckedAt || "未检查"}</span>
-                <span className="row-actions table-actions">
-                  <Button disabled={!updateableStatus || updatingNames.includes(directoryName)} onClick={() => onUpdateOne(directoryName)}>
-                    {updatingNames.includes(directoryName) ? "更新中" : "更新"}
-                  </Button>
-                </span>
+          <div className="list-body">
+            {statuses.length === 0 && (
+              <div className="empty-state update-empty-state">
+                <span className="empty-state-icon"><RefreshCcw size={18} /></span>
+                <strong>暂无可检查的 skills.sh Skill</strong>
+                <small>从技能市场安装的 Skill 会出现在这里，用于检查和执行更新。</small>
+                <Button onClick={onOpenMarket}>去技能市场</Button>
               </div>
-            );
-          })}
+            )}
+            {pagedStatuses.map((status) => {
+              const directoryName = status.source.directoryName;
+              const checked = selectedNames.includes(directoryName);
+              const updateableStatus = status.status === "update_available";
+              return (
+                <div className="table-row update-grid" key={directoryName}>
+                  <span><input type="checkbox" aria-label={`选择 ${directoryName}`} disabled={!updateableStatus || updatingNames.length > 0} checked={updateableStatus && checked} onClick={(event) => event.stopPropagation()} onChange={(event) => toggleUpdateSelection(directoryName, event.target.checked)} /></span>
+                  <span className="title-cell"><strong>{status.name}</strong><small>{status.source.packageSlug}</small></span>
+                  <span className="path">{status.source.installedHash}</span>
+                  <SkillStatusIndicator status={status.status} label={updateStatusLabel(status.status)} />
+                  <span>{status.source.lastCheckedAt || "未检查"}</span>
+                  <span className="row-actions table-actions">
+                    <Button disabled={!updateableStatus || updatingNames.includes(directoryName)} onClick={() => onUpdateOne(directoryName)}>
+                      {updatingNames.includes(directoryName) ? "更新中" : "更新"}
+                    </Button>
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          {statuses.length > pageSize && (
+            <PaginationBar
+              total={statuses.length}
+              page={currentPage}
+              pageSize={pageSize}
+              label="Skill 更新分页"
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+            />
+          )}
         </Panel>
         <Panel className="detail-panel">
           <DetailHeader title={updateable.length === 0 ? "等待可更新项" : "批量更新确认"} />

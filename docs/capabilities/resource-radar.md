@@ -12,7 +12,7 @@ source_of_truth: src-tauri/src/radar.rs; src-tauri/src/radar/
 
 ## 当前能力
 
-- 手动新增、编辑、删除、搜索、筛选、收藏和打开资源链接。
+- 手动新增、编辑、删除、搜索、筛选、分页浏览、收藏和打开资源链接。
 - 通过 `gh api user/starred --paginate` 手动同步 GitHub Stars。
 - 点击同步 GitHub Stars 时检查本机 GitHub CLI 状态，未配置或未登录时通过右下角提示说明原因并提示 `gh auth login`。
 - 按资源类型、领域、来源、语言、收藏、来源状态和重复状态筛选。
