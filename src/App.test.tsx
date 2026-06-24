@@ -857,18 +857,20 @@ describe("Workbench UI interactions", () => {
       />
     );
 
+    await user.click(screen.getByRole("button", { name: /项目打开方式/ }));
     await user.click(screen.getByRole("button", { name: "添加" }));
     await user.click(screen.getByRole("button", { name: "编辑 VS Code" }));
     await user.click(screen.getByRole("button", { name: "删除 VS Code" }));
 
-    expect(screen.getByText("项目打开方式")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "项目打开方式" })).toBeInTheDocument();
     expect(screen.getByText('code {projectPath}')).toBeInTheDocument();
     expect(onAddProjectOpenProfile).toHaveBeenCalled();
     expect(onEditProjectOpenProfile).toHaveBeenCalledWith(projectOpenProfiles[0]);
     expect(onDeleteProjectOpenProfile).toHaveBeenCalledWith(projectOpenProfiles[0]);
   });
 
-  it("spins the settings migration check while inspecting root migration", () => {
+  it("spins the settings migration check while inspecting root migration", async () => {
+    const user = userEvent.setup();
     renderWithUpdateProvider(
       <SettingsView
         settings={appSettings}
@@ -890,6 +892,7 @@ describe("Workbench UI interactions", () => {
       />
     );
 
+    await user.click(screen.getByRole("button", { name: "Skills统一根目录与映射" }));
     const checkButton = screen.getByRole("button", { name: "检查中" });
     expect(checkButton).toBeDisabled();
     expect(checkButton.querySelector("svg")).toHaveClass("spin");
@@ -966,6 +969,7 @@ describe("Workbench UI interactions", () => {
       />
     );
 
+    await user.click(screen.getByRole("button", { name: /工具目录/ }));
     await user.click(screen.getByRole("button", { name: "编辑 My Agent" }));
     await user.click(screen.getByRole("button", { name: "删除 My Agent" }));
 
@@ -1022,6 +1026,7 @@ describe("Workbench UI interactions", () => {
       />
     );
 
+    await user.click(screen.getByRole("button", { name: /工具目录/ }));
     await user.click(screen.getByRole("button", { name: "下移 Codex" }));
 
     expect(onReorderToolTargets).toHaveBeenCalledWith(["claude", "codex", "opencode"]);
@@ -1049,6 +1054,7 @@ describe("Workbench UI interactions", () => {
       />
     );
 
+    await user.click(screen.getByRole("button", { name: /应用行为/ }));
     await user.selectOptions(screen.getByLabelText("关闭窗口时"), "exit");
 
     expect(onCloseBehaviorChange).toHaveBeenCalledWith("exit");
