@@ -153,6 +153,18 @@ export interface SkillMarketItem {
   installable: boolean;
 }
 
+export type SkillMarketMode = "leaderboard" | "search";
+
+export interface SkillMarketResponse {
+  items: SkillMarketItem[];
+  mode: SkillMarketMode;
+  query: string;
+  loaded: number;
+  hasMore: boolean;
+  limit?: number | null;
+  message?: string | null;
+}
+
 export interface SkillMarketDetail {
   item: SkillMarketItem;
   repositoryUrl: string;

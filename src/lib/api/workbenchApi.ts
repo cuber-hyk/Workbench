@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { projects, radarItems, settings, skillCategories, skills } from "./mockData";
-import type { CloseBehavior, CustomToolTargetInput, ExternalSkillCandidateGroup, ExternalSkillSyncResult, ExternalSkillSyncSelection, GitHubCliStatus, GitHubStarsSyncResult, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, ManagedTargetRebuildResult, ManagedTargetRebuildSelection, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, RootSkillMigrationCandidate, SkillInstallProgress, SkillMarketDetail, SkillMarketItem, SkillUpdateProgress, SkillUpdateResult, SkillUpdateStatus, SkillVersionSource, SkillsRootMigrationState, SkillsState, ToolKey } from "../types/domain";
+import type { CloseBehavior, CustomToolTargetInput, ExternalSkillCandidateGroup, ExternalSkillSyncResult, ExternalSkillSyncSelection, GitHubCliStatus, GitHubStarsSyncResult, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, ManagedTargetRebuildResult, ManagedTargetRebuildSelection, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, RootSkillMigrationCandidate, SkillInstallProgress, SkillMarketDetail, SkillMarketItem, SkillMarketResponse, SkillUpdateProgress, SkillUpdateResult, SkillUpdateStatus, SkillVersionSource, SkillsRootMigrationState, SkillsState, ToolKey } from "../types/domain";
 
 const delay = async () => new Promise((resolve) => window.setTimeout(resolve, 80));
 const isTauri = "__TAURI_INTERNALS__" in window;
@@ -308,18 +308,30 @@ export const workbenchApi = {
   async getSkillsState() {
     return skillsState();
   },
-  async listSkillMarket(query?: string) {
+  async listSkillMarket(query?: string, limit?: number): Promise<SkillMarketResponse> {
     if (!isTauri) {
       await delay();
       const normalized = (query ?? "").trim().toLowerCase();
-      return previewMarketItems.filter((item) =>
+      const items = previewMarketItems.filter((item) =>
         !normalized ||
         item.name.toLowerCase().includes(normalized) ||
         item.skillId.toLowerCase().includes(normalized) ||
         item.source.toLowerCase().includes(normalized)
       );
+      return {
+        items,
+        mode: normalized ? "search" : "leaderboard",
+        query: normalized,
+        loaded: items.length,
+        hasMore: normalized ? items.length >= (limit ?? 100) : false,
+        limit: normalized ? limit ?? 100 : null,
+        message: null
+      };
     }
-    return invoke<SkillMarketItem[]>("list_skill_market", { query: query || null });
+    return invoke<SkillMarketResponse>("list_skill_market", {
+      query: query || null,
+      limit: limit ?? null
+    });
   },
   async getSkillMarketDetail(source: string, skillId: string) {
     if (!isTauri) {

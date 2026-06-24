@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { CircleCheck, ExternalLink, PackagePlus, RefreshCcw, Trash2 } from "lucide-react";
 import { Button, DetailHeader, IconButton, PaginationBar, Panel, SearchInput, Toolbar } from "../../components/ui";
-import type { SkillMarketDetail, SkillMarketItem } from "../../lib/types/domain";
-import { clampPage, DEFAULT_PAGE_SIZE, paginateItems } from "../../lib/ui/pagination";
+import type { SkillMarketDetail, SkillMarketItem, SkillMarketMode } from "../../lib/types/domain";
+import { clampPage, DEFAULT_PAGE_SIZE, pageCount, paginateItems } from "../../lib/ui/pagination";
 import { SkillStatusIndicator } from "./SkillStatusIndicator";
-import { formatInstallCount, marketItemStatus, marketRepositoryUrl, type MarketStats } from "./skillMarketFormatters";
+import { formatInstallCount, marketItemStatus, marketRepositoryUrl, marketSourceFallback, marketSourceIconUrl, type MarketStats } from "./skillMarketFormatters";
 
 export type MarketInstallTask = {
   key: string;
@@ -56,6 +56,10 @@ export function SkillsMarketView({
   statusFilter,
   stats,
   currentCount,
+  loadedCount,
+  mode,
+  hasMore,
+  loadingMore,
   loading,
   error,
   installTask,
@@ -64,6 +68,7 @@ export function SkillsMarketView({
   onStatusFilterChange,
   onRefresh,
   onSearch,
+  onLoadMore,
   onSelect,
   onInstall,
   onUninstall,
@@ -76,6 +81,10 @@ export function SkillsMarketView({
   statusFilter: "全部状态" | "未安装" | "已安装" | "可更新" | "不可安装";
   stats: MarketStats;
   currentCount: number;
+  loadedCount: number;
+  mode: SkillMarketMode;
+  hasMore: boolean;
+  loadingMore: boolean;
   loading: boolean;
   error: string;
   installTask: MarketInstallTask | null;
@@ -84,6 +93,7 @@ export function SkillsMarketView({
   onStatusFilterChange: (status: "全部状态" | "未安装" | "已安装" | "可更新" | "不可安装") => void;
   onRefresh: () => void;
   onSearch: () => void;
+  onLoadMore: (targetPage: number, pageSize: number) => Promise<void> | void;
   onSelect: (item: SkillMarketItem) => void;
   onInstall: (item: SkillMarketItem) => void;
   onUninstall: (item: SkillMarketItem) => void;
@@ -92,6 +102,7 @@ export function SkillsMarketView({
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const currentPage = clampPage(page, items.length, pageSize);
+  const currentTotalPages = pageCount(items.length, pageSize);
   const pagedItems = paginateItems(items, currentPage, pageSize);
   const selectedKey = selectedItem ? `${selectedItem.source}/${selectedItem.skillId}` : "";
   const pageSelectedItem = pagedItems.find((item) => `${item.source}/${item.skillId}` === selectedKey);
@@ -111,6 +122,14 @@ export function SkillsMarketView({
   const activeKey = activeItem ? `${activeItem.source}/${activeItem.skillId}` : "";
   const detailMatchesActive = detail ? `${detail.item.source}/${detail.item.skillId}` === activeKey : false;
   const repositoryUrl = activeItem ? (detailMatchesActive ? detail?.repositoryUrl : "") || marketRepositoryUrl(activeItem) : "";
+  function handlePageChange(nextPage: number) {
+    if (nextPage <= currentTotalPages) {
+      setPage(nextPage);
+      return;
+    }
+    if (!hasMore) return;
+    void Promise.resolve(onLoadMore(nextPage, pageSize)).then(() => setPage(nextPage));
+  }
   return (
     <>
       <Toolbar>
@@ -139,7 +158,7 @@ export function SkillsMarketView({
       )}
       <div className="market-stats" aria-label="技能市场统计">
         {[
-          [stats.total, "全部"],
+          [stats.total, "已加载"],
           [stats.installed, "已安装"],
           [stats.notInstalled, "未安装"],
           [stats.updateAvailable, "可更新"],
@@ -156,8 +175,8 @@ export function SkillsMarketView({
         <Panel className="list-panel">
           <div className="table-head market-grid"><span>远程 Skill</span><span>来源</span><span>状态</span><span>下载</span><span className="table-action-heading">操作</span></div>
           <div className="list-body">
-            {loading && <MarketListSkeleton />}
-            {!loading && pagedItems.map((item) => {
+            {loading && !loadingMore && <MarketListSkeleton />}
+            {(!loading || loadingMore) && pagedItems.map((item) => {
               const key = `${item.source}/${item.skillId}`;
               const taskForItem = installTask?.key === key ? installTask : null;
               const installing = taskForItem?.status === "running";
@@ -175,7 +194,7 @@ export function SkillsMarketView({
                   }}
                 >
                   <span className="title-cell"><strong>{item.name}</strong><small>{item.description || item.skillId}</small></span>
-                  <span className="path">{item.source}</span>
+                  <MarketSourceCell item={item} />
                   <SkillStatusIndicator status={marketItemStatus(item)} />
                   <span>{formatInstallCount(item.installs)}</span>
                   <span className={`row-actions table-actions install-action ${installing ? "progressing" : ""}`}>
@@ -216,19 +235,26 @@ export function SkillsMarketView({
               );
             })}
           </div>
-          {!loading && items.length > pageSize && (
+          {!loading && (items.length > pageSize || hasMore) && (
             <PaginationBar
               total={items.length}
               page={currentPage}
               pageSize={pageSize}
               label="技能市场分页"
-              onPageChange={setPage}
+              hasMore={hasMore}
+              loadingMore={loadingMore}
+              onPageChange={handlePageChange}
               onPageSizeChange={setPageSize}
             />
           )}
+          {!loading && mode === "search" && (
+            <div className="market-load-meta">
+              已加载 {loadedCount} 项{hasMore ? "，继续下一页可加载更多" : "，没有更多可加载结果"}
+            </div>
+          )}
         </Panel>
         <Panel className="detail-panel market-detail-panel">
-          {loading ? (
+          {loading && !loadingMore ? (
             <MarketDetailSkeleton />
           ) : activeItem ? (
             <>
@@ -255,5 +281,26 @@ export function SkillsMarketView({
         </Panel>
       </div>
     </>
+  );
+}
+
+function MarketSourceCell({ item }: { item: SkillMarketItem }) {
+  const [failed, setFailed] = useState(false);
+  const iconUrl = marketSourceIconUrl(item);
+  const fallback = marketSourceFallback(item);
+  return (
+    <span className="market-source-cell">
+      {iconUrl && !failed ? (
+        <img
+          src={iconUrl}
+          alt=""
+          aria-hidden="true"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <i aria-hidden="true">{fallback}</i>
+      )}
+      <small className="path">{item.source}</small>
+    </span>
   );
 }
