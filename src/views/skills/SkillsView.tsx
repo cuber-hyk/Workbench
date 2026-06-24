@@ -5,13 +5,36 @@ import { DeleteMarketSkillDialog } from "../../components/dialogs/skills/DeleteM
 import { workbenchApi } from "../../lib/api/workbenchApi";
 import { ToolIcon } from "../../lib/ui/toolIcons";
 import { clampPage, DEFAULT_PAGE_SIZE, paginateItems } from "../../lib/ui/pagination";
-import type { AppSettings, Project, Skill, SkillCategory, SkillMarketDetail, SkillMarketItem, SkillUpdateResult, SkillUpdateStatus, SkillVersionSource, ToolKey, ToolTarget } from "../../lib/types/domain";
+import type { AppSettings, Project, Skill, SkillCategory, SkillMarketDetail, SkillMarketItem, SkillMarketMode, SkillMarketResponse, SkillUpdateResult, SkillUpdateStatus, SkillVersionSource, ToolKey, ToolTarget } from "../../lib/types/domain";
 import { SkillUpdatesView } from "./SkillUpdatesView";
 import { SkillsMarketView, type MarketInstallTask } from "./SkillsMarketView";
 import { buildMarketStats, localMarketDetail } from "./skillMarketFormatters";
 import { globalStatusLabel, skillMatchesStatusFilter, skillMatchesToolProjectFilter, syncMethodLabel } from "./skillFilters";
 
-let skillMarketRuntimeCache: { items: SkillMarketItem[]; updatedAt: number } | null = null;
+let skillMarketRuntimeCache: { response: SkillMarketResponse; updatedAt: number } | null = null;
+const MARKET_DEFAULT_SEARCH_LIMIT = 100;
+const MARKET_MAX_SEARCH_LIMIT = 2000;
+
+function marketSearchBatchSize(pageSize: number) {
+  return Math.min(Math.max(pageSize * 4, 100), 400);
+}
+
+function normalizeMarketResponse(
+  response: SkillMarketResponse | SkillMarketItem[],
+  query: string,
+  limit?: number
+): SkillMarketResponse {
+  if (!Array.isArray(response)) return response;
+  return {
+    items: response,
+    mode: query ? "search" : "leaderboard",
+    query,
+    loaded: response.length,
+    hasMore: false,
+    limit: query ? limit ?? MARKET_DEFAULT_SEARCH_LIMIT : null,
+    message: null
+  };
+}
 
 export function clearSkillMarketRuntimeCache() {
   skillMarketRuntimeCache = null;
@@ -70,6 +93,12 @@ export function SkillsView({
   const [marketQuery, setMarketQuery] = useState("");
   const [marketStatusFilter, setMarketStatusFilter] = useState<"全部状态" | "未安装" | "已安装" | "可更新" | "不可安装">("全部状态");
   const [marketItems, setMarketItems] = useState<SkillMarketItem[]>([]);
+  const [marketMode, setMarketMode] = useState<SkillMarketMode>("leaderboard");
+  const [marketActiveQuery, setMarketActiveQuery] = useState("");
+  const [marketLoaded, setMarketLoaded] = useState(0);
+  const [marketHasMore, setMarketHasMore] = useState(false);
+  const [marketLimit, setMarketLimit] = useState<number | null>(null);
+  const [marketLoadingMore, setMarketLoadingMore] = useState(false);
   const [selectedMarketKey, setSelectedMarketKey] = useState("");
   const [marketDetail, setMarketDetail] = useState<SkillMarketDetail | null>(null);
   const [marketLoading, setMarketLoading] = useState(false);
@@ -110,11 +139,12 @@ export function SkillsView({
   const visibleSelectedSkill = pagedSkills.find((skill) => skill.id === selectedSkill.id);
   const visibleMarketItems = marketItems.filter((item) => {
     const normalizedQuery = marketQuery.trim().toLowerCase();
+    const localQueryFilter = marketMode === "leaderboard" ? normalizedQuery : "";
     const matchesQuery =
-      !normalizedQuery ||
-      item.name.toLowerCase().includes(normalizedQuery) ||
-      item.skillId.toLowerCase().includes(normalizedQuery) ||
-      item.source.toLowerCase().includes(normalizedQuery);
+      !localQueryFilter ||
+      item.name.toLowerCase().includes(localQueryFilter) ||
+      item.skillId.toLowerCase().includes(localQueryFilter) ||
+      item.source.toLowerCase().includes(localQueryFilter);
     const matchesStatus =
       marketStatusFilter === "全部状态" ||
       (marketStatusFilter === "未安装" && !item.installedDirectoryName && item.installable) ||
@@ -191,25 +221,76 @@ export function SkillsView({
     void loadMarketDetail(selectedMarketItem);
   }, [selectedMarketItem?.source, selectedMarketItem?.skillId]);
 
-  async function loadMarketItems(query = marketQuery, force = false) {
-    if (skillMarketRuntimeCache && !force) {
-      setMarketItems(skillMarketRuntimeCache.items);
-      setSelectedMarketKey((current) => current || (skillMarketRuntimeCache?.items[0] ? `${skillMarketRuntimeCache.items[0].source}/${skillMarketRuntimeCache.items[0].skillId}` : ""));
-      return;
+  function applyMarketResponse(response: SkillMarketResponse) {
+    setMarketItems(response.items);
+    setMarketMode(response.mode);
+    setMarketActiveQuery(response.query);
+    setMarketLoaded(response.loaded);
+    setMarketHasMore(response.hasMore);
+    setMarketLimit(response.limit ?? null);
+    setSelectedMarketKey((current) => {
+      if (current && response.items.some((item) => `${item.source}/${item.skillId}` === current)) return current;
+      return response.items[0] ? `${response.items[0].source}/${response.items[0].skillId}` : "";
+    });
+  }
+
+  async function loadMarketItems(query = marketQuery, force = false, limit?: number) {
+    const normalizedQuery = query.trim();
+    if (!normalizedQuery && skillMarketRuntimeCache && !force) {
+      applyMarketResponse(skillMarketRuntimeCache.response);
+      return skillMarketRuntimeCache.response;
     }
     setMarketLoading(true);
     setMarketError("");
     try {
-      const items = await workbenchApi.listSkillMarket(query);
-      setMarketItems(items);
-      if (!query.trim()) {
-        skillMarketRuntimeCache = { items, updatedAt: Date.now() };
+      if (normalizedQuery && normalizedQuery.length < 2) {
+        throw new Error("搜索关键词至少需要 2 个字符");
       }
-      setSelectedMarketKey((current) => current || (items[0] ? `${items[0].source}/${items[0].skillId}` : ""));
+      const requestLimit = normalizedQuery ? limit ?? MARKET_DEFAULT_SEARCH_LIMIT : undefined;
+      const response = normalizeMarketResponse(
+        await workbenchApi.listSkillMarket(normalizedQuery, requestLimit) as SkillMarketResponse | SkillMarketItem[],
+        normalizedQuery,
+        requestLimit
+      );
+      applyMarketResponse(response);
+      if (!normalizedQuery) {
+        skillMarketRuntimeCache = { response, updatedAt: Date.now() };
+      }
+      return response;
     } catch (error) {
       setMarketError(String(error));
+      return null;
     } finally {
       setMarketLoading(false);
+    }
+  }
+
+  async function searchMarketItems() {
+    const normalizedQuery = marketQuery.trim();
+    const limit = normalizedQuery ? MARKET_DEFAULT_SEARCH_LIMIT : undefined;
+    await loadMarketItems(normalizedQuery, true, limit);
+  }
+
+  async function refreshMarketItems() {
+    const query = marketMode === "search" ? marketActiveQuery : "";
+    await loadMarketItems(query, true, query ? marketLimit ?? MARKET_DEFAULT_SEARCH_LIMIT : undefined);
+  }
+
+  async function loadMoreMarketItems(targetPage: number, pageSize: number) {
+    if (marketMode !== "search" || !marketActiveQuery || marketLoadingMore) return;
+    const currentLimit = marketLimit ?? MARKET_DEFAULT_SEARCH_LIMIT;
+    const batchSize = marketSearchBatchSize(pageSize);
+    const nextLimit = Math.min(
+      MARKET_MAX_SEARCH_LIMIT,
+      Math.max(currentLimit + batchSize, targetPage * pageSize)
+    );
+    if (nextLimit <= currentLimit) return;
+
+    setMarketLoadingMore(true);
+    try {
+      await loadMarketItems(marketActiveQuery, true, nextLimit);
+    } finally {
+      setMarketLoadingMore(false);
     }
   }
 
@@ -485,14 +566,19 @@ export function SkillsView({
           statusFilter={marketStatusFilter}
           stats={marketStats}
           currentCount={visibleMarketItems.length}
+          loadedCount={marketLoaded}
+          mode={marketMode}
+          hasMore={marketHasMore}
+          loadingMore={marketLoadingMore}
           loading={marketLoading}
           error={marketError}
           installTask={marketInstallTask ?? null}
           uninstallingKey={uninstallingMarketKey}
           onQueryChange={setMarketQuery}
           onStatusFilterChange={setMarketStatusFilter}
-          onRefresh={() => void loadMarketItems("", true)}
-          onSearch={() => void loadMarketItems(marketQuery)}
+          onRefresh={() => void refreshMarketItems()}
+          onSearch={() => void searchMarketItems()}
+          onLoadMore={(targetPage, pageSize) => loadMoreMarketItems(targetPage, pageSize)}
           onSelect={(item) => setSelectedMarketKey(`${item.source}/${item.skillId}`)}
           onInstall={handleMarketInstall}
           onUninstall={setDeletingMarketItem}

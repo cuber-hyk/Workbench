@@ -2,11 +2,15 @@ use std::collections::HashSet;
 
 use regex::Regex;
 use rusqlite::{params, Connection};
+use serde_json::Value;
 
 use super::{
-    error_message, SkillMarketDetail, SkillMarketItem, SkillResult, SkillSourceRecord,
-    SkillUpdateState,
+    error_message, SkillMarketDetail, SkillMarketItem, SkillMarketMode, SkillMarketResponse,
+    SkillResult, SkillSourceRecord, SkillUpdateState,
 };
+
+pub(super) const MARKET_SEARCH_DEFAULT_LIMIT: usize = 100;
+pub(super) const MARKET_SEARCH_MAX_LIMIT: usize = 2000;
 
 pub(super) fn http_get_text(url: &str) -> SkillResult<String> {
     ureq::get(url)
@@ -15,6 +19,124 @@ pub(super) fn http_get_text(url: &str) -> SkillResult<String> {
         .map_err(|error| format!("请求远程来源失败: {error}"))?
         .into_string()
         .map_err(error_message)
+}
+
+pub(super) fn market_search_limit(limit: Option<usize>) -> usize {
+    limit
+        .unwrap_or(MARKET_SEARCH_DEFAULT_LIMIT)
+        .clamp(1, MARKET_SEARCH_MAX_LIMIT)
+}
+
+pub(super) fn leaderboard_response(items: Vec<SkillMarketItem>) -> SkillMarketResponse {
+    SkillMarketResponse {
+        loaded: items.len(),
+        items,
+        mode: SkillMarketMode::Leaderboard,
+        query: String::new(),
+        has_more: false,
+        limit: None,
+        message: None,
+    }
+}
+
+pub(super) fn search_response(
+    query: &str,
+    limit: usize,
+    items: Vec<SkillMarketItem>,
+) -> SkillMarketResponse {
+    let loaded = items.len();
+    SkillMarketResponse {
+        items,
+        mode: SkillMarketMode::Search,
+        query: query.to_string(),
+        loaded,
+        has_more: loaded >= limit && limit < MARKET_SEARCH_MAX_LIMIT,
+        limit: Some(limit),
+        message: None,
+    }
+}
+
+pub(super) fn fetch_market_search(query: &str, limit: usize) -> SkillResult<Vec<SkillMarketItem>> {
+    let normalized = query.trim();
+    if normalized.chars().count() < 2 {
+        return Err("搜索关键词至少需要 2 个字符".to_string());
+    }
+
+    let limit_value = limit.to_string();
+    let response = ureq::get("https://skills.sh/api/search")
+        .set("User-Agent", "Workbench-App/0.1")
+        .query("q", normalized)
+        .query("limit", &limit_value)
+        .call();
+
+    let body = match response {
+        Ok(response) => response.into_string().map_err(error_message)?,
+        Err(ureq::Error::Status(429, _)) => {
+            return Err("skills.sh 搜索请求过于频繁，请稍后重试。".to_string());
+        }
+        Err(error) => return Err(format!("请求 skills.sh 搜索失败: {error}")),
+    };
+
+    parse_market_search_response(&body)
+}
+
+pub(super) fn parse_market_search_response(body: &str) -> SkillResult<Vec<SkillMarketItem>> {
+    let value: Value = serde_json::from_str(body).map_err(error_message)?;
+    let skills = value
+        .get("skills")
+        .and_then(Value::as_array)
+        .or_else(|| value.as_array())
+        .ok_or_else(|| "无法解析 skills.sh 搜索结果".to_string())?;
+
+    let mut seen = HashSet::new();
+    let mut items = Vec::new();
+    for skill in skills {
+        let source = skill
+            .get("source")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let skill_id = skill
+            .get("skillId")
+            .or_else(|| skill.get("skill_id"))
+            .or_else(|| skill.get("slug"))
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if source.is_empty() || skill_id.is_empty() {
+            continue;
+        }
+        if !seen.insert(format!("{source}/{skill_id}")) {
+            continue;
+        }
+        let name = skill
+            .get("name")
+            .and_then(Value::as_str)
+            .filter(|name| !name.trim().is_empty())
+            .unwrap_or(skill_id);
+        let description = skill
+            .get("description")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let installs = skill.get("installs").and_then(Value::as_i64).unwrap_or(0);
+        let official = skill
+            .get("isOfficial")
+            .or_else(|| skill.get("official"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+
+        items.push(SkillMarketItem {
+            source: source.to_string(),
+            skill_id: skill_id.to_string(),
+            name: name.to_string(),
+            description: description.to_string(),
+            installs,
+            official,
+            installed_directory_name: None,
+            update_status: SkillUpdateState::NotInstalled,
+            installable: github_source(source),
+        });
+    }
+
+    Ok(items)
 }
 
 fn decode_next_payload(html: &str) -> String {

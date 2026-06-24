@@ -290,6 +290,25 @@ pub struct SkillMarketItem {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SkillMarketMode {
+    Leaderboard,
+    Search,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillMarketResponse {
+    pub items: Vec<SkillMarketItem>,
+    pub mode: SkillMarketMode,
+    pub query: String,
+    pub loaded: usize,
+    pub has_more: bool,
+    pub limit: Option<usize>,
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SkillMarketDetail {
     pub item: SkillMarketItem,

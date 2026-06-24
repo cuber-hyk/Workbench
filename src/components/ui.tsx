@@ -68,7 +68,9 @@ export function PaginationBar({
   pageSize,
   onPageChange,
   onPageSizeChange,
-  label = "分页"
+  label = "分页",
+  hasMore = false,
+  loadingMore = false
 }: {
   total: number;
   page: number;
@@ -76,6 +78,8 @@ export function PaginationBar({
   onPageChange: (page: number) => void;
   onPageSizeChange: (pageSize: number) => void;
   label?: string;
+  hasMore?: boolean;
+  loadingMore?: boolean;
 }) {
   const totalPages = pageCount(total, pageSize);
   const start = total === 0 ? 0 : (page - 1) * pageSize + 1;
@@ -112,7 +116,7 @@ export function PaginationBar({
             {PAGE_SIZE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
           </select>
         </label>
-        <Button disabled={page <= 1} onClick={() => onPageChange(page - 1)}>上一页</Button>
+        <Button disabled={page <= 1 || loadingMore} onClick={() => onPageChange(page - 1)}>上一页</Button>
         <label className="page-jump">
           第
           <input
@@ -129,7 +133,12 @@ export function PaginationBar({
           />
           页 / {totalPages}
         </label>
-        <Button disabled={page >= totalPages} onClick={() => onPageChange(page + 1)}>下一页</Button>
+        <Button
+          disabled={loadingMore || (page >= totalPages && !hasMore)}
+          onClick={() => onPageChange(page + 1)}
+        >
+          {loadingMore && page >= totalPages ? "加载中" : "下一页"}
+        </Button>
       </span>
     </div>
   );

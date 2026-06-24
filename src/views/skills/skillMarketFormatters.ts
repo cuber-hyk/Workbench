@@ -11,6 +11,17 @@ export function marketRepositoryUrl(item: SkillMarketItem) {
   return item.installable ? `https://github.com/${item.source}` : "";
 }
 
+export function marketSourceIconUrl(item: SkillMarketItem) {
+  if (!item.installable) return "";
+  const owner = item.source.split("/")[0];
+  return owner ? `https://github.com/${owner}.png?size=40` : "";
+}
+
+export function marketSourceFallback(item: SkillMarketItem) {
+  const source = item.source.split("/")[0] || item.source || item.name;
+  return source.trim().charAt(0).toUpperCase() || "?";
+}
+
 export function localMarketDetail(item: SkillMarketItem): SkillMarketDetail {
   return {
     item,

@@ -638,21 +638,24 @@ fn source_backup_path(workbench_root: &Path, directory_name: &str) -> SkillResul
 }
 
 #[tauri::command]
-pub fn list_skill_market(query: Option<String>) -> SkillResult<Vec<SkillMarketItem>> {
+pub fn list_skill_market(
+    query: Option<String>,
+    limit: Option<usize>,
+) -> SkillResult<SkillMarketResponse> {
     let workbench_root = default_workbench_root()?;
     let connection = open_database(&workbench_root)?;
-    let html = http_get_text("https://www.skills.sh")?;
-    let mut items = parse_market_items(&html)?;
-    enrich_market_items(&connection, &mut items)?;
     let normalized = query.unwrap_or_default().trim().to_lowercase();
-    if !normalized.is_empty() {
-        items.retain(|item| {
-            item.name.to_lowercase().contains(&normalized)
-                || item.skill_id.to_lowercase().contains(&normalized)
-                || item.source.to_lowercase().contains(&normalized)
-        });
+    if normalized.is_empty() {
+        let html = http_get_text("https://www.skills.sh")?;
+        let mut items = parse_market_items(&html)?;
+        enrich_market_items(&connection, &mut items)?;
+        return Ok(leaderboard_response(items));
     }
-    Ok(items)
+
+    let bounded_limit = market_search_limit(limit);
+    let mut items = fetch_market_search(&normalized, bounded_limit)?;
+    enrich_market_items(&connection, &mut items)?;
+    Ok(search_response(&normalized, bounded_limit, items))
 }
 
 #[tauri::command]
@@ -1229,6 +1232,59 @@ mod tests {
         assert!(items[0].installable);
         assert_eq!(items[1].update_status, SkillUpdateState::NotInstalled);
         assert!(!items[1].installable);
+    }
+
+    #[test]
+    fn parses_skills_sh_search_response() {
+        let body = r#"
+            {"query":"react","skills":[
+              {"id":"vercel-labs/agent-skills/vercel-react-best-practices","source":"vercel-labs/agent-skills","skillId":"vercel-react-best-practices","name":"Vercel React","description":"React patterns","installs":498380,"isOfficial":true},
+              {"id":"skills.volces.com/byted-web-search","source":"skills.volces.com","skillId":"byted-web-search","name":"byted-web-search","installs":25028}
+            ],"count":2}
+        "#;
+
+        let items = parse_market_search_response(body).unwrap();
+
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].source, "vercel-labs/agent-skills");
+        assert_eq!(items[0].skill_id, "vercel-react-best-practices");
+        assert_eq!(items[0].description, "React patterns");
+        assert!(items[0].official);
+        assert!(items[0].installable);
+        assert!(!items[1].installable);
+    }
+
+    #[test]
+    fn market_search_limit_is_bounded() {
+        assert_eq!(market_search_limit(None), MARKET_SEARCH_DEFAULT_LIMIT);
+        assert_eq!(market_search_limit(Some(0)), 1);
+        assert_eq!(market_search_limit(Some(60)), 60);
+        assert_eq!(
+            market_search_limit(Some(MARKET_SEARCH_MAX_LIMIT + 1)),
+            MARKET_SEARCH_MAX_LIMIT
+        );
+    }
+
+    #[test]
+    fn market_search_response_reports_more_until_cap() {
+        let items = vec![SkillMarketItem {
+            source: "vercel-labs/skills".to_string(),
+            skill_id: "find-skills".to_string(),
+            name: "find-skills".to_string(),
+            description: String::new(),
+            installs: 1,
+            official: false,
+            installed_directory_name: None,
+            update_status: SkillUpdateState::NotInstalled,
+            installable: true,
+        }];
+
+        let response = search_response("skill", 1, items.clone());
+        assert!(response.has_more);
+        assert_eq!(response.loaded, 1);
+
+        let capped = search_response("skill", MARKET_SEARCH_MAX_LIMIT, items);
+        assert!(!capped.has_more);
     }
 
     #[test]

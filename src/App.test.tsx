@@ -10,7 +10,7 @@ import { SkillCategoryDialog } from "./components/dialogs/skills/SkillCategoryDi
 import { SkillsRootMigrationDialog } from "./components/dialogs/skills/SkillsRootMigrationDialog";
 import { AppUpdateProvider } from "./contexts/AppUpdateContext";
 import { workbenchApi } from "./lib/api/workbenchApi";
-import type { AppSettings, ExternalSkillCandidateGroup, LaunchSessionEvent, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, Skill, SkillCategory, SkillMarketItem, SkillUpdateResult, SkillsRootMigrationState, SkillsState } from "./lib/types/domain";
+import type { AppSettings, ExternalSkillCandidateGroup, LaunchSessionEvent, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, Skill, SkillCategory, SkillMarketItem, SkillMarketResponse, SkillUpdateResult, SkillsRootMigrationState, SkillsState } from "./lib/types/domain";
 import { ProjectsView } from "./views/projects/ProjectsView";
 import { applyPendingLaunchEvents, markLaunchRunStopped, mergeLaunchRunSnapshots } from "./views/projects/launchState";
 import { RadarView } from "./views/radar/RadarView";
@@ -295,6 +295,18 @@ function testMarketItems(): SkillMarketItem[] {
       installable: false
     }
   ];
+}
+
+function testMarketResponse(items = testMarketItems(), query = ""): SkillMarketResponse {
+  return {
+    items,
+    mode: query ? "search" : "leaderboard",
+    query,
+    loaded: items.length,
+    hasMore: false,
+    limit: query ? 100 : null,
+    message: null
+  };
 }
 
 function installedSkillsState(): SkillsState {
@@ -2373,6 +2385,10 @@ describe("Workbench UI interactions", () => {
         statusFilter="全部状态"
         stats={buildMarketStats(items)}
         currentCount={items.length}
+        loadedCount={items.length}
+        mode="leaderboard"
+        hasMore={false}
+        loadingMore={false}
         loading
         error=""
         installTask={null}
@@ -2384,6 +2400,7 @@ describe("Workbench UI interactions", () => {
         onSelect={vi.fn()}
         onInstall={vi.fn()}
         onUninstall={vi.fn()}
+        onLoadMore={vi.fn()}
         onOpenSource={vi.fn()}
       />
     );
@@ -2392,6 +2409,84 @@ describe("Workbench UI interactions", () => {
     expect(screen.getByLabelText("正在加载 Skill 详情")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /next-upgrade/ })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "刷新中" }).querySelector("svg")).toHaveClass("spin");
+  });
+
+  it("shows repository icons and text fallback in the skills.sh market source column", () => {
+    const items = testMarketItems();
+    const { container } = render(
+      <SkillsMarketView
+        items={items}
+        selectedItem={items[0]}
+        detail={null}
+        query=""
+        statusFilter="全部状态"
+        stats={buildMarketStats(items)}
+        currentCount={items.length}
+        loadedCount={items.length}
+        mode="leaderboard"
+        hasMore={false}
+        loadingMore={false}
+        loading={false}
+        error=""
+        installTask={null}
+        uninstallingKey=""
+        onQueryChange={vi.fn()}
+        onStatusFilterChange={vi.fn()}
+        onRefresh={vi.fn()}
+        onSearch={vi.fn()}
+        onSelect={vi.fn()}
+        onInstall={vi.fn()}
+        onUninstall={vi.fn()}
+        onLoadMore={vi.fn()}
+        onOpenSource={vi.fn()}
+      />
+    );
+
+    expect(container.querySelector('img[src="https://github.com/vercel-labs.png?size=40"]')).toBeInTheDocument();
+    expect(container.querySelector(".market-source-cell i")).toHaveTextContent("O");
+  });
+
+  it("loads more search results from the next market page after the loaded end", async () => {
+    const user = userEvent.setup();
+    const items = Array.from({ length: 60 }, (_, index) => ({
+      ...testMarketItems()[0],
+      skillId: `market-skill-${index}`,
+      name: `market-skill-${index}`
+    }));
+    const onLoadMore = vi.fn();
+    render(
+      <SkillsMarketView
+        items={items}
+        selectedItem={items[0]}
+        detail={null}
+        query="market"
+        statusFilter="全部状态"
+        stats={buildMarketStats(items)}
+        currentCount={items.length}
+        loadedCount={items.length}
+        mode="search"
+        hasMore
+        loadingMore={false}
+        loading={false}
+        error=""
+        installTask={null}
+        uninstallingKey=""
+        onQueryChange={vi.fn()}
+        onStatusFilterChange={vi.fn()}
+        onRefresh={vi.fn()}
+        onSearch={vi.fn()}
+        onSelect={vi.fn()}
+        onInstall={vi.fn()}
+        onUninstall={vi.fn()}
+        onLoadMore={onLoadMore}
+        onOpenSource={vi.fn()}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: "下一页" }));
+    await user.click(screen.getByRole("button", { name: "下一页" }));
+
+    expect(onLoadMore).toHaveBeenCalledWith(3, 50);
   });
 
   it("opens the skills.sh market and installs a selected skill through Workbench", async () => {
@@ -2435,7 +2530,7 @@ describe("Workbench UI interactions", () => {
 
     await user.click(screen.getByRole("button", { name: "技能市场" }));
     expect((await screen.findAllByText("next-upgrade")).length).toBeGreaterThan(0);
-    expect(screen.getByLabelText("技能市场统计")).toHaveTextContent("全部");
+    expect(screen.getByLabelText("技能市场统计")).toHaveTextContent("已加载");
     expect(screen.getAllByLabelText("不支持").length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: "不支持" })).not.toBeInTheDocument();
     expect(screen.getByLabelText("不可安装")).toBeInTheDocument();
@@ -2453,7 +2548,7 @@ describe("Workbench UI interactions", () => {
 
   it("shows unsupported market items without requesting remote details", async () => {
     const user = userEvent.setup();
-    const listMarket = vi.spyOn(workbenchApi, "listSkillMarket").mockResolvedValue(testMarketItems());
+    const listMarket = vi.spyOn(workbenchApi, "listSkillMarket").mockResolvedValue(testMarketResponse());
     const getDetail = vi.spyOn(workbenchApi, "getSkillMarketDetail").mockResolvedValue({
       item: testMarketItems()[0],
       repositoryUrl: "https://github.com/vercel-labs/next-skills",
@@ -2509,7 +2604,7 @@ describe("Workbench UI interactions", () => {
     const user = userEvent.setup();
     let reportProgress: ((progress: number) => void) | undefined;
     let finishInstall: (() => void) | undefined;
-    const listMarket = vi.spyOn(workbenchApi, "listSkillMarket").mockResolvedValue(testMarketItems());
+    const listMarket = vi.spyOn(workbenchApi, "listSkillMarket").mockResolvedValue(testMarketResponse());
     const installSkill = vi.spyOn(workbenchApi, "installSkillFromMarket").mockImplementation((_source, _skillId, onProgress) => {
       reportProgress = onProgress;
       return new Promise<SkillsState>((resolve) => {
@@ -2549,7 +2644,7 @@ describe("Workbench UI interactions", () => {
     const user = userEvent.setup();
     let reportProgress: ((progress: number) => void) | undefined;
     let finishInstall: (() => void) | undefined;
-    const listMarket = vi.spyOn(workbenchApi, "listSkillMarket").mockResolvedValue(testMarketItems());
+    const listMarket = vi.spyOn(workbenchApi, "listSkillMarket").mockResolvedValue(testMarketResponse());
     const installSkill = vi.spyOn(workbenchApi, "installSkillFromMarket").mockImplementation((_source, _skillId, onProgress) => {
       reportProgress = onProgress;
       return new Promise<SkillsState>((resolve) => {
@@ -2588,7 +2683,7 @@ describe("Workbench UI interactions", () => {
 
   it("keeps the market visible when update refresh fails after a successful install", async () => {
     const user = userEvent.setup();
-    const listMarket = vi.spyOn(workbenchApi, "listSkillMarket").mockResolvedValue(testMarketItems());
+    const listMarket = vi.spyOn(workbenchApi, "listSkillMarket").mockResolvedValue(testMarketResponse());
     const installSkill = vi.spyOn(workbenchApi, "installSkillFromMarket").mockImplementation(async (_source, _skillId, onProgress) => {
       const { projectOpenProfiles: _missingProjectOpenProfiles, ...settingsWithoutProjectProfiles } = installedSkillsState().settings;
       void _missingProjectOpenProfiles;
