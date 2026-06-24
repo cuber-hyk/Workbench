@@ -11,11 +11,39 @@
       },
       "sidebar": {
         "$type": "color",
-        "$value": "#12171c"
+        "$value": "#ffffff"
       },
       "sidebarActive": {
         "$type": "color",
-        "$value": "#1b3032"
+        "$value": "#e5f7f4"
+      },
+      "sidebarHover": {
+        "$type": "color",
+        "$value": "#eef5f4"
+      },
+      "sidebarSurface": {
+        "$type": "color",
+        "$value": "#f8fafb"
+      },
+      "sidebarControl": {
+        "$type": "color",
+        "$value": "#ffffff"
+      },
+      "sidebarControlHover": {
+        "$type": "color",
+        "$value": "#eef5f4"
+      },
+      "sidebarText": {
+        "$type": "color",
+        "$value": "#26313a"
+      },
+      "sidebarMuted": {
+        "$type": "color",
+        "$value": "#667481"
+      },
+      "sidebarBorder": {
+        "$type": "color",
+        "$value": "#dce2e7"
       },
       "text": {
         "$type": "color",
@@ -82,6 +110,34 @@
       "sidebarActive": {
         "$type": "color",
         "$value": "#173331"
+      },
+      "sidebarHover": {
+        "$type": "color",
+        "$value": "#151d23"
+      },
+      "sidebarSurface": {
+        "$type": "color",
+        "$value": "rgba(255,255,255,.035)"
+      },
+      "sidebarControl": {
+        "$type": "color",
+        "$value": "rgba(255,255,255,.04)"
+      },
+      "sidebarControlHover": {
+        "$type": "color",
+        "$value": "rgba(255,255,255,.08)"
+      },
+      "sidebarText": {
+        "$type": "color",
+        "$value": "#bac2ca"
+      },
+      "sidebarMuted": {
+        "$type": "color",
+        "$value": "#7d8994"
+      },
+      "sidebarBorder": {
+        "$type": "color",
+        "$value": "#26313a"
       },
       "text": {
         "$type": "color",

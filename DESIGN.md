@@ -256,6 +256,8 @@ Workbench 支持浅色和深色主题。
 - App Shell 和设置中的主题状态应保持一致。
 - 两种主题使用相同布局和组件层级。
 - 深色主题不是另一套视觉方案，而是同一工作台规则在深色 token 下的表达。
+- 浅色主题必须是完整浅色主题，App Shell、左侧主导航、本机工作区状态、主题切换按钮和更新提示都使用浅色 sidebar token，不保留大面积深色侧边栏。
+- 侧边栏颜色使用 sidebar 语义 token 表达，包括背景、active、hover、surface、control、text、muted 和 border；禁止在 App Shell 关键样式中硬编码单主题深色。
 
 ## 6. 文案规则
 

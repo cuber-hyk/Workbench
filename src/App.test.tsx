@@ -18,6 +18,7 @@ import { SettingsView } from "./views/settings/SettingsView";
 import { SkillsMarketView } from "./views/skills/SkillsMarketView";
 import { clearSkillMarketRuntimeCache, SkillsView } from "./views/skills/SkillsView";
 import { buildMarketStats } from "./views/skills/skillMarketFormatters";
+import designTokens from "../design-tokens.json";
 
 const activeProject: Project = {
   id: "active",
@@ -2840,6 +2841,12 @@ describe("Workbench UI interactions", () => {
 
     expect(document.body.dataset.theme).toBe("dark");
     expect(within(navigation).getByRole("button", { name: "资源 Radar" })).toBeInTheDocument();
+  });
+
+  it("keeps light and dark sidebar tokens distinct", () => {
+    expect(designTokens.color.light.sidebar.$value).toBe("#ffffff");
+    expect(designTokens.color.light.sidebarText.$value).toBe("#26313a");
+    expect(designTokens.color.dark.sidebar.$value).toBe("#0c1014");
   });
 
   it("checks GitHub CLI only when syncing stars and reports missing setup in toast", async () => {
