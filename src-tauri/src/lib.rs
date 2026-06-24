@@ -37,6 +37,9 @@ fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let quit = MenuItem::with_id(app, "quit", "退出应用", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &quit])?;
     let icon = app.default_window_icon().cloned();
+    if let (Some(window), Some(icon)) = (app.get_webview_window("main"), icon.clone()) {
+        window.set_icon(icon)?;
+    }
     let mut tray = TrayIconBuilder::new()
         .menu(&menu)
         .show_menu_on_left_click(true)

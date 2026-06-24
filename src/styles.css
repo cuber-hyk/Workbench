@@ -22,6 +22,9 @@
   --danger-text: #7b2b2b;
   --warning-bg: #fff4d6;
   --warning-text: #8a5713;
+  --app-chrome-line: rgba(16, 31, 38, .11);
+  --app-chrome-highlight: rgba(255, 255, 255, .82);
+  --app-chrome-shadow: rgba(16, 31, 38, .08);
   font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
   color: var(--text);
   background: var(--bg);
@@ -51,6 +54,9 @@ body[data-theme="dark"] {
   --danger-text: #ffc9c9;
   --warning-bg: #3b2f18;
   --warning-text: #ffd58a;
+  --app-chrome-line: rgba(255, 255, 255, .08);
+  --app-chrome-highlight: rgba(255, 255, 255, .035);
+  --app-chrome-shadow: rgba(0, 0, 0, .28);
   color-scheme: dark;
 }
 
@@ -64,10 +70,11 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 h1, h2, h3, p { margin: 0; }
 code { font-family: Consolas, monospace; }
 
-.app-shell { display: grid; grid-template-columns: 220px 1fr; height: 100dvh; overflow: hidden; }
+.app-shell { position: relative; display: grid; grid-template-columns: 220px 1fr; height: 100dvh; overflow: hidden; }
+.app-shell::before { content: ""; position: fixed; top: 0; left: 0; right: 0; z-index: 10; height: 1px; pointer-events: none; background: linear-gradient(90deg, var(--app-chrome-highlight), var(--app-chrome-line) 38%, var(--app-chrome-line)); box-shadow: 0 1px 8px var(--app-chrome-shadow); }
 .sidebar { position: fixed; inset: 0 auto 0 0; width: 220px; display: flex; flex-direction: column; padding: 20px 12px; border-right: 1px solid var(--sidebar-border); background: var(--sidebar); color: var(--sidebar-text); }
 .brand { display: flex; align-items: center; gap: 10px; padding: 0 8px 28px; color: var(--sidebar-text); font-size: 18px; font-weight: 650; }
-.brand-mark { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 6px; background: var(--accent); color: var(--accent-contrast); font-size: 14px; }
+.brand-mark { display: block; width: 30px; height: 30px; border-radius: 7px; object-fit: contain; filter: drop-shadow(0 1px 1px rgba(16, 31, 38, .12)); }
 .nav-list { display: grid; gap: 6px; }
 .nav-item { display: flex; gap: 11px; align-items: center; width: 100%; height: 42px; padding: 0 13px; border: 0; border-radius: 6px; background: transparent; color: var(--sidebar-muted); text-align: left; }
 .nav-item:hover { color: var(--accent); background: var(--sidebar-hover); }

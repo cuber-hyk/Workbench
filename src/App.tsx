@@ -32,6 +32,7 @@ import { SkillCategoryDialog } from "./components/dialogs/skills/SkillCategoryDi
 import { SkillsImportDialog } from "./components/dialogs/skills/SkillsImportDialog";
 import { SkillsRootMigrationDialog } from "./components/dialogs/skills/SkillsRootMigrationDialog";
 import { useAppUpdate } from "./contexts/AppUpdateContext";
+import workbenchIcon from "./assets/brand/workbench-icon.svg";
 import { workbenchApi } from "./lib/api/workbenchApi";
 import { SettingsView } from "./views/settings/SettingsView";
 import { ProjectsView } from "./views/projects/ProjectsView";
@@ -658,7 +659,7 @@ function WorkbenchApp() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">
-          <span className="brand-mark">W</span>
+          <img className="brand-mark" src={workbenchIcon} alt="" aria-hidden="true" />
           <strong>Workbench</strong>
         </div>
 

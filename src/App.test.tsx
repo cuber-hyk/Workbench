@@ -2938,6 +2938,16 @@ describe("Workbench UI interactions", () => {
     expect(within(navigation).getByRole("button", { name: "资源 Radar" })).toBeInTheDocument();
   });
 
+  it("renders the Workbench brand with the app icon asset", () => {
+    const { container } = renderWithUpdateProvider(<App />);
+
+    const brandMark = container.querySelector<HTMLImageElement>(".brand-mark");
+    expect(brandMark).not.toBeNull();
+    expect(brandMark?.tagName).toBe("IMG");
+    expect(brandMark?.getAttribute("src")).toContain("workbench-icon.svg");
+    expect(brandMark).toHaveAttribute("aria-hidden", "true");
+  });
+
   it("keeps light and dark sidebar tokens distinct", () => {
     expect(designTokens.color.light.sidebar.$value).toBe("#ffffff");
     expect(designTokens.color.light.sidebarText.$value).toBe("#26313a");

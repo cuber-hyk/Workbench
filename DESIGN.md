@@ -30,12 +30,15 @@ Workbench 使用固定左侧导航 + 右侧工作区。
 - MVP 不设置独立 Dashboard 模块。
 - 当有助于表达本地工作台定位时，侧边栏可以展示本机工作区状态。
 - 主题切换属于 App Shell 和设置模块。
+- 保留系统原生标题栏；应用内容顶端只使用细分隔线、浅高光和微阴影处理标题栏与内容区的衔接，不自绘窗口按钮。
+- 侧边栏品牌标识使用 Workbench 图标资产和 `Workbench` 文本，不使用文字 `W` 作为长期品牌标记。
 
 来源：
 
 - `docs/PRD.md`
 - `docs/ARCHITECTURE.md`
 - `UI/index.html`
+- `src/assets/brand/workbench-icon.svg`
 
 ## 4. 布局模式
 
