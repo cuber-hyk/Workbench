@@ -28,10 +28,10 @@ export function AppUpdatePanel({
   const checking = status === "checking";
 
   return (
-    <section className="settings-panel update-settings-panel compact-update-panel">
-      <div className="settings-panel-title">
+    <section className="settings-section update-settings-panel">
+      <div className="settings-section-title settings-section-title-row">
         <span>
-          <h2>软件更新</h2>
+          <h3>软件更新</h3>
           <p>启动后会静默检查更新；发现新版本时可从左下角入口查看详情。</p>
         </span>
         <StatusBadge tone={updateStatusTone(status)}>{updateStatusLabel(status)}</StatusBadge>
