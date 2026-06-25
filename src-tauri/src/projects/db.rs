@@ -158,6 +158,19 @@ pub(crate) fn upsert_project(
     Ok(())
 }
 
+pub(crate) fn delete_project(connection: &Connection, project_id: &str) -> ProjectResult<()> {
+    if project_id.trim().is_empty() {
+        return Err("项目 ID 不能为空".to_string());
+    }
+    connection
+        .execute("PRAGMA foreign_keys = ON", [])
+        .map_err(error_message)?;
+    connection
+        .execute("DELETE FROM projects WHERE id = ?1", params![project_id])
+        .map_err(error_message)?;
+    Ok(())
+}
+
 pub(crate) fn load_project_open_profiles(
     connection: &Connection,
 ) -> ProjectResult<Vec<ProjectOpenProfile>> {

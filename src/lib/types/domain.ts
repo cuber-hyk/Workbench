@@ -28,6 +28,35 @@ export interface ProjectLaunchConfig {
   enabled: boolean;
 }
 
+export interface RemoteProjectImportRequest {
+  importId: string;
+  projectId: string;
+  replaceProjectId?: string | null;
+  repoUrl: string;
+  parentDirectory: string;
+  name: string;
+  note: string;
+  tags: string[];
+}
+
+export type RemoteProjectImportStatus =
+  | "ready"
+  | "managed_existing"
+  | "managed_missing"
+  | "unmanaged_existing";
+
+export interface RemoteProjectImportInspection {
+  status: RemoteProjectImportStatus;
+  targetPath: string;
+  existingProject?: Project | null;
+}
+
+export interface ProjectImportProgress {
+  importId: string;
+  progress: number;
+  message: string;
+}
+
 export type ProjectOpenProfileKind = "app" | "terminal";
 
 export interface ProjectOpenProfile {

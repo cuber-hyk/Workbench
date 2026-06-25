@@ -24,6 +24,44 @@ pub struct ProjectLaunchConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct RemoteProjectImportRequest {
+    pub import_id: String,
+    pub project_id: String,
+    pub replace_project_id: Option<String>,
+    pub repo_url: String,
+    pub parent_directory: String,
+    pub name: String,
+    pub note: String,
+    pub tags: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteProjectImportInspection {
+    pub status: RemoteProjectImportStatus,
+    pub target_path: String,
+    pub existing_project: Option<ProjectRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RemoteProjectImportStatus {
+    Ready,
+    ManagedExisting,
+    ManagedMissing,
+    UnmanagedExisting,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectImportProgress {
+    pub import_id: String,
+    pub progress: u8,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct ProjectOpenProfile {
     pub id: String,
     pub name: String,

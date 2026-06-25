@@ -18,7 +18,9 @@ import {
 import { AppUpdateDialog } from "./components/AppUpdatePanel";
 import { UpdateBadge } from "./components/UpdateBadge";
 import { Button, FilterMore, IconButton, Modal, PageHeader, Panel, TagList } from "./components/ui";
+import { DeleteProjectDialog } from "./components/dialogs/projects/DeleteProjectDialog";
 import { ProjectDialog } from "./components/dialogs/projects/ProjectDialog";
+import { RemoteProjectImportDialog } from "./components/dialogs/projects/RemoteProjectImportDialog";
 import { CreateDirectoryDialog } from "./components/dialogs/settings/CreateDirectoryDialog";
 import { CustomToolDialog } from "./components/dialogs/settings/CustomToolDialog";
 import { DeleteCustomToolDialog } from "./components/dialogs/settings/DeleteCustomToolDialog";
@@ -40,7 +42,7 @@ import { applyLaunchSessionEvent, applyPendingLaunchEvents, enabledLaunchConfigs
 import { DeleteRadarDialog, RadarDialog, RadarView } from "./views/radar/RadarView";
 import { clearSkillMarketRuntimeCache, SkillsView } from "./views/skills/SkillsView";
 import type { MarketInstallTask } from "./views/skills/SkillsMarketView";
-import type { AppSettings, CloseBehavior, CustomToolTargetInput, ExternalSkillCandidateGroup, ExternalSkillSyncResult, ExternalSkillSyncSelection, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, ManagedTargetRebuildResult, ManagedTargetRebuildSelection, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, Skill, SkillCategory, SkillMarketItem, SkillsRootMigrationState, ToolKey, ViewKey } from "./lib/types/domain";
+import type { AppSettings, CloseBehavior, CustomToolTargetInput, ExternalSkillCandidateGroup, ExternalSkillSyncResult, ExternalSkillSyncSelection, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, ManagedTargetRebuildResult, ManagedTargetRebuildSelection, Project, ProjectImportProgress, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, RemoteProjectImportRequest, Skill, SkillCategory, SkillMarketItem, SkillsRootMigrationState, ToolKey, ViewKey } from "./lib/types/domain";
 
 const views: Array<{ key: ViewKey; label: string; icon: JSX.Element }> = [
   { key: "projects", label: "项目", icon: <Box size={16} /> },
@@ -61,6 +63,11 @@ type ToastState = {
 type SkillImportRequest = {
   kind: "zip" | "folder";
   source: string;
+};
+
+type ProjectDeleteRequest = {
+  projectId: string;
+  reason: "manual" | "missing-path";
 };
 
 export function App() {
@@ -120,8 +127,9 @@ function WorkbenchApp() {
   const [loadError, setLoadError] = useState("");
   const [toast, setToast] = useState<ToastState | null>(null);
   const toastTimerRef = useRef<number | null>(null);
-  const [activeDialog, setActiveDialog] = useState<"project" | "project-open-profile" | "project-open-profile-delete" | "custom-tool" | "custom-tool-delete" | "skills-import" | "external-skills" | "skills-root-migration" | "skills-root-change" | "skill-delete" | "skill-categories" | "radar" | "radar-delete" | "app-update" | "create-directory" | "tray-hint" | null>(null);
+  const [activeDialog, setActiveDialog] = useState<"project" | "project-delete" | "remote-project-import" | "project-open-profile" | "project-open-profile-delete" | "custom-tool" | "custom-tool-delete" | "skills-import" | "external-skills" | "skills-root-migration" | "skills-root-change" | "skill-delete" | "skill-categories" | "radar" | "radar-delete" | "app-update" | "create-directory" | "tray-hint" | null>(null);
   const [editingProjectId, setEditingProjectId] = useState("");
+  const [deleteProjectRequest, setDeleteProjectRequest] = useState<ProjectDeleteRequest | null>(null);
   const [editingProjectOpenProfileId, setEditingProjectOpenProfileId] = useState("");
   const [deleteProjectOpenProfileId, setDeleteProjectOpenProfileId] = useState("");
   const [editingCustomToolKey, setEditingCustomToolKey] = useState("");
@@ -223,11 +231,12 @@ function WorkbenchApp() {
     };
   }, []);
 
-  const activeProjects = projects.filter((project) => !project.archived);
+  const activeProjects = projects;
   const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? activeProjects[0] ?? projects[0];
   const selectedSkill = skills.find((skill) => skill.id === selectedSkillId) ?? skills[0];
   const deleteSkill = skills.find((skill) => skill.id === deleteSkillId) ?? selectedSkill;
   const projectOpenProfiles = settings?.projectOpenProfiles ?? [];
+  const deletingProject = deleteProjectRequest ? projects.find((project) => project.id === deleteProjectRequest.projectId) : undefined;
   const toolTargets = settings?.toolTargets ?? [];
   const editingProjectOpenProfile = projectOpenProfiles.find((profile) => profile.id === editingProjectOpenProfileId);
   const deletingProjectOpenProfile = projectOpenProfiles.find((profile) => profile.id === deleteProjectOpenProfileId);
@@ -537,12 +546,79 @@ function WorkbenchApp() {
     }
   }
 
+  function promptDeleteProject(project: Project, reason: ProjectDeleteRequest["reason"]) {
+    setDeleteProjectRequest({ projectId: project.id, reason });
+    setActiveDialog("project-delete");
+  }
+
+  async function deleteProject(project: Project) {
+    if (isProjectRunning(project.id, launchRuns)) {
+      showToast("运行中的项目不能删除，请先停止启动会话", { tone: "warning" });
+      return;
+    }
+    try {
+      const nextProjects = await workbenchApi.deleteProject(project.id);
+      setProjects(nextProjects);
+      setLaunchRuns((current) => {
+        const { [project.id]: _removed, ...remaining } = current;
+        return remaining;
+      });
+      setProjectLaunchTimes((current) => {
+        const { [project.id]: _removed, ...remaining } = current;
+        return remaining;
+      });
+      if (selectedProjectId === project.id) {
+        setSelectedProjectId(nextProjects[0]?.id ?? "");
+      }
+      setDeleteProjectRequest(null);
+      setActiveDialog(null);
+      showToast("项目记录已删除", { tone: "success" });
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error), { tone: "danger" });
+    }
+  }
+
+  async function importRemoteProject(request: RemoteProjectImportRequest, onProgress: (progress: ProjectImportProgress) => void) {
+    try {
+      const nextProjects = await workbenchApi.importRemoteProject(request, onProgress);
+      setProjects(nextProjects);
+      setSelectedProjectId(request.projectId);
+      setActiveDialog(null);
+      showToast(`项目已导入：${request.name}`, { tone: "success" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      showToast(message, {
+        tone: message.includes("未检测到 git") ? "warning" : "danger",
+        duration: 4200
+      });
+      throw error;
+    }
+  }
+
+  async function openProjectDirectory(project: Project) {
+    try {
+      await workbenchApi.openLocalPath(project.path);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (isMissingProjectPathMessage(message)) {
+        promptDeleteProject(project, "missing-path");
+        return;
+      }
+      showToast(message);
+    }
+  }
+
   async function openProjectWithProfile(project: Project, profile: ProjectOpenProfile) {
     try {
       await workbenchApi.openProjectWithProfile(project, profile);
       showToast(`正在用 ${profile.name} 打开项目`);
     } catch (error) {
-      showToast(error instanceof Error ? error.message : String(error));
+      const message = error instanceof Error ? error.message : String(error);
+      if (isMissingProjectPathMessage(message)) {
+        promptDeleteProject(project, "missing-path");
+        return;
+      }
+      showToast(message);
     }
   }
 
@@ -720,6 +796,7 @@ function WorkbenchApp() {
             loading={loading}
             loadError={loadError}
             onSelect={setSelectedProjectId}
+            onOpenDirectory={(project) => void openProjectDirectory(project)}
             onOpenWithProfile={(project, profile) => void openProjectWithProfile(project, profile)}
             onLaunch={async (project) => {
               try {
@@ -734,7 +811,12 @@ function WorkbenchApp() {
                 const count = enabledLaunchConfigs(project).length;
                 showToast(`已启动 ${project.name} 的 ${count} 个会话`);
               } catch (error) {
-                showToast(error instanceof Error ? error.message : String(error));
+                const message = error instanceof Error ? error.message : String(error);
+                if (isMissingProjectPathMessage(message)) {
+                  promptDeleteProject(project, "missing-path");
+                  return;
+                }
+                showToast(message);
               }
             }}
             onStopLaunchSession={async (sessionId) => {
@@ -795,14 +877,9 @@ function WorkbenchApp() {
               });
             }}
             onEdit={(project) => openProjectDialog(project.id)}
-            onArchive={(project, archived) => {
-              if (archived && isProjectRunning(project.id, launchRuns)) {
-                showToast("运行中的项目不能归档，请先停止启动会话");
-                return;
-              }
-              void saveProject({ ...project, archived });
-            }}
+            onDelete={(project) => promptDeleteProject(project, "manual")}
             onAdd={() => openProjectDialog()}
+            onAddRemote={() => setActiveDialog("remote-project-import")}
           />
         )}
         {activeView === "skills" && selectedSkill && settings && (
@@ -1040,6 +1117,31 @@ function WorkbenchApp() {
           }}
         />
       )}
+      {activeDialog === "project-delete" && deletingProject && deleteProjectRequest && (
+        <DeleteProjectDialog
+          project={deletingProject}
+          reason={deleteProjectRequest.reason}
+          onClose={() => {
+            setActiveDialog(null);
+            setDeleteProjectRequest(null);
+          }}
+          onConfirm={() => void deleteProject(deletingProject)}
+        />
+      )}
+      {activeDialog === "remote-project-import" && (
+        <RemoteProjectImportDialog
+          onSelectDirectory={() => workbenchApi.selectDirectory()}
+          onInspect={(request) => workbenchApi.inspectRemoteProjectImport(request)}
+          onSelectExisting={(projectId) => {
+            setSelectedProjectId(projectId);
+            setActiveDialog(null);
+            showToast("已定位到已有项目");
+          }}
+          onError={showToast}
+          onSubmit={importRemoteProject}
+          onClose={() => setActiveDialog(null)}
+        />
+      )}
       {activeDialog === "skills-import" && (
         <SkillsImportDialog
           results={importResults}
@@ -1224,6 +1326,14 @@ export function rememberUpdateNotice(latestVersion: string, storage: Pick<Storag
   } catch {
     // 更新提醒记录只影响是否重复 toast，失败时不阻断更新检查。
   }
+}
+
+function isMissingProjectPathMessage(message: string) {
+  return message.includes("路径不存在")
+    || message.includes("项目路径不存在")
+    || message.includes("项目路径不是文件夹")
+    || message.includes("启动工作目录不存在")
+    || message.includes("启动工作目录不是文件夹");
 }
 
 export function ModuleStateView({

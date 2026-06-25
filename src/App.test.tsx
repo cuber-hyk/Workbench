@@ -4,13 +4,14 @@ import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { App, ModuleStateView, rememberUpdateNotice, shouldShowUpdateNotice } from "./App";
 import { ProjectDialog } from "./components/dialogs/projects/ProjectDialog";
+import { RemoteProjectImportDialog } from "./components/dialogs/projects/RemoteProjectImportDialog";
 import { CustomToolDialog } from "./components/dialogs/settings/CustomToolDialog";
 import { ExternalSkillsDialog } from "./components/dialogs/skills/ExternalSkillsDialog";
 import { SkillCategoryDialog } from "./components/dialogs/skills/SkillCategoryDialog";
 import { SkillsRootMigrationDialog } from "./components/dialogs/skills/SkillsRootMigrationDialog";
 import { AppUpdateProvider } from "./contexts/AppUpdateContext";
 import { workbenchApi } from "./lib/api/workbenchApi";
-import type { AppSettings, ExternalSkillCandidateGroup, LaunchSessionEvent, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, Skill, SkillCategory, SkillMarketItem, SkillMarketResponse, SkillUpdateResult, SkillsRootMigrationState, SkillsState } from "./lib/types/domain";
+import type { AppSettings, ExternalSkillCandidateGroup, LaunchSessionEvent, Project, ProjectImportProgress, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, RemoteProjectImportInspection, RemoteProjectImportRequest, Skill, SkillCategory, SkillMarketItem, SkillMarketResponse, SkillUpdateResult, SkillsRootMigrationState, SkillsState } from "./lib/types/domain";
 import { ProjectsView } from "./views/projects/ProjectsView";
 import { applyPendingLaunchEvents, markLaunchRunStopped, mergeLaunchRunSnapshots } from "./views/projects/launchState";
 import { RadarView } from "./views/radar/RadarView";
@@ -400,8 +401,7 @@ describe("Workbench UI interactions", () => {
     expect(shouldShowUpdateNotice("0.2.1", storage)).toBe(true);
   });
 
-  it("filters archived projects separately from active projects", async () => {
-    const user = userEvent.setup();
+  it("shows legacy archived project records as normal projects", () => {
     render(
       <ProjectsView
         projects={[activeProject, archivedProject]}
@@ -412,18 +412,43 @@ describe("Workbench UI interactions", () => {
         onSelect={vi.fn()}
         onLaunch={vi.fn()}
         onEdit={vi.fn()}
-        onArchive={vi.fn()}
+        onDelete={vi.fn()}
         onAdd={vi.fn()}
       />
     );
 
     expect(screen.getByRole("group", { name: "Active Project 项目" })).toBeInTheDocument();
-    expect(screen.queryByRole("group", { name: "Archived Project 项目" })).not.toBeInTheDocument();
-
-    await user.selectOptions(screen.getByLabelText("按归档状态筛选项目"), "已归档");
-
     expect(screen.getByRole("group", { name: "Archived Project 项目" })).toBeInTheDocument();
-    expect(screen.queryByRole("group", { name: "Active Project 项目" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("按归档状态筛选项目")).not.toBeInTheDocument();
+  });
+
+  it("opens local or remote project import from the add menu", async () => {
+    const user = userEvent.setup();
+    const onAdd = vi.fn();
+    const onAddRemote = vi.fn();
+    render(
+      <ProjectsView
+        projects={[activeProject]}
+        selectedProject={activeProject}
+        projectLaunchTimes={{}}
+        loading={false}
+        loadError=""
+        onSelect={vi.fn()}
+        onLaunch={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onAdd={onAdd}
+        onAddRemote={onAddRemote}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: "添加项目" }));
+    await user.click(screen.getByRole("menuitem", { name: "本地导入" }));
+    expect(onAdd).toHaveBeenCalledOnce();
+
+    await user.click(screen.getByRole("button", { name: "添加项目" }));
+    await user.click(screen.getByRole("menuitem", { name: "GitHub/Gitee 导入" }));
+    expect(onAddRemote).toHaveBeenCalledOnce();
   });
 
   it("paginates projects and selects the first project on the new page", async () => {
@@ -446,7 +471,7 @@ describe("Workbench UI interactions", () => {
         onSelect={onSelect}
         onLaunch={vi.fn()}
         onEdit={vi.fn()}
-        onArchive={vi.fn()}
+        onDelete={vi.fn()}
         onAdd={vi.fn()}
       />
     );
@@ -481,7 +506,7 @@ describe("Workbench UI interactions", () => {
         onSelect={onSelect}
         onLaunch={vi.fn()}
         onEdit={vi.fn()}
-        onArchive={vi.fn()}
+        onDelete={vi.fn()}
         onAdd={vi.fn()}
       />
     );
@@ -543,7 +568,7 @@ describe("Workbench UI interactions", () => {
         onStopLaunchSession={vi.fn()}
         onStopLaunchRun={vi.fn()}
         onEdit={vi.fn()}
-        onArchive={vi.fn()}
+        onDelete={vi.fn()}
         onAdd={vi.fn()}
       />
     );
@@ -604,7 +629,7 @@ describe("Workbench UI interactions", () => {
         onStopLaunchSession={vi.fn()}
         onStopLaunchRun={vi.fn()}
         onEdit={vi.fn()}
-        onArchive={vi.fn()}
+        onDelete={vi.fn()}
         onAdd={vi.fn()}
       />
     );
@@ -664,7 +689,7 @@ describe("Workbench UI interactions", () => {
         onStopLaunchRun={vi.fn()}
         onOpenLogUrl={onOpenLogUrl}
         onEdit={vi.fn()}
-        onArchive={vi.fn()}
+        onDelete={vi.fn()}
         onAdd={vi.fn()}
       />
     );
@@ -706,7 +731,7 @@ describe("Workbench UI interactions", () => {
         onStopLaunchSession={vi.fn()}
         onStopLaunchRun={vi.fn()}
         onEdit={vi.fn()}
-        onArchive={vi.fn()}
+        onDelete={vi.fn()}
         onAdd={vi.fn()}
       />
     );
@@ -716,8 +741,8 @@ describe("Workbench UI interactions", () => {
     expect(screen.queryByText("已启动请求")).not.toBeInTheDocument();
   });
 
-  it("does not allow archiving a project while launch sessions are running", () => {
-    const onArchive = vi.fn();
+  it("does not allow deleting a project while launch sessions are running", () => {
+    const onDelete = vi.fn();
     render(
       <ProjectsView
         projects={[activeProject]}
@@ -748,15 +773,83 @@ describe("Workbench UI interactions", () => {
         onStopLaunchSession={vi.fn()}
         onStopLaunchRun={vi.fn()}
         onEdit={vi.fn()}
-        onArchive={onArchive}
+        onDelete={onDelete}
         onAdd={vi.fn()}
       />
     );
 
-    expect(within(screen.getByRole("group", { name: "Active Project 项目" })).getByRole("button", { name: "运行中不可归档" })).toBeDisabled();
-    expect(screen.getAllByRole("button", { name: "运行中不可归档" })).toHaveLength(2);
-    screen.getAllByRole("button", { name: "运行中不可归档" }).forEach((button) => expect(button).toBeDisabled());
-    expect(onArchive).not.toHaveBeenCalled();
+    expect(within(screen.getByRole("group", { name: "Active Project 项目" })).getByRole("button", { name: "运行中不可删除" })).toBeDisabled();
+    expect(screen.getAllByRole("button", { name: "运行中不可删除" })).toHaveLength(2);
+    screen.getAllByRole("button", { name: "运行中不可删除" }).forEach((button) => expect(button).toBeDisabled());
+    expect(onDelete).not.toHaveBeenCalled();
+  });
+
+  it("deletes a project record after manual confirmation", async () => {
+    const user = userEvent.setup();
+    const listProjects = vi.spyOn(workbenchApi, "listProjects").mockResolvedValue([activeProject]);
+    const deleteProject = vi.spyOn(workbenchApi, "deleteProject").mockResolvedValue([]);
+    try {
+      renderWithUpdateProvider(<App />);
+
+      await screen.findByRole("group", { name: "Active Project 项目" });
+      await user.click(screen.getAllByRole("button", { name: "删除项目记录" })[0]);
+
+      expect(screen.getByRole("dialog", { name: "删除项目记录" })).toBeInTheDocument();
+      expect(screen.getByText("此操作只会从 Workbench 项目列表中删除记录，不会删除本地项目文件。")).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "删除记录" }));
+      await waitFor(() => expect(deleteProject).toHaveBeenCalledWith("active"));
+    } finally {
+      listProjects.mockRestore();
+      deleteProject.mockRestore();
+    }
+  });
+
+  it("offers deleting the project record when opening a missing project directory", async () => {
+    const user = userEvent.setup();
+    const listProjects = vi.spyOn(workbenchApi, "listProjects").mockResolvedValue([activeProject]);
+    const openLocalPath = vi.spyOn(workbenchApi, "openLocalPath").mockRejectedValue(new Error("路径不存在"));
+    const deleteProject = vi.spyOn(workbenchApi, "deleteProject").mockResolvedValue([]);
+    try {
+      renderWithUpdateProvider(<App />);
+
+      const row = await screen.findByRole("group", { name: "Active Project 项目" });
+      await user.click(within(row).getByRole("button", { name: "打开目录" }));
+
+      expect(await screen.findByRole("dialog", { name: "删除项目记录" })).toBeInTheDocument();
+      expect(screen.getByText("Workbench 访问项目目录时发现路径不存在，可能已被移动或删除。")).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "删除记录" }));
+      await waitFor(() => expect(deleteProject).toHaveBeenCalledWith("active"));
+      expect(openLocalPath).toHaveBeenCalledWith("E:\\Active");
+    } finally {
+      listProjects.mockRestore();
+      openLocalPath.mockRestore();
+      deleteProject.mockRestore();
+    }
+  });
+
+  it("offers deleting the project record when launch workdir is missing", async () => {
+    const user = userEvent.setup();
+    const listProjects = vi.spyOn(workbenchApi, "listProjects").mockResolvedValue([activeProject]);
+    const launchProject = vi.spyOn(workbenchApi, "launchProject").mockRejectedValue(new Error("启动工作目录不存在: E:\\Active"));
+    const deleteProject = vi.spyOn(workbenchApi, "deleteProject").mockResolvedValue([]);
+    try {
+      renderWithUpdateProvider(<App />);
+
+      const row = await screen.findByRole("group", { name: "Active Project 项目" });
+      await user.click(within(row).getByRole("button", { name: "启动项目" }));
+
+      expect(await screen.findByRole("dialog", { name: "删除项目记录" })).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "删除记录" }));
+      await waitFor(() => expect(deleteProject).toHaveBeenCalledWith("active"));
+      expect(launchProject).toHaveBeenCalledWith(activeProject);
+    } finally {
+      listProjects.mockRestore();
+      launchProject.mockRestore();
+      deleteProject.mockRestore();
+    }
   });
 
   it("runs project row actions without selecting the row", async () => {
@@ -775,7 +868,7 @@ describe("Workbench UI interactions", () => {
         onStopLaunchSession={vi.fn()}
         onStopLaunchRun={vi.fn()}
         onEdit={onEdit}
-        onArchive={vi.fn()}
+        onDelete={vi.fn()}
         onAdd={vi.fn()}
       />
     );
@@ -804,7 +897,7 @@ describe("Workbench UI interactions", () => {
         onStopLaunchSession={vi.fn()}
         onStopLaunchRun={vi.fn()}
         onEdit={vi.fn()}
-        onArchive={vi.fn()}
+        onDelete={vi.fn()}
         onAdd={vi.fn()}
       />
     );
@@ -832,7 +925,7 @@ describe("Workbench UI interactions", () => {
         onStopLaunchSession={vi.fn()}
         onStopLaunchRun={vi.fn()}
         onEdit={vi.fn()}
-        onArchive={vi.fn()}
+        onDelete={vi.fn()}
         onAdd={vi.fn()}
       />
     );
@@ -1124,7 +1217,7 @@ describe("Workbench UI interactions", () => {
         onStopLaunchSession={vi.fn()}
         onStopLaunchRun={vi.fn()}
         onEdit={vi.fn()}
-        onArchive={vi.fn()}
+        onDelete={vi.fn()}
         onAdd={vi.fn()}
       />
     );
@@ -1178,7 +1271,7 @@ describe("Workbench UI interactions", () => {
         onRestartLaunchSession={onRestartLaunchSession}
         onClearLaunchRun={vi.fn()}
         onEdit={vi.fn()}
-        onArchive={vi.fn()}
+        onDelete={vi.fn()}
         onAdd={vi.fn()}
       />
     );
@@ -1225,7 +1318,7 @@ describe("Workbench UI interactions", () => {
         onStopLaunchRun={vi.fn()}
         onClearLaunchRun={onClearLaunchRun}
         onEdit={vi.fn()}
-        onArchive={vi.fn()}
+        onDelete={vi.fn()}
         onAdd={vi.fn()}
       />
     );
@@ -1251,7 +1344,7 @@ describe("Workbench UI interactions", () => {
         onSelect={vi.fn()}
         onLaunch={vi.fn()}
         onEdit={vi.fn()}
-        onArchive={vi.fn()}
+        onDelete={vi.fn()}
         onAdd={vi.fn()}
       />
     );
@@ -1418,6 +1511,166 @@ describe("Workbench UI interactions", () => {
 
     expect(screen.getByText("项目路径不能为空")).toBeInTheDocument();
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("submits remote project import with selected parent directory and progress", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn(async (_request: RemoteProjectImportRequest, onProgress: (progress: ProjectImportProgress) => void) => {
+      onProgress({ importId: "import-1", progress: 32, message: "正在克隆仓库" });
+    });
+    render(
+      <RemoteProjectImportDialog
+        onSelectDirectory={async () => "E:\\Development\\12-工具-Utility"}
+        onInspect={async () => ({
+          status: "ready",
+          targetPath: "E:\\Development\\12-工具-Utility\\IconCraft-Pro",
+          existingProject: null
+        })}
+        onSelectExisting={vi.fn()}
+        onError={vi.fn()}
+        onSubmit={onSubmit}
+        onClose={vi.fn()}
+      />
+    );
+
+    await user.type(screen.getByLabelText("仓库地址"), "https://github.com/luzong/IconCraft-Pro.git");
+    await user.click(screen.getByRole("button", { name: "选择本地父目录" }));
+    await user.clear(screen.getByLabelText("标签"));
+    await user.type(screen.getByLabelText("标签"), "icon, 图标制作");
+    await user.click(screen.getByRole("button", { name: "开始导入" }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
+    expect(onSubmit.mock.calls[0][0]).toMatchObject({
+      repoUrl: "https://github.com/luzong/IconCraft-Pro.git",
+      parentDirectory: "E:\\Development\\12-工具-Utility",
+      name: "IconCraft-Pro",
+      tags: ["icon", "图标制作"]
+    });
+    expect(screen.getByRole("progressbar", { name: "项目导入进度条" })).toHaveAttribute("aria-valuenow", "32");
+  });
+
+  it("selects the existing project when its record and directory both exist", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    const onSelectExisting = vi.fn();
+    render(
+      <RemoteProjectImportDialog
+        onSelectDirectory={async () => "E:\\Projects"}
+        onInspect={async () => ({
+          status: "managed_existing",
+          targetPath: "E:\\Projects\\demo",
+          existingProject: activeProject
+        })}
+        onSelectExisting={onSelectExisting}
+        onError={vi.fn()}
+        onSubmit={onSubmit}
+        onClose={vi.fn()}
+      />
+    );
+
+    await user.type(screen.getByLabelText("仓库地址"), "https://github.com/owner/demo.git");
+    await user.type(screen.getByLabelText("本地父目录"), "E:\\Projects");
+    await user.click(screen.getByRole("button", { name: "开始导入" }));
+
+    expect(await screen.findByText("项目已经存在")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "查看已有项目" }));
+
+    expect(onSelectExisting).toHaveBeenCalledWith("active");
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("reimports a managed project only when its local directory is missing", async () => {
+    const user = userEvent.setup();
+    const inspection: RemoteProjectImportInspection = {
+      status: "managed_missing",
+      targetPath: "E:\\Projects\\demo",
+      existingProject: activeProject
+    };
+    const onSubmit = vi.fn(async (
+      _request: RemoteProjectImportRequest,
+      _onProgress: (progress: ProjectImportProgress) => void
+    ) => undefined);
+    render(
+      <RemoteProjectImportDialog
+        onSelectDirectory={async () => "E:\\Projects"}
+        onInspect={async () => inspection}
+        onSelectExisting={vi.fn()}
+        onError={vi.fn()}
+        onSubmit={onSubmit}
+        onClose={vi.fn()}
+      />
+    );
+
+    await user.type(screen.getByLabelText("仓库地址"), "https://github.com/owner/demo.git");
+    await user.type(screen.getByLabelText("本地父目录"), "E:\\Projects");
+    await user.click(screen.getByRole("button", { name: "开始导入" }));
+    expect(await screen.findByText("项目目录已丢失")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "重新导入" }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
+    expect(onSubmit.mock.calls[0][0]).toMatchObject({
+      projectId: "active",
+      replaceProjectId: "active"
+    });
+  });
+
+  it("requires another parent directory for an unmanaged existing target", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    const onSelectDirectory = vi.fn(async () => "E:\\Other");
+    render(
+      <RemoteProjectImportDialog
+        onSelectDirectory={onSelectDirectory}
+        onInspect={async () => ({
+          status: "unmanaged_existing",
+          targetPath: "E:\\Projects\\demo",
+          existingProject: null
+        })}
+        onSelectExisting={vi.fn()}
+        onError={vi.fn()}
+        onSubmit={onSubmit}
+        onClose={vi.fn()}
+      />
+    );
+
+    await user.type(screen.getByLabelText("仓库地址"), "https://github.com/owner/demo.git");
+    await user.type(screen.getByLabelText("本地父目录"), "E:\\Projects");
+    await user.click(screen.getByRole("button", { name: "开始导入" }));
+    expect(await screen.findByText("目标目录已存在")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "选择其他父目录" }));
+    expect(onSelectDirectory).toHaveBeenCalledOnce();
+    expect(screen.getByLabelText("本地父目录")).toHaveValue("E:\\Other");
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("shows a failed progress state when remote import fails", async () => {
+    const user = userEvent.setup();
+    render(
+      <RemoteProjectImportDialog
+        onSelectDirectory={async () => "E:\\Projects"}
+        onInspect={async () => ({
+          status: "ready",
+          targetPath: "E:\\Projects\\demo",
+          existingProject: null
+        })}
+        onSelectExisting={vi.fn()}
+        onError={vi.fn()}
+        onSubmit={async (_request, onProgress) => {
+          onProgress({ importId: "import-1", progress: 18, message: "正在检查 Git" });
+          throw new Error("Git clone 失败：repository not found");
+        }}
+        onClose={vi.fn()}
+      />
+    );
+
+    await user.type(screen.getByLabelText("仓库地址"), "https://github.com/owner/demo.git");
+    await user.type(screen.getByLabelText("本地父目录"), "E:\\Projects");
+    await user.click(screen.getByRole("button", { name: "开始导入" }));
+
+    expect(await screen.findByText("失败")).toBeInTheDocument();
+    expect(screen.getByText("Git clone 失败：repository not found")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "重新尝试" })).toBeEnabled();
   });
 
   it("filters resource items by search and category", async () => {

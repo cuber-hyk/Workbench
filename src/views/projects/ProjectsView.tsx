@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Archive, ArchiveRestore, ArrowLeft, Edit3, FileText, FolderOpen, MonitorUp, Pause, Play, Plus, RefreshCcw, Square, Terminal, X } from "lucide-react";
+import { ArrowLeft, Edit3, FileText, FolderOpen, MonitorUp, Pause, Play, RefreshCcw, Square, Terminal, Trash2, X } from "lucide-react";
 import { ActionGroup, Button, DetailHeader, IconButton, PageHeader, PaginationBar, Panel, SearchInput, StatusBadge, TagList, Toolbar } from "../../components/ui";
-import { workbenchApi } from "../../lib/api/workbenchApi";
 import type { LaunchRun, LaunchSession, Project, ProjectLaunchConfig, ProjectOpenProfile } from "../../lib/types/domain";
 import { clampPage, DEFAULT_PAGE_SIZE, paginateItems } from "../../lib/ui/pagination";
 import { enabledLaunchConfigs, getProjectLaunchStatus, isActiveLaunchStatus, isProjectRunning } from "./launchState";
+import { ProjectAddMenu } from "./ProjectAddMenu";
 
 export function ProjectsView({
   projects,
@@ -17,6 +17,7 @@ export function ProjectsView({
   loadError,
   onSelect,
   onOpenWithProfile,
+  onOpenDirectory = () => undefined,
   onLaunch,
   onStopLaunchSession = () => undefined,
   onStopLaunchRun = () => undefined,
@@ -25,8 +26,9 @@ export function ProjectsView({
   onOpenLogUrl = () => undefined,
   onClearLaunchRun = () => undefined,
   onEdit,
-  onArchive,
-  onAdd
+  onDelete,
+  onAdd,
+  onAddRemote
 }: {
   projects: Project[];
   selectedProject?: Project;
@@ -38,6 +40,7 @@ export function ProjectsView({
   loadError: string;
   onSelect: (id: string) => void;
   onOpenWithProfile?: (project: Project, profile: ProjectOpenProfile) => void;
+  onOpenDirectory?: (project: Project) => void;
   onLaunch: (project: Project) => void;
   onStopLaunchSession?: (sessionId: string) => void;
   onStopLaunchRun?: (launchRunId: string) => void;
@@ -46,13 +49,13 @@ export function ProjectsView({
   onOpenLogUrl?: (url: string) => void;
   onClearLaunchRun?: (projectId: string) => void;
   onEdit: (project: Project) => void;
-  onArchive: (project: Project, archived: boolean) => void;
+  onDelete: (project: Project) => void;
   onAdd: () => void;
+  onAddRemote?: () => void;
 }) {
   const [query, setQuery] = useState("");
   const [tagFilter, setTagFilter] = useState("全部标签");
   const [statusFilter, setStatusFilter] = useState("全部状态");
-  const [archiveFilter, setArchiveFilter] = useState("活跃项目");
   const [launchLogProjectId, setLaunchLogProjectId] = useState("");
   const [openProfileProjectId, setOpenProfileProjectId] = useState("");
   const [page, setPage] = useState(1);
@@ -72,11 +75,7 @@ export function ProjectsView({
     const matchesTag = tagFilter === "全部标签" || project.tags.includes(tagFilter);
     const status = getProjectLaunchStatus(project, projectLaunchTimes, currentLaunchRuns[project.id]);
     const matchesStatus = statusFilter === "全部状态" || status === statusFilter;
-    const matchesArchive =
-      archiveFilter === "全部项目" ||
-      (archiveFilter === "活跃项目" && !project.archived) ||
-      (archiveFilter === "已归档" && project.archived);
-    return matchesQuery && matchesTag && matchesStatus && matchesArchive;
+    return matchesQuery && matchesTag && matchesStatus;
   });
   const currentPage = clampPage(page, visibleProjects.length, pageSize);
   const pagedProjects = paginateItems(visibleProjects, currentPage, pageSize);
@@ -86,7 +85,7 @@ export function ProjectsView({
 
   useEffect(() => {
     setPage(1);
-  }, [query, tagFilter, statusFilter, archiveFilter, pageSize]);
+  }, [query, tagFilter, statusFilter, pageSize]);
 
   useEffect(() => {
     if (page !== currentPage) setPage(currentPage);
@@ -120,7 +119,11 @@ export function ProjectsView({
 
   return (
     <section className="view">
-      <PageHeader title="项目" description="管理本地开发项目并快速启动" actions={<Button variant="primary" onClick={onAdd}><Plus size={15} />添加项目</Button>} />
+      <PageHeader
+        title="项目"
+        description="管理本地开发项目并快速启动"
+        actions={<ProjectAddMenu onAddLocal={onAdd} onAddRemote={onAddRemote ?? onAdd} />}
+      />
       <Toolbar>
         <SearchInput placeholder="搜索项目名称或路径" value={query} onChange={(event) => setQuery(event.target.value)} />
         <select aria-label="按标签筛选项目" value={tagFilter} onChange={(event) => setTagFilter(event.target.value)}>
@@ -135,11 +138,6 @@ export function ProjectsView({
           <option>已结束</option>
           <option>失败</option>
           <option>已停止</option>
-        </select>
-        <select aria-label="按归档状态筛选项目" value={archiveFilter} onChange={(event) => setArchiveFilter(event.target.value)}>
-          <option>活跃项目</option>
-          <option>已归档</option>
-          <option>全部项目</option>
         </select>
       </Toolbar>
       <div className="split-layout">
@@ -176,7 +174,7 @@ export function ProjectsView({
                   }}
                 >
                   <span className="title-cell">
-                    <strong>{project.name}{project.archived && <i className="archived-inline">已归档</i>}</strong>
+                    <strong>{project.name}</strong>
                     <small>{project.path}</small>
                   </span>
                   <TagList tags={project.tags} />
@@ -187,7 +185,7 @@ export function ProjectsView({
                       title="打开目录"
                       onClick={(event) => {
                         event.stopPropagation();
-                        void workbenchApi.openLocalPath(project.path);
+                        onOpenDirectory(project);
                       }}
                     >
                       <FolderOpen size={14} />
@@ -223,15 +221,16 @@ export function ProjectsView({
                       <Edit3 size={14} />
                     </IconButton>
                     <IconButton
-                      title={!project.archived && isRunningProject ? "运行中不可归档" : project.archived ? "恢复项目" : "归档项目"}
-                      disabled={!project.archived && isRunningProject}
+                      title={isRunningProject ? "运行中不可删除" : "删除项目记录"}
+                      variant="danger"
+                      disabled={isRunningProject}
                       onClick={(event) => {
                         event.stopPropagation();
-                        if (!project.archived && isRunningProject) return;
-                        onArchive(project, !project.archived);
+                        if (isRunningProject) return;
+                        onDelete(project);
                       }}
                     >
-                      {project.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+                      <Trash2 size={14} />
                     </IconButton>
                   </ActionGroup>
                 </div>
@@ -240,7 +239,7 @@ export function ProjectsView({
             {!loading && !loadError && visibleProjects.length === 0 && (
               <div className="empty-state">
                 <strong>{projects.length === 0 ? "暂无项目" : "没有匹配的项目"}</strong>
-                <small>{projects.length === 0 ? "点击右上角“添加项目”记录本地项目路径和启动配置。" : "调整搜索、标签、启动状态或归档筛选后重试。"}</small>
+                <small>{projects.length === 0 ? "点击右上角“添加项目”记录本地项目路径和启动配置。" : "调整搜索、标签或启动状态后重试。"}</small>
               </div>
             )}
           </div>
@@ -266,14 +265,15 @@ export function ProjectsView({
                   <>
                   <IconButton title="编辑" onClick={() => onEdit(detailProject)}><Edit3 size={15} /></IconButton>
                   <IconButton
-                    title={!detailProject.archived && detailProjectRunning ? "运行中不可归档" : detailProject.archived ? "恢复项目" : "归档项目"}
-                    disabled={!detailProject.archived && detailProjectRunning}
+                    title={detailProjectRunning ? "运行中不可删除" : "删除项目记录"}
+                    variant="danger"
+                    disabled={detailProjectRunning}
                     onClick={() => {
-                      if (!detailProject.archived && detailProjectRunning) return;
-                      onArchive(detailProject, !detailProject.archived);
+                      if (detailProjectRunning) return;
+                      onDelete(detailProject);
                     }}
                   >
-                    {detailProject.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />}
+                    <Trash2 size={15} />
                   </IconButton>
                   </>
                 }
@@ -286,7 +286,7 @@ export function ProjectsView({
               <div className="detail-meta-grid">
                 <div><small>启动状态</small><strong>{getProjectLaunchStatus(detailProject, projectLaunchTimes, selectedLaunchRun)}</strong></div>
                 <div><small>最近启动</small><strong>{projectLaunchTimes[detailProject.id] ?? "暂无"}</strong></div>
-                <div><small>项目状态</small><strong>{detailProject.archived ? "已归档" : "活跃"}</strong></div>
+                <div><small>项目状态</small><strong>已记录</strong></div>
                 <div><small>启动方式</small><strong>内嵌启动会话</strong></div>
               </div>
               <LaunchItemsPanel

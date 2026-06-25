@@ -1,6 +1,7 @@
 mod db;
 mod launch;
 mod profiles;
+mod remote_import;
 mod types;
 
 use std::path::PathBuf;
@@ -10,7 +11,7 @@ use tauri_plugin_dialog::DialogExt;
 pub use launch::LaunchSessionRegistry;
 pub use types::{
     LaunchRun, LaunchSession, LaunchSessionSnapshot, ProjectLaunchConfig, ProjectOpenProfile,
-    ProjectRecord,
+    ProjectRecord, RemoteProjectImportInspection, RemoteProjectImportRequest,
 };
 
 pub(crate) type ProjectResult<T> = Result<T, String>;
@@ -29,6 +30,35 @@ pub fn save_project(project: ProjectRecord) -> ProjectResult<Vec<ProjectRecord>>
     let connection = db::open_database(&workbench_root)?;
     db::upsert_project(&connection, &project)?;
     db::load_projects(&connection)
+}
+
+#[tauri::command]
+pub fn delete_project(id: String) -> ProjectResult<Vec<ProjectRecord>> {
+    let workbench_root = default_workbench_root()?;
+    let connection = db::open_database(&workbench_root)?;
+    db::delete_project(&connection, &id)?;
+    db::load_projects(&connection)
+}
+
+#[tauri::command]
+pub async fn import_remote_project<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    request: RemoteProjectImportRequest,
+) -> ProjectResult<Vec<ProjectRecord>> {
+    let workbench_root = default_workbench_root()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        remote_import::import_remote_project_sync(app, workbench_root, request)
+    })
+    .await
+    .map_err(error_message)?
+}
+
+#[tauri::command]
+pub fn inspect_remote_project_import(
+    request: RemoteProjectImportRequest,
+) -> ProjectResult<RemoteProjectImportInspection> {
+    let workbench_root = default_workbench_root()?;
+    remote_import::inspect_remote_project_import(&workbench_root, &request)
 }
 
 #[tauri::command]
@@ -184,8 +214,9 @@ pub(crate) fn error_message(error: impl std::fmt::Display) -> String {
 #[cfg(test)]
 mod tests {
     use super::db::{
-        load_project_open_profiles, load_projects, migrate_legacy_launch_configs, open_database,
-        seed_default_project_open_profiles, upsert_project, upsert_project_open_profile,
+        delete_project, load_project_open_profiles, load_projects, migrate_legacy_launch_configs,
+        open_database, seed_default_project_open_profiles, upsert_project,
+        upsert_project_open_profile,
     };
     use super::launch::{
         create_launch_run, enabled_launch_configs, stop_registered_session,
@@ -416,6 +447,39 @@ mod tests {
 
         let projects = load_projects(&connection).unwrap();
         assert_eq!(projects, vec![project]);
+    }
+
+    #[test]
+    fn deletes_project_record_and_launch_configs() {
+        let dir = tempdir().unwrap();
+        let connection = open_database(dir.path()).unwrap();
+        let project = ProjectRecord {
+            id: "demo".to_string(),
+            name: "Demo".to_string(),
+            path: "E:\\Demo".to_string(),
+            note: String::new(),
+            tags: Vec::new(),
+            archived: false,
+            launch_configs: vec![ProjectLaunchConfig {
+                id: "demo-dev".to_string(),
+                name: "Dev".to_string(),
+                command: "pnpm dev".to_string(),
+                workdir: "E:\\Demo".to_string(),
+                enabled: true,
+            }],
+        };
+
+        upsert_project(&connection, &project).unwrap();
+        delete_project(&connection, "demo").unwrap();
+
+        let projects = load_projects(&connection).unwrap();
+        let launch_config_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM project_launch_configs", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert!(projects.is_empty());
+        assert_eq!(launch_config_count, 0);
     }
 
     #[test]
