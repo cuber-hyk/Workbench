@@ -461,6 +461,14 @@ code { font-family: Consolas, monospace; }
 .update-action-row .settings-row-actions { flex-wrap: wrap; }
 .update-dialog-body { display: grid; gap: 12px; }
 .update-dialog-footer-actions { display: flex; justify-content: flex-end; gap: 8px; width: 100%; }
+.legacy-install-panel { display: grid; gap: 10px; min-width: 0; padding: 12px; border: 1px solid color-mix(in srgb, #f8c66a, var(--border) 35%); border-radius: 7px; background: rgba(248, 198, 106, .12); }
+.legacy-install-panel > span:first-child { display: grid; gap: 4px; min-width: 0; }
+.legacy-install-panel strong { font-size: 13px; }
+.legacy-install-panel small { color: var(--muted); font-size: 11px; line-height: 1.5; }
+.legacy-install-panel dl { display: grid; grid-template-columns: 78px minmax(0, 1fr); gap: 5px 10px; margin: 0; font-size: 11px; }
+.legacy-install-panel dt { color: var(--muted); }
+.legacy-install-panel dd { min-width: 0; margin: 0; overflow-wrap: anywhere; font-family: Consolas, monospace; }
+.legacy-install-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .update-version-summary { display: grid; grid-template-columns: minmax(140px, .8fr) minmax(180px, 1fr) auto; align-items: stretch; gap: 10px; }
 .update-version-summary > div { display: grid; gap: 5px; min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: 6px; background: color-mix(in srgb, var(--panel), var(--bg) 35%); }
 .update-version-summary small, .update-progress-meta small { color: var(--muted); font-size: 10px; }

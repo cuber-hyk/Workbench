@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import type { AppUpdateInfo, AppUpdateProgress } from "../lib/api/updateApi";
-import { checkForAppUpdate, downloadAndInstallAppUpdate, getCurrentAppVersion, restartAppForUpdate } from "../lib/api/updateApi";
+import type { AppUpdateInfo, AppUpdateProgress, LegacyWorkbenchInstall } from "../lib/api/updateApi";
+import { checkForAppUpdate, deleteLegacyWorkbenchShortcuts, downloadAndInstallAppUpdate, getCurrentAppVersion, inspectLegacyWorkbenchInstall, openLegacyWorkbenchUninstaller, restartAppForUpdate } from "../lib/api/updateApi";
 
 type AppUpdateStatus = "idle" | "checking" | "available" | "current" | "downloading" | "ready-to-restart" | "error" | "unsupported";
 
@@ -11,10 +11,15 @@ interface AppUpdateContextValue {
   updateInfo: AppUpdateInfo | null;
   downloadProgress: AppUpdateProgress;
   error: string;
+  legacyInstall: LegacyWorkbenchInstall | null;
+  legacyInstallError: string;
   hasUpdate: boolean;
   checkUpdate: (options?: { silent?: boolean }) => Promise<void>;
   downloadAndInstall: () => Promise<void>;
   restart: () => Promise<void>;
+  inspectLegacyInstall: () => Promise<void>;
+  deleteLegacyShortcuts: () => Promise<void>;
+  openLegacyUninstaller: () => Promise<void>;
 }
 
 const AppUpdateContext = createContext<AppUpdateContextValue | undefined>(undefined);
@@ -25,10 +30,21 @@ export function AppUpdateProvider({ children }: { children: ReactNode }) {
   const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<AppUpdateProgress>(emptyProgress());
   const [error, setError] = useState("");
+  const [legacyInstall, setLegacyInstall] = useState<LegacyWorkbenchInstall | null>(null);
+  const [legacyInstallError, setLegacyInstallError] = useState("");
   const checkingRef = useRef(false);
 
   useEffect(() => {
     void getCurrentAppVersion().then(setCurrentVersion).catch(() => setCurrentVersion(""));
+  }, []);
+
+  const inspectLegacyInstall = useCallback(async () => {
+    try {
+      setLegacyInstallError("");
+      setLegacyInstall(await inspectLegacyWorkbenchInstall());
+    } catch (caught) {
+      setLegacyInstallError(formatLegacyInstallError(caught));
+    }
   }, []);
 
   const checkUpdate = useCallback(async (options?: { silent?: boolean }) => {
@@ -86,6 +102,24 @@ export function AppUpdateProvider({ children }: { children: ReactNode }) {
     await restartAppForUpdate();
   }, []);
 
+  const deleteLegacyShortcuts = useCallback(async () => {
+    try {
+      setLegacyInstallError("");
+      setLegacyInstall(await deleteLegacyWorkbenchShortcuts());
+    } catch (caught) {
+      setLegacyInstallError(formatLegacyInstallError(caught));
+    }
+  }, []);
+
+  const openLegacyUninstaller = useCallback(async () => {
+    try {
+      setLegacyInstallError("");
+      await openLegacyWorkbenchUninstaller();
+    } catch (caught) {
+      setLegacyInstallError(formatLegacyInstallError(caught));
+    }
+  }, []);
+
   useEffect(() => {
     const timer = window.setTimeout(() => {
       void checkUpdate({ silent: true });
@@ -93,6 +127,10 @@ export function AppUpdateProvider({ children }: { children: ReactNode }) {
 
     return () => window.clearTimeout(timer);
   }, [checkUpdate]);
+
+  useEffect(() => {
+    void inspectLegacyInstall();
+  }, [inspectLegacyInstall]);
 
   return (
     <AppUpdateContext.Provider
@@ -102,15 +140,25 @@ export function AppUpdateProvider({ children }: { children: ReactNode }) {
         updateInfo,
         downloadProgress,
         error,
+        legacyInstall,
+        legacyInstallError,
         hasUpdate: Boolean(updateInfo) && status === "available",
         checkUpdate,
         downloadAndInstall,
-        restart
+        restart,
+        inspectLegacyInstall,
+        deleteLegacyShortcuts,
+        openLegacyUninstaller
       }}
     >
       {children}
     </AppUpdateContext.Provider>
   );
+}
+
+function formatLegacyInstallError(caught: unknown) {
+  const message = caught instanceof Error ? caught.message : String(caught);
+  return `旧版安装检查失败：${message}`;
 }
 
 function emptyProgress(): AppUpdateProgress {

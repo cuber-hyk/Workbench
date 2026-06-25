@@ -1,4 +1,4 @@
-import { ArrowUpCircle, CheckCircle2, ChevronDown, PlusCircle, RefreshCcw, RotateCcw, ShieldCheck, Sparkles, Wrench } from "lucide-react";
+import { ArrowUpCircle, CheckCircle2, ChevronDown, ExternalLink, PlusCircle, RefreshCcw, RotateCcw, ShieldCheck, Sparkles, Trash2, Wrench } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useAppUpdate } from "../contexts/AppUpdateContext";
 import { Button, IconButton, Modal, StatusBadge } from "./ui";
@@ -69,8 +69,13 @@ export function AppUpdateDialog({ onClose }: { onClose: () => void }) {
     updateInfo,
     downloadProgress,
     error,
+    legacyInstall,
+    legacyInstallError,
     checkUpdate,
     downloadAndInstall,
+    deleteLegacyShortcuts,
+    openLegacyUninstaller,
+    inspectLegacyInstall,
     restart
   } = useAppUpdate();
   const checking = status === "checking";
@@ -116,6 +121,35 @@ export function AppUpdateDialog({ onClose }: { onClose: () => void }) {
       }
     >
       <div className="update-dialog-body">
+        {legacyInstall?.found && (
+          <div className="legacy-install-panel">
+            <span>
+              <strong>检测到旧版 Workbench App</strong>
+              <small>旧版快捷方式可能仍指向旧程序，导致重启后又打开旧版本。建议删除旧快捷方式，并卸载旧版安装。</small>
+            </span>
+            <dl>
+              {legacyInstall.displayVersion && <><dt>旧版版本</dt><dd>{legacyInstall.displayVersion}</dd></>}
+              {legacyInstall.installLocation && <><dt>安装位置</dt><dd>{legacyInstall.installLocation}</dd></>}
+              {legacyInstall.executablePath && <><dt>旧版程序</dt><dd>{legacyInstall.executablePath}</dd></>}
+              <dt>旧快捷方式</dt><dd>{legacyInstall.shortcuts.length} 个</dd>
+            </dl>
+            <span className="legacy-install-actions">
+              <Button onClick={() => void deleteLegacyShortcuts()} disabled={legacyInstall.shortcuts.length === 0}>
+                <Trash2 size={15} />
+                删除旧快捷方式
+              </Button>
+              <Button onClick={() => void openLegacyUninstaller()} disabled={!legacyInstall.uninstallString}>
+                <ExternalLink size={15} />
+                打开旧版卸载程序
+              </Button>
+              <Button onClick={() => void inspectLegacyInstall()}>
+                <RefreshCcw size={15} />
+                重新检查
+              </Button>
+            </span>
+          </div>
+        )}
+
         <div className="update-version-summary">
           <div>
             <small>当前版本</small>
@@ -189,6 +223,7 @@ export function AppUpdateDialog({ onClose }: { onClose: () => void }) {
         {status === "unsupported" && <div className="notice">Web 预览模式不支持应用更新，请在桌面应用中检查更新。</div>}
         {status === "current" && <div className="notice">当前已经是最新版本，可以稍后再次检查 GitHub Releases。</div>}
         {error && <div className="notice danger-notice">{error}</div>}
+        {legacyInstallError && <div className="notice danger-notice">{legacyInstallError}</div>}
       </div>
     </Modal>
   );
