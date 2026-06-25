@@ -104,7 +104,7 @@ code { font-family: Consolas, monospace; }
 .header-actions { display: flex; gap: 8px; }
 .import-control { position: relative; }
 .import-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 5; display: grid; min-width: 180px; padding: 5px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); box-shadow: 0 12px 30px rgba(15,25,32,.14); }
-.import-menu button { padding: 9px 10px; border: 0; border-radius: 4px; background: transparent; color: var(--text); text-align: left; }
+.import-menu button { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border: 0; border-radius: 4px; background: transparent; color: var(--text); text-align: left; }
 .import-menu button:hover { background: var(--accent-soft); }
 .button, .icon-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--border); border-radius: 5px; background: var(--panel); color: var(--text); }
 .button { min-height: 36px; padding: 0 12px; }
@@ -165,6 +165,14 @@ code { font-family: Consolas, monospace; }
 .update-result-list { display: grid; gap: 8px; margin-top: 12px; }
 .update-result-list div { display: grid; gap: 3px; padding: 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
 .update-result-list small { color: var(--muted); line-height: 1.45; }
+.remote-import-progress { display: grid; gap: 8px; padding: 10px 0 4px; }
+.remote-import-progress-meta { display: flex; align-items: center; gap: 8px; }
+.remote-import-progress small { color: var(--muted); font-size: 11px; }
+.remote-import-progress-track { height: 6px; overflow: hidden; border-radius: 999px; background: var(--border); }
+.remote-import-progress-fill { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width .18s ease; }
+.remote-import-conflict { display: grid; gap: 6px; padding: 12px; border-radius: 7px; background: var(--warning-bg); color: var(--warning-text); }
+.remote-import-conflict small { color: inherit; line-height: 1.5; }
+.remote-import-conflict code { overflow-wrap: anywhere; color: inherit; font-size: 11px; }
 
 .split-layout { display: grid; grid-template-columns: minmax(0, 1fr) 396px; flex: 1; min-height: 0; gap: 16px; }
 .skills-layout { min-height: 0; }

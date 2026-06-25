@@ -15,6 +15,7 @@ Do not read `docs/plans/`, `docs/audits/`, or archived directories by default.
 - `docs/ARCHITECTURE.md`：技术栈、目录结构、核心模块、数据模型和关键流程。
 - `src/App.tsx`：当前前端应用壳、全局状态和主要交互入口。
 - `src/views/projects/ProjectsView.tsx`：项目列表、详情、启动项面板和本次启动日志前端视图。
+- `src/views/projects/ProjectAddMenu.tsx`：项目页添加入口下拉，分流本地导入和 GitHub/Gitee 导入。
 - `src/views/projects/launchState.ts`：项目启动状态、启动事件归并、停止状态标记和启动配置筛选的前端纯逻辑。
 - `src/views/radar/RadarView.tsx`：资源 Radar 前端列表、详情、筛选和增删弹窗。
 - `src/views/settings/SettingsView.tsx`：设置页前端视图。
@@ -23,7 +24,7 @@ Do not read `docs/plans/`, `docs/audits/`, or archived directories by default.
 - `src/views/skills/SkillsMarketView.tsx`：skills.sh 市场前端列表、详情、安装和卸载入口。
 - `src/views/skills/SkillUpdatesView.tsx`：skills.sh 已安装 Skill 的更新检查和批量更新视图。
 - `src/views/skills/skillFilters.ts`、`src/views/skills/skillMarketFormatters.ts`、`src/views/skills/SkillStatusIndicator.tsx`：Skills 筛选、展示格式化与状态标识。
-- `src/components/dialogs/projects/`：项目编辑与启动配置表单弹窗。
+- `src/components/dialogs/projects/`：项目编辑、启动配置、GitHub/Gitee 远程导入和项目记录删除确认弹窗。
 - `src/components/dialogs/settings/`：设置页相关的自定义工具、项目打开方式、托盘提示和目录创建弹窗。
 - `src/components/dialogs/skills/`：Skills 分类、导入、迁移、删除和市场卸载弹窗。
 - `src/lib/ui/toolIcons.tsx`：Agent 工具图标资源映射、自定义图标路径转换和图标回退显示。
@@ -31,7 +32,7 @@ Do not read `docs/plans/`, `docs/audits/`, or archived directories by default.
 - `src/lib/types/domain.ts`：前端领域类型。
 - `src/lib/api/workbenchApi.ts`：前端到 Tauri commands 的 API 边界。
 - `src-tauri/src/lib.rs`：Tauri command 注册入口。
-- `src-tauri/src/projects.rs`、`src-tauri/src/projects/`：项目 command facade、类型、SQLite 持久化、项目打开方式 Profiles 和启动会话进程管理。
+- `src-tauri/src/projects.rs`、`src-tauri/src/projects/`：项目 command facade、类型、SQLite 持久化、项目记录删除、GitHub/Gitee 远程导入、项目打开方式 Profiles 和启动会话进程管理。
 - `docs/capabilities/project-management.md`：项目管理当前能力、启动项、外部工具打开 Profiles、数据所有权和错误边界。
 - `docs/adr/2026-06-16-project-open-profiles.md`：项目打开方式使用全局 Profiles、并与启动配置分离的决策。
 - `docs/capabilities/app-update.md`：应用更新入口、Tauri updater 配置、GitHub Releases 更新来源和发布签名边界。

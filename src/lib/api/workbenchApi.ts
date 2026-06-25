@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { projects, radarItems, settings, skillCategories, skills } from "./mockData";
-import type { CloseBehavior, CustomToolTargetInput, ExternalSkillCandidateGroup, ExternalSkillSyncResult, ExternalSkillSyncSelection, GitHubCliStatus, GitHubStarsSyncResult, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, ManagedTargetRebuildResult, ManagedTargetRebuildSelection, Project, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, RootSkillMigrationCandidate, SkillInstallProgress, SkillMarketDetail, SkillMarketItem, SkillMarketResponse, SkillUpdateProgress, SkillUpdateResult, SkillUpdateStatus, SkillVersionSource, SkillsRootMigrationState, SkillsState, ToolKey } from "../types/domain";
+import type { CloseBehavior, CustomToolTargetInput, ExternalSkillCandidateGroup, ExternalSkillSyncResult, ExternalSkillSyncSelection, GitHubCliStatus, GitHubStarsSyncResult, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, ManagedTargetRebuildResult, ManagedTargetRebuildSelection, Project, ProjectImportProgress, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, RemoteProjectImportInspection, RemoteProjectImportRequest, RootSkillMigrationCandidate, SkillInstallProgress, SkillMarketDetail, SkillMarketItem, SkillMarketResponse, SkillUpdateProgress, SkillUpdateResult, SkillUpdateStatus, SkillVersionSource, SkillsRootMigrationState, SkillsState, ToolKey } from "../types/domain";
 
 const delay = async () => new Promise((resolve) => window.setTimeout(resolve, 80));
 const isTauri = "__TAURI_INTERNALS__" in window;
@@ -129,6 +129,79 @@ export const workbenchApi = {
       return projects;
     }
     return invoke<Project[]>("save_project", { project });
+  },
+  async deleteProject(id: string) {
+    if (!isTauri) {
+      await delay();
+      const index = projects.findIndex((item) => item.id === id);
+      if (index >= 0) projects.splice(index, 1);
+      return projects;
+    }
+    return invoke<Project[]>("delete_project", { id });
+  },
+  async inspectRemoteProjectImport(request: RemoteProjectImportRequest) {
+    if (!isTauri) {
+      await delay();
+      const targetPath = previewRemoteProjectPath(request);
+      const existingProject = projects.find((project) => project.path === targetPath);
+      return {
+        status: existingProject ? "managed_existing" : "ready",
+        targetPath,
+        existingProject: existingProject ?? null
+      } satisfies RemoteProjectImportInspection;
+    }
+    return invoke<RemoteProjectImportInspection>("inspect_remote_project_import", { request });
+  },
+  async importRemoteProject(request: RemoteProjectImportRequest, onProgress?: (progress: ProjectImportProgress) => void) {
+    if (!isTauri) {
+      for (const progress of [
+        { progress: 8, message: "正在校验仓库地址" },
+        { progress: 18, message: "正在检查 Git" },
+        { progress: 32, message: "正在克隆仓库" },
+        { progress: 88, message: "正在保存项目记录" },
+        { progress: 100, message: "导入完成" }
+      ]) {
+        onProgress?.({ importId: request.importId, ...progress });
+        await delay();
+      }
+      const projectName = request.name.trim() || previewProjectNameFromRemote(request.repoUrl);
+      const projectPath = previewRemoteProjectPath(request);
+      const projectId = request.replaceProjectId ?? request.projectId;
+      const project = {
+        id: projectId,
+        name: projectName,
+        path: projectPath,
+        note: request.note.trim(),
+        tags: request.tags.map((tag) => tag.trim()).filter(Boolean),
+        archived: false,
+        launchConfigs: [
+          {
+            id: `${projectId}-default`,
+            name: "默认",
+            command: "",
+            workdir: projectPath,
+            enabled: true
+          }
+        ]
+      } satisfies Project;
+      const index = projects.findIndex((item) => item.id === project.id || item.path === project.path);
+      if (index >= 0) {
+        projects[index] = project;
+      } else {
+        projects.push(project);
+      }
+      return projects;
+    }
+    const unlisten = await listen<ProjectImportProgress>("project-import-progress", (event) => {
+      if (event.payload.importId === request.importId) {
+        onProgress?.(event.payload);
+      }
+    });
+    try {
+      return await invoke<Project[]>("import_remote_project", { request });
+    } finally {
+      unlisten();
+    }
   },
   async launchProject(project: Project) {
     if (!isTauri) {
@@ -742,6 +815,18 @@ function uniqueCustomToolKey(name: string) {
     if (!existing.has(candidate)) return candidate;
   }
   throw new Error("无法生成自定义工具标识");
+}
+
+function previewProjectNameFromRemote(repoUrl: string) {
+  const trimmed = repoUrl.trim().replace(/[\\/#]+$/, "");
+  const lastSegment = trimmed.includes(":") && trimmed.startsWith("git@")
+    ? trimmed.slice(trimmed.lastIndexOf("/") + 1)
+    : trimmed.split("/").pop() ?? "remote-project";
+  return lastSegment.replace(/\.git$/i, "") || "remote-project";
+}
+
+function previewRemoteProjectPath(request: RemoteProjectImportRequest) {
+  return `${request.parentDirectory.replace(/[\\/]+$/, "")}\\${previewProjectNameFromRemote(request.repoUrl)}`;
 }
 
 function createPreviewLaunchRun(project: Project): LaunchRun {
