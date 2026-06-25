@@ -23,6 +23,21 @@ export interface AppUpdateProgress {
   total: number | null;
 }
 
+export interface LegacyWorkbenchShortcut {
+  path: string;
+  target: string;
+}
+
+export interface LegacyWorkbenchInstall {
+  found: boolean;
+  displayName?: string | null;
+  displayVersion?: string | null;
+  installLocation?: string | null;
+  executablePath?: string | null;
+  uninstallString?: string | null;
+  shortcuts: LegacyWorkbenchShortcut[];
+}
+
 export type AppUpdateCheckResult =
   | { status: "available"; info: AppUpdateInfo }
   | { status: "current"; currentVersion: string }
@@ -41,6 +56,21 @@ let pendingUpdate: TauriUpdate | null = null;
 export async function getCurrentAppVersion() {
   if (!isTauri) return "web-preview";
   return getVersion();
+}
+
+export async function inspectLegacyWorkbenchInstall(): Promise<LegacyWorkbenchInstall> {
+  if (!isTauri) return emptyLegacyWorkbenchInstall();
+  return invoke<LegacyWorkbenchInstall>("inspect_legacy_workbench_install");
+}
+
+export async function deleteLegacyWorkbenchShortcuts(): Promise<LegacyWorkbenchInstall> {
+  if (!isTauri) return emptyLegacyWorkbenchInstall();
+  return invoke<LegacyWorkbenchInstall>("delete_legacy_workbench_shortcuts");
+}
+
+export async function openLegacyWorkbenchUninstaller(): Promise<void> {
+  if (!isTauri) return;
+  await invoke("open_legacy_workbench_uninstaller");
 }
 
 export async function checkForAppUpdate(): Promise<AppUpdateCheckResult> {
@@ -144,4 +174,11 @@ export async function restartAppForUpdate() {
 
   const { relaunch } = await import("@tauri-apps/plugin-process");
   await relaunch();
+}
+
+function emptyLegacyWorkbenchInstall(): LegacyWorkbenchInstall {
+  return {
+    found: false,
+    shortcuts: []
+  };
 }

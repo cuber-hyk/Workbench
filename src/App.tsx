@@ -106,7 +106,7 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, { error: strin
 }
 
 function WorkbenchApp() {
-  const { hasUpdate, updateInfo } = useAppUpdate();
+  const { hasUpdate, legacyInstall, updateInfo } = useAppUpdate();
   const [activeView, setActiveView] = useState<ViewKey>("projects");
   const [theme, setTheme] = useState<"light" | "dark">(() => {
     return (localStorage.getItem("workbench-theme") as "light" | "dark") || "light";
@@ -152,6 +152,7 @@ function WorkbenchApp() {
   const [syncingGithubStars, setSyncingGithubStars] = useState(false);
   const [marketInstallTask, setMarketInstallTask] = useState<MarketInstallTask | null>(null);
   const marketInstallRunningRef = useRef(false);
+  const legacyInstallNoticeShownRef = useRef(false);
 
   useEffect(() => {
     document.body.dataset.theme = theme;
@@ -304,6 +305,17 @@ function WorkbenchApp() {
       duration: 5000
     });
   }, [hasUpdate, openUpdateDialog, updateInfo?.latestVersion]);
+
+  useEffect(() => {
+    if (!legacyInstall?.found || legacyInstallNoticeShownRef.current) return;
+    legacyInstallNoticeShownRef.current = true;
+    showToast("检测到旧版 Workbench App，可能导致再次打开旧版本", {
+      tone: "warning",
+      actionLabel: "处理旧版",
+      onAction: openUpdateDialog,
+      duration: 8000
+    });
+  }, [legacyInstall?.found, openUpdateDialog]);
 
   function runToastAction(currentToast: ToastState) {
     dismissToast();

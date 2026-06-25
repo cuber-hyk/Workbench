@@ -11,10 +11,22 @@ const updateState = vi.hoisted(() => ({
     updateInfo: null as { currentVersion: string; latestVersion: string; body?: string; date?: string } | null,
     downloadProgress: { percent: null as number | null, downloaded: 0, total: null as number | null },
     error: "",
+    legacyInstall: null as {
+      found: boolean;
+      displayVersion?: string | null;
+      installLocation?: string | null;
+      executablePath?: string | null;
+      uninstallString?: string | null;
+      shortcuts: Array<{ path: string; target: string }>;
+    } | null,
+    legacyInstallError: "",
     hasUpdate: false,
     checkUpdate: vi.fn(),
     downloadAndInstall: vi.fn(),
-    restart: vi.fn()
+    restart: vi.fn(),
+    inspectLegacyInstall: vi.fn(),
+    deleteLegacyShortcuts: vi.fn(),
+    openLegacyUninstaller: vi.fn()
   }
 }));
 
@@ -30,10 +42,15 @@ describe("app update UI", () => {
       updateInfo: null,
       downloadProgress: { percent: null, downloaded: 0, total: null },
       error: "",
+      legacyInstall: null,
+      legacyInstallError: "",
       hasUpdate: false,
       checkUpdate: vi.fn(),
       downloadAndInstall: vi.fn(),
-      restart: vi.fn()
+      restart: vi.fn(),
+      inspectLegacyInstall: vi.fn(),
+      deleteLegacyShortcuts: vi.fn(),
+      openLegacyUninstaller: vi.fn()
     };
   });
 
@@ -273,6 +290,39 @@ describe("app update UI", () => {
     expect(versionGroups).toHaveLength(2);
     expect(versionGroups[0]).toHaveAttribute("open");
     expect(versionGroups[1]).not.toHaveAttribute("open");
+  });
+
+  it("shows legacy Workbench App cleanup actions when an old install is detected", async () => {
+    const user = userEvent.setup();
+    updateState.value = {
+      ...updateState.value,
+      status: "current",
+      legacyInstall: {
+        found: true,
+        displayVersion: "0.2.0",
+        installLocation: "D:\\Workbench",
+        executablePath: "D:\\Workbench\\workbench-app.exe",
+        uninstallString: "\"D:\\Workbench\\uninstall.exe\"",
+        shortcuts: [
+          {
+            path: "C:\\Users\\dev\\Desktop\\Workbench App.lnk",
+            target: "D:\\Workbench\\workbench-app.exe"
+          }
+        ]
+      }
+    };
+
+    render(<AppUpdateDialog onClose={vi.fn()} />);
+
+    expect(screen.getByText("检测到旧版 Workbench App")).toBeInTheDocument();
+    expect(screen.getByText("D:\\Workbench")).toBeInTheDocument();
+    expect(screen.getByText("1 个")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /删除旧快捷方式/ }));
+    await user.click(screen.getByRole("button", { name: /打开旧版卸载程序/ }));
+
+    expect(updateState.value.deleteLegacyShortcuts).toHaveBeenCalledOnce();
+    expect(updateState.value.openLegacyUninstaller).toHaveBeenCalledOnce();
   });
 
   it("shows download progress while updating", () => {
