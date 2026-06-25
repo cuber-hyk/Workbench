@@ -3197,7 +3197,7 @@ describe("Workbench UI interactions", () => {
     const brandMark = container.querySelector<HTMLImageElement>(".brand-mark");
     expect(brandMark).not.toBeNull();
     expect(brandMark?.tagName).toBe("IMG");
-    expect(brandMark?.getAttribute("src")).toContain("workbench-icon.svg");
+    expect(brandMark?.getAttribute("src")).toContain("workbench-icon.png");
     expect(brandMark).toHaveAttribute("aria-hidden", "true");
   });
 

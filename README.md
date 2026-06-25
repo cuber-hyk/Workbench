@@ -127,7 +127,7 @@ pnpm tauri build
 
 构建产物通常位于：
 
-- `src-tauri/target/release/workbench-app.exe`
+- `src-tauri/target/release/workbench.exe`
 - `src-tauri/target/release/bundle/`
 
 ## 发布说明

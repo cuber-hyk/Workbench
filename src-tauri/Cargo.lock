@@ -5210,8 +5210,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "workbench-app"
-version = "0.2.1"
+name = "workbench"
+version = "0.2.2"
 dependencies = [
  "dirs",
  "regex",

@@ -34,7 +34,7 @@ import { SkillCategoryDialog } from "./components/dialogs/skills/SkillCategoryDi
 import { SkillsImportDialog } from "./components/dialogs/skills/SkillsImportDialog";
 import { SkillsRootMigrationDialog } from "./components/dialogs/skills/SkillsRootMigrationDialog";
 import { useAppUpdate } from "./contexts/AppUpdateContext";
-import workbenchIcon from "./assets/brand/workbench-icon.svg";
+import workbenchIcon from "./assets/brand/workbench-icon.png";
 import { workbenchApi } from "./lib/api/workbenchApi";
 import { SettingsView } from "./views/settings/SettingsView";
 import { ProjectsView } from "./views/projects/ProjectsView";
