@@ -472,9 +472,15 @@ code { font-family: Consolas, monospace; }
 .update-note-counts .fixed { color: #f8c66a; background: rgba(248, 198, 106, .15); }
 .update-note-counts .security { color: #ff9d8a; background: rgba(255, 157, 138, .14); }
 .update-release-notes { gap: 12px; max-height: min(54dvh, 520px); overflow: auto; }
-.update-release-notes-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
-.update-release-notes-title strong { min-width: 0; overflow-wrap: anywhere; font-size: 15px; }
 .update-release-section-list { display: grid; gap: 10px; }
+.update-release-version { display: grid; min-width: 0; }
+.update-release-version-title { position: sticky; top: -12px; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 9px 10px; border: 1px solid var(--border); border-radius: 7px; background: color-mix(in srgb, var(--panel), var(--bg) 12%); cursor: pointer; list-style: none; }
+.update-release-version-title::-webkit-details-marker { display: none; }
+.update-release-version-title strong { min-width: 0; overflow-wrap: anywhere; font-size: 14px; }
+.update-release-version-title span { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 10px; font-weight: 800; white-space: nowrap; }
+.update-release-version-title svg { transition: transform .16s ease; }
+.update-release-version[open] .update-release-version-title svg { transform: rotate(180deg); }
+.update-release-version-content { display: grid; gap: 8px; padding-top: 8px; }
 .update-release-section { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: 7px; background: color-mix(in srgb, var(--panel), var(--bg) 18%); }
 .update-release-section h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; }
 .update-release-section h3 span { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: color-mix(in srgb, var(--accent-soft), transparent 36%); }

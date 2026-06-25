@@ -1,4 +1,4 @@
-import { ArrowUpCircle, CheckCircle2, PlusCircle, RefreshCcw, RotateCcw, ShieldCheck, Sparkles, Wrench } from "lucide-react";
+import { ArrowUpCircle, CheckCircle2, ChevronDown, PlusCircle, RefreshCcw, RotateCcw, ShieldCheck, Sparkles, Wrench } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useAppUpdate } from "../contexts/AppUpdateContext";
 import { Button, IconButton, Modal, StatusBadge } from "./ui";
@@ -9,6 +9,11 @@ interface ReleaseNoteSection {
   key: ReleaseNoteSectionKey;
   title: string;
   items: string[];
+}
+
+interface ReleaseNoteVersion {
+  versionTitle: string;
+  sections: ReleaseNoteSection[];
 }
 
 const releaseSectionMeta: Record<ReleaseNoteSectionKey, { title: string; label: string; className: string; Icon: LucideIcon }> = {
@@ -133,28 +138,37 @@ export function AppUpdateDialog({ onClose }: { onClose: () => void }) {
 
         {updateInfo?.body && (
           <div className="update-release-notes">
-            <span className="update-release-notes-title">
-              <strong>{releaseNotes.versionTitle || "更新说明"}</strong>
-              <small>结构化更新说明</small>
-            </span>
             <div className="update-release-section-list">
-              {releaseNotes.sections.map((section) => {
-                const meta = releaseSectionMeta[section.key];
-                const Icon = meta.Icon;
-                return (
-                  <section key={section.key} className={`update-release-section ${meta.className}`}>
-                    <h3>
-                      <span><Icon size={15} /></span>
-                      {meta.title}
-                    </h3>
-                    <ul className="update-release-note-list">
-                      {section.items.map((item, index) => (
-                        <li key={`${section.key}-${index}-${item}`}>{item}</li>
-                      ))}
-                    </ul>
-                  </section>
-                );
-              })}
+              {releaseNotes.versions.map((version, versionIndex) => (
+                <details key={`${version.versionTitle || "release-notes"}-${versionIndex}`} className="update-release-version" open={versionIndex === 0 || releaseNotes.versions.length === 1}>
+                  <summary className="update-release-version-title">
+                    <strong>{version.versionTitle || "更新说明"}</strong>
+                    <span>
+                      {version.sections.reduce((total, section) => total + section.items.length, 0)} 项
+                      <ChevronDown size={15} />
+                    </span>
+                  </summary>
+                  <div className="update-release-version-content">
+                    {version.sections.map((section) => {
+                      const meta = releaseSectionMeta[section.key];
+                      const Icon = meta.Icon;
+                      return (
+                        <section key={`${version.versionTitle}-${section.key}`} className={`update-release-section ${meta.className}`}>
+                          <h3>
+                            <span><Icon size={15} /></span>
+                            {meta.title}
+                          </h3>
+                          <ul className="update-release-note-list">
+                            {section.items.map((item, index) => (
+                              <li key={`${section.key}-${index}-${item}`}>{item}</li>
+                            ))}
+                          </ul>
+                        </section>
+                      );
+                    })}
+                  </div>
+                </details>
+              ))}
             </div>
           </div>
         )}
@@ -212,11 +226,12 @@ export function formatReleaseNotes(body: string) {
   return parseReleaseNotes(body).sections.flatMap((section) => section.items);
 }
 
-export function parseReleaseNotes(body: string): { versionTitle: string; sections: ReleaseNoteSection[] } {
+export function parseReleaseNotes(body: string): { versionTitle: string; sections: ReleaseNoteSection[]; versions: ReleaseNoteVersion[] } {
   const normalized = body.replace(/\r/g, "").trim();
-  if (!normalized) return { versionTitle: "", sections: [] };
+  if (!normalized) return { versionTitle: "", sections: [], versions: [] };
 
-  const sections: ReleaseNoteSection[] = [];
+  const versions: ReleaseNoteVersion[] = [];
+  let currentVersion: ReleaseNoteVersion | null = null;
   let versionTitle = "";
   let current: ReleaseNoteSection | null = null;
 
@@ -228,13 +243,22 @@ export function parseReleaseNotes(body: string): { versionTitle: string; section
     if (heading) {
       const depth = heading[1].length;
       const text = stripInlineMarkdown(heading[2]);
-      if (depth <= 2 && !versionTitle) {
-        versionTitle = text;
+      if (depth <= 2) {
+        if (!versionTitle) {
+          versionTitle = text;
+        }
+        currentVersion = { versionTitle: text, sections: [] };
+        versions.push(currentVersion);
+        current = null;
         continue;
       }
 
+      if (!currentVersion) {
+        currentVersion = { versionTitle: "", sections: [] };
+        versions.push(currentVersion);
+      }
       current = createReleaseNoteSection(text);
-      sections.push(current);
+      currentVersion.sections.push(current);
       continue;
     }
 
@@ -242,18 +266,45 @@ export function parseReleaseNotes(body: string): { versionTitle: string; section
     if (!item) continue;
 
     if (!current) {
+      if (!currentVersion) {
+        currentVersion = { versionTitle: "", sections: [] };
+        versions.push(currentVersion);
+      }
       current = createReleaseNoteSection("Other");
-      sections.push(current);
+      currentVersion.sections.push(current);
     }
 
-    const splitItems = sections.length === 1 && current.items.length === 0 && !/^([-*•]|\d+[.)、])\s+/.test(line)
+    const splitItems = versions.length === 1 && currentVersion?.sections.length === 1 && current.items.length === 0 && !/^([-*•]|\d+[.)、])\s+/.test(line)
       ? splitSentenceNotes(item)
       : [item];
     current.items.push(...splitItems);
   }
 
-  const nonEmptySections = sections.filter((section) => section.items.length > 0);
-  return { versionTitle, sections: nonEmptySections };
+  const nonEmptyVersions = versions
+    .map((version) => ({
+      ...version,
+      sections: version.sections.filter((section) => section.items.length > 0)
+    }))
+    .filter((version) => version.sections.length > 0);
+  const mergedSections = mergeReleaseNoteSections(nonEmptyVersions.flatMap((version) => version.sections));
+  return { versionTitle, sections: mergedSections, versions: nonEmptyVersions };
+}
+
+function mergeReleaseNoteSections(sections: ReleaseNoteSection[]) {
+  const merged = new Map<ReleaseNoteSectionKey, ReleaseNoteSection>();
+  const sectionOrder: ReleaseNoteSectionKey[] = ["added", "changed", "fixed", "security", "other"];
+  for (const section of sections) {
+    const existing = merged.get(section.key);
+    if (existing) {
+      existing.items.push(...section.items);
+    } else {
+      merged.set(section.key, { ...section, items: [...section.items] });
+    }
+  }
+  return sectionOrder.flatMap((key) => {
+    const section = merged.get(key);
+    return section ? [section] : [];
+  });
 }
 
 function createReleaseNoteSection(title: string): ReleaseNoteSection {

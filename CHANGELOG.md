@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- 软件更新弹窗在跨版本更新时展示当前版本到最新版本之间的累计 Release Notes，并在 GitHub Releases 读取失败时回退到最新版本说明。
+
 ## [0.2.2] - 2026-06-25
 
 ### Added

@@ -175,6 +175,39 @@ describe("app update UI", () => {
     ]);
   });
 
+  it("parses cumulative markdown release notes into version groups", () => {
+    const notes = parseReleaseNotes(`## [0.2.2] - 2026-06-25
+
+### Changed
+
+- 更新累计说明
+
+## [0.2.1] - 2026-06-24
+
+### Added
+
+- 增加分页
+
+### Fixed
+
+- 修复刷新状态`);
+
+    expect(notes.versionTitle).toBe("[0.2.2] - 2026-06-25");
+    expect(notes.versions).toEqual([
+      {
+        versionTitle: "[0.2.2] - 2026-06-25",
+        sections: [{ key: "changed", title: "体验优化", items: ["更新累计说明"] }]
+      },
+      {
+        versionTitle: "[0.2.1] - 2026-06-24",
+        sections: [
+          { key: "added", title: "新增功能", items: ["增加分页"] },
+          { key: "fixed", title: "问题修复", items: ["修复刷新状态"] }
+        ]
+      }
+    ]);
+  });
+
   it("renders markdown release notes as grouped update sections", () => {
     updateState.value = {
       ...updateState.value,
@@ -197,12 +230,49 @@ describe("app update UI", () => {
 
     render(<AppUpdateDialog onClose={vi.fn()} />);
 
-    expect(screen.getByText("[0.2.0] - 2026-06-20")).toBeInTheDocument();
+    expect(screen.queryByText("0.1.0 -> 0.2.0 更新内容")).not.toBeInTheDocument();
     expect(screen.getByText("新增 1")).toBeInTheDocument();
     expect(screen.getByText("安全 1")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /新增功能/ })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /安全改进/ })).toBeInTheDocument();
     expect(screen.queryByText(/### Added/)).not.toBeInTheDocument();
+  });
+
+  it("renders cumulative release notes grouped by version", () => {
+    updateState.value = {
+      ...updateState.value,
+      status: "available",
+      hasUpdate: true,
+      currentVersion: "0.2.0",
+      updateInfo: {
+        currentVersion: "0.2.0",
+        latestVersion: "0.2.2",
+        body: `## [0.2.2] - 2026-06-25
+
+### Changed
+
+- 更新累计说明
+
+## [0.2.1] - 2026-06-24
+
+### Added
+
+- 增加分页`
+      }
+    };
+
+    const { container } = render(<AppUpdateDialog onClose={vi.fn()} />);
+
+    expect(screen.queryByText("0.2.0 -> 0.2.2 更新内容")).not.toBeInTheDocument();
+    expect(screen.getByText("[0.2.2] - 2026-06-25")).toBeInTheDocument();
+    expect(screen.getByText("[0.2.1] - 2026-06-24")).toBeInTheDocument();
+    expect(screen.getByText("新增 1")).toBeInTheDocument();
+    expect(screen.getByText("优化 1")).toBeInTheDocument();
+    expect(screen.queryByText(/### Changed/)).not.toBeInTheDocument();
+    const versionGroups = container.querySelectorAll(".update-release-version");
+    expect(versionGroups).toHaveLength(2);
+    expect(versionGroups[0]).toHaveAttribute("open");
+    expect(versionGroups[1]).not.toHaveAttribute("open");
   });
 
   it("shows download progress while updating", () => {
