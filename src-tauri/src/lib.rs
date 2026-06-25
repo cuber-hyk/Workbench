@@ -1,3 +1,4 @@
+mod app_update;
 mod projects;
 mod radar;
 mod skills;
@@ -69,6 +70,7 @@ pub fn run() {
             app_health,
             hide_main_window,
             exit_app,
+            app_update::list_app_releases,
             projects::list_projects,
             projects::launch_project,
             projects::restart_launch_session,
