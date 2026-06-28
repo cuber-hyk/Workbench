@@ -1,13 +1,14 @@
 import { useState } from "react";
-import type { ReactNode } from "react";
 import { ArrowDown, ArrowUp, Edit3, FolderOpen, Plus, RefreshCcw, Trash2 } from "lucide-react";
 import { AppUpdatePanel } from "../../components/AppUpdatePanel";
 import { Button, IconButton, PageHeader, StatusBadge } from "../../components/ui";
 import { ToolIcon } from "../../lib/ui/toolIcons";
 import type { AppSettings, CloseBehavior, ProjectOpenProfile, ToolKey, ToolTarget } from "../../lib/types/domain";
+import { DiagnosticsSettings } from "./DiagnosticsSettings";
+import { SettingsContentHeader, SettingsRow, SettingsSection } from "./settingsLayout";
 import { closeBehaviorLabel, projectOpenProfileSummary } from "./settingsFormatters";
 
-type SettingsCategory = "general" | "skills" | "tools" | "profiles" | "data" | "behavior" | "appearance";
+type SettingsCategory = "general" | "skills" | "tools" | "profiles" | "data" | "behavior" | "diagnostics" | "appearance";
 
 const settingsCategories: Array<{ key: SettingsCategory; label: string; description: string }> = [
   { key: "general", label: "常规", description: "更新与基础状态" },
@@ -16,6 +17,7 @@ const settingsCategories: Array<{ key: SettingsCategory; label: string; descript
   { key: "profiles", label: "项目打开方式", description: "外部工具入口" },
   { key: "data", label: "本地数据", description: "工作台数据位置" },
   { key: "behavior", label: "应用行为", description: "窗口与生命周期" },
+  { key: "diagnostics", label: "诊断", description: "运行信息与日志" },
   { key: "appearance", label: "外观", description: "主题显示" }
 ];
 
@@ -35,6 +37,8 @@ export function SettingsView({
   onLaunchAtStartupChange,
   onStartHiddenToTrayChange,
   onOpenPath,
+  onOpenDirectory = onOpenPath,
+  onNotify = () => undefined,
   onAddProjectOpenProfile,
   onEditProjectOpenProfile,
   onDeleteProjectOpenProfile
@@ -54,6 +58,8 @@ export function SettingsView({
   onLaunchAtStartupChange: (enabled: boolean) => void;
   onStartHiddenToTrayChange: (enabled: boolean) => void;
   onOpenPath: (path: string) => void;
+  onOpenDirectory?: (path: string) => void | Promise<void>;
+  onNotify?: (message: string, tone?: "success" | "warning" | "danger") => void;
   onAddProjectOpenProfile: () => void;
   onEditProjectOpenProfile: (profile: ProjectOpenProfile) => void;
   onDeleteProjectOpenProfile: (profile: ProjectOpenProfile) => void;
@@ -111,6 +117,15 @@ export function SettingsView({
             onCloseBehaviorChange={onCloseBehaviorChange}
             onLaunchAtStartupChange={onLaunchAtStartupChange}
             onStartHiddenToTrayChange={onStartHiddenToTrayChange}
+          />
+        );
+      case "diagnostics":
+        return (
+          <DiagnosticsSettings
+            settings={settings}
+            onOpenPath={onOpenPath}
+            onOpenDirectory={onOpenDirectory}
+            onNotify={onNotify}
           />
         );
       case "appearance":
@@ -410,71 +425,6 @@ function AppearanceSettings({ theme, onThemeToggle }: { theme: "light" | "dark";
           <Button onClick={onThemeToggle}>切换主题</Button>
         </SettingsRow>
       </SettingsSection>
-    </div>
-  );
-}
-
-function SettingsContentHeader({
-  title,
-  description,
-  actions
-}: {
-  title: string;
-  description: string;
-  actions?: ReactNode;
-}) {
-  return (
-    <div className="settings-content-header">
-      <span>
-        <h2>{title}</h2>
-        <p>{description}</p>
-      </span>
-      {actions}
-    </div>
-  );
-}
-
-function SettingsSection({
-  title,
-  description,
-  children
-}: {
-  title: string;
-  description?: string;
-  children: ReactNode;
-}) {
-  return (
-    <section className="settings-section">
-      <div className={`settings-section-title ${description ? "has-description" : ""}`}>
-        <span>
-          <h3>{title}</h3>
-          {description && <p>{description}</p>}
-        </span>
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function SettingsRow({
-  title,
-  description,
-  status,
-  children
-}: {
-  title: string;
-  description?: ReactNode;
-  status?: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <div className="settings-row">
-      <span className="settings-row-copy">
-        <strong>{title}</strong>
-        {description && <small>{description}</small>}
-      </span>
-      <span className="settings-row-status">{status}</span>
-      <span className="settings-row-actions">{children}</span>
     </div>
   );
 }
