@@ -1277,6 +1277,16 @@ describe("Workbench UI interactions", () => {
     expect(screen.getByText("健康检查仅在 Tauri 桌面应用中运行。")).toBeInTheDocument();
     expect(screen.getByText("未执行")).toBeInTheDocument();
 
+    await user.click(screen.getByRole("button", { name: /本地数据/ }));
+    expect(await screen.findByRole("checkbox", { name: "自动备份" })).not.toBeChecked();
+    expect(screen.getByRole("combobox", { name: "自动备份保留数量" })).toHaveValue("10");
+    await user.click(screen.getByRole("button", { name: "打开备份目录" }));
+    expect(onOpenDirectory).toHaveBeenCalledWith("C:\\Users\\dev\\.workbench\\backups");
+    await user.click(screen.getByRole("checkbox", { name: "自动备份" }));
+    expect(onNotify).toHaveBeenCalledWith("自动备份已开启", "success");
+    await user.click(screen.getByRole("button", { name: "创建备份" }));
+    expect(onNotify).toHaveBeenCalledWith("本地数据备份与恢复仅在 Tauri 桌面应用中可用。", "danger");
+
     if (clipboardDescriptor) {
       Object.defineProperty(navigator, "clipboard", clipboardDescriptor);
     } else {

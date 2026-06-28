@@ -1,7 +1,19 @@
-import { useState } from "react";
-import { ArrowDown, ArrowUp, Edit3, FolderOpen, Plus, RefreshCcw, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowDown, ArrowUp, Download, Edit3, FolderOpen, Plus, RefreshCcw, Trash2, Upload } from "lucide-react";
 import { AppUpdatePanel } from "../../components/AppUpdatePanel";
-import { Button, IconButton, PageHeader, StatusBadge } from "../../components/ui";
+import { Button, IconButton, Modal, PageHeader, StatusBadge } from "../../components/ui";
+import {
+  createLocalDataBackup,
+  getAutoBackupSettings,
+  inspectLocalDataBackup,
+  restoreLocalDataBackup,
+  selectLocalDataBackupFile,
+  setAutoBackupSettings,
+  type AutoBackupSettings,
+  type LocalDataBackupSummary,
+  type LocalDataRestoreInspection,
+  type LocalDataRestoreSummary
+} from "../../lib/api/dataBackupApi";
 import { ToolIcon } from "../../lib/ui/toolIcons";
 import type { AppSettings, CloseBehavior, ProjectOpenProfile, ToolKey, ToolTarget } from "../../lib/types/domain";
 import { DiagnosticsSettings } from "./DiagnosticsSettings";
@@ -20,6 +32,8 @@ const settingsCategories: Array<{ key: SettingsCategory; label: string; descript
   { key: "diagnostics", label: "诊断", description: "运行信息与日志" },
   { key: "appearance", label: "外观", description: "主题显示" }
 ];
+
+const autoBackupRetentions: AutoBackupSettings["retention"][] = [10, 20, 30];
 
 export function SettingsView({
   settings,
@@ -109,7 +123,14 @@ export function SettingsView({
           />
         );
       case "data":
-        return <LocalDataSettings settings={settings} onOpenPath={onOpenPath} />;
+        return (
+          <LocalDataSettings
+            settings={settings}
+            onOpenPath={onOpenPath}
+            onOpenDirectory={onOpenDirectory}
+            onNotify={onNotify}
+          />
+        );
       case "behavior":
         return (
           <BehaviorSettings
@@ -325,7 +346,101 @@ function ProjectOpenProfileSettings({
   );
 }
 
-function LocalDataSettings({ settings, onOpenPath }: { settings: AppSettings; onOpenPath: (path: string) => void }) {
+function LocalDataSettings({
+  settings,
+  onOpenPath,
+  onOpenDirectory,
+  onNotify
+}: {
+  settings: AppSettings;
+  onOpenPath: (path: string) => void;
+  onOpenDirectory: (path: string) => void | Promise<void>;
+  onNotify: (message: string, tone?: "success" | "warning" | "danger") => void;
+}) {
+  const [creatingBackup, setCreatingBackup] = useState(false);
+  const [restoringBackup, setRestoringBackup] = useState(false);
+  const [backupSummary, setBackupSummary] = useState<LocalDataBackupSummary | null>(null);
+  const [restoreInspection, setRestoreInspection] = useState<LocalDataRestoreInspection | null>(null);
+  const [restoreSummary, setRestoreSummary] = useState<LocalDataRestoreSummary | null>(null);
+  const [autoBackupSettings, setAutoBackupSettingsState] = useState<AutoBackupSettings | null>(null);
+  const [loadingAutoBackup, setLoadingAutoBackup] = useState(true);
+  const [savingAutoBackup, setSavingAutoBackup] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingAutoBackup(true);
+    getAutoBackupSettings()
+      .then((nextSettings) => {
+        if (!cancelled) setAutoBackupSettingsState(nextSettings);
+      })
+      .catch((error) => {
+        if (!cancelled) onNotify(error instanceof Error ? error.message : String(error), "danger");
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingAutoBackup(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [onNotify]);
+
+  const createBackup = async () => {
+    setCreatingBackup(true);
+    try {
+      const summary = await createLocalDataBackup();
+      setBackupSummary(summary);
+      onNotify("本地数据备份已创建", "success");
+    } catch (error) {
+      onNotify(error instanceof Error ? error.message : String(error), "danger");
+    } finally {
+      setCreatingBackup(false);
+    }
+  };
+
+  const chooseBackupForRestore = async () => {
+    try {
+      const path = await selectLocalDataBackupFile();
+      if (!path) return;
+      setRestoreInspection(await inspectLocalDataBackup(path));
+    } catch (error) {
+      onNotify(error instanceof Error ? error.message : String(error), "danger");
+    }
+  };
+
+  const confirmRestore = async () => {
+    if (!restoreInspection) return;
+    setRestoringBackup(true);
+    try {
+      const summary = await restoreLocalDataBackup(restoreInspection.backupPath);
+      setRestoreSummary(summary);
+      setRestoreInspection(null);
+      onNotify("本地数据已恢复，请重启 Workbench", "warning");
+    } catch (error) {
+      onNotify(error instanceof Error ? error.message : String(error), "danger");
+    } finally {
+      setRestoringBackup(false);
+    }
+  };
+
+  const saveAutoBackupSettings = async (
+    enabled: boolean,
+    retention: AutoBackupSettings["retention"],
+    successMessage = "自动备份设置已保存"
+  ) => {
+    setSavingAutoBackup(true);
+    try {
+      const nextSettings = await setAutoBackupSettings(enabled, retention);
+      setAutoBackupSettingsState(nextSettings);
+      onNotify(successMessage, "success");
+    } catch (error) {
+      onNotify(error instanceof Error ? error.message : String(error), "danger");
+    } finally {
+      setSavingAutoBackup(false);
+    }
+  };
+
+  const currentAutoBackupSettings = autoBackupSettings ?? { enabled: false, retention: 10, lastBackupAt: null };
+
   return (
     <div className="settings-form">
       <SettingsContentHeader title="本地数据" description="项目、分类和资源 Radar 数据保存在系统应用数据目录。" />
@@ -345,8 +460,135 @@ function LocalDataSettings({ settings, onOpenPath }: { settings: AppSettings; on
           <IconButton title="打开数据库所在目录" onClick={() => onOpenPath(settings.workbenchRoot)}><FolderOpen size={15} /></IconButton>
         </SettingsRow>
       </SettingsSection>
+      <SettingsSection title="备份与恢复" description="仅处理 SQLite 数据库和备份清单，不包含 Skills 实体目录、项目文件夹或日志。">
+        <SettingsRow
+          title="自动备份"
+          description={
+            currentAutoBackupSettings.lastBackupAt
+              ? `最近自动备份：${formatBackupTimestamp(currentAutoBackupSettings.lastBackupAt)}`
+              : "写入本地数据成功后延迟 5 分钟备份；两次自动备份至少间隔 30 分钟。"
+          }
+          status={<StatusBadge tone={currentAutoBackupSettings.enabled ? "accent" : "neutral"}>{currentAutoBackupSettings.enabled ? "已开启" : "已关闭"}</StatusBadge>}
+        >
+          <input
+            className="settings-switch"
+            type="checkbox"
+            aria-label="自动备份"
+            checked={currentAutoBackupSettings.enabled}
+            disabled={loadingAutoBackup || savingAutoBackup}
+            onChange={(event) =>
+              void saveAutoBackupSettings(
+                event.target.checked,
+                currentAutoBackupSettings.retention,
+                event.target.checked ? "自动备份已开启" : "自动备份已关闭"
+              )
+            }
+          />
+        </SettingsRow>
+        <SettingsRow
+          title="自动备份保留"
+          description="只清理旧的自动备份 zip，手动创建的备份不会被自动删除。"
+          status={<StatusBadge tone="neutral">{currentAutoBackupSettings.retention} 份</StatusBadge>}
+        >
+          <select
+            aria-label="自动备份保留数量"
+            className="settings-select"
+            value={currentAutoBackupSettings.retention}
+            disabled={loadingAutoBackup || savingAutoBackup}
+            onChange={(event) =>
+              void saveAutoBackupSettings(
+                currentAutoBackupSettings.enabled,
+                Number(event.target.value) as AutoBackupSettings["retention"],
+                "自动备份保留数量已更新"
+              )
+            }
+          >
+            {autoBackupRetentions.map((retention) => (
+              <option key={retention} value={retention}>最近 {retention} 份</option>
+            ))}
+          </select>
+        </SettingsRow>
+        <SettingsRow
+          title="创建数据备份"
+          description={backupSummary ? `最近备份：${backupSummary.backupPath}` : "生成包含 workbench.sqlite 和 manifest.json 的 zip 备份。"}
+          status={<StatusBadge tone={backupSummary ? "accent" : "neutral"}>{backupSummary ? "已创建" : "手动"}</StatusBadge>}
+        >
+          <IconButton title="打开备份目录" onClick={() => void onOpenDirectory(`${settings.workbenchRoot}\\backups`)}>
+            <FolderOpen size={15} />
+          </IconButton>
+          <Button disabled={creatingBackup} onClick={() => void createBackup()}>
+            <Download size={15} />{creatingBackup ? "备份中" : "创建备份"}
+          </Button>
+        </SettingsRow>
+        <SettingsRow
+          title="恢复数据备份"
+          description="恢复前会自动保存当前 SQLite 副本；恢复成功后需要重启 Workbench。"
+          status={<StatusBadge tone="warning">需确认</StatusBadge>}
+        >
+          <Button disabled={restoringBackup} onClick={() => void chooseBackupForRestore()}>
+            <Upload size={15} />选择备份
+          </Button>
+        </SettingsRow>
+        {restoreSummary && (
+          <div className="notice settings-notice">
+            已恢复 SQLite 数据库。当前数据库替换前已保存为：{restoreSummary.previousDatabaseBackupPath}。请重启 Workbench 后继续使用。
+          </div>
+        )}
+      </SettingsSection>
+      {restoreInspection && (
+        <RestoreLocalDataDialog
+          inspection={restoreInspection}
+          restoring={restoringBackup}
+          onClose={() => setRestoreInspection(null)}
+          onConfirm={() => void confirmRestore()}
+        />
+      )}
     </div>
   );
+}
+
+function RestoreLocalDataDialog({
+  inspection,
+  restoring,
+  onClose,
+  onConfirm
+}: {
+  inspection: LocalDataRestoreInspection;
+  restoring: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Modal
+      title="恢复本地数据"
+      description="恢复会替换当前 SQLite 数据库。"
+      onClose={onClose}
+      footer={<><Button disabled={restoring} onClick={onClose}>取消</Button><Button disabled={restoring} variant="danger" onClick={onConfirm}>{restoring ? "恢复中" : "确认恢复"}</Button></>}
+    >
+      <div className="danger-notice notice">恢复前会自动保存当前数据库副本；恢复成功后需要重启 Workbench。Skills 实体目录不会被恢复或覆盖。</div>
+      <div className="settings-definition-list">
+        <div><small>备份文件</small><strong>{inspection.backupPath}</strong></div>
+        <div><small>创建时间</small><strong>{formatBackupTimestamp(inspection.manifest.createdAt)}</strong></div>
+        <div><small>SQLite 大小</small><strong>{formatBytes(inspection.manifest.sqliteSizeBytes)}</strong></div>
+        <div><small>包含 Skills</small><strong>{inspection.manifest.includesSkillsDirectory ? "是" : "否"}</strong></div>
+      </div>
+    </Modal>
+  );
+}
+
+function formatBackupTimestamp(value: string) {
+  const timestamp = Number(value);
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return value;
+  const date = new Date(timestamp);
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+function formatBytes(value: number) {
+  if (!Number.isFinite(value) || value < 0) return "unknown";
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function BehaviorSettings({
