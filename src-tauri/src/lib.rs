@@ -1,5 +1,6 @@
 mod app_lifecycle;
 mod app_update;
+mod data_backup;
 mod diagnostics;
 mod projects;
 mod radar;
@@ -63,6 +64,7 @@ fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 
 pub fn run() {
     tauri::Builder::default()
+        .manage(data_backup::AutoBackupScheduler::default())
         .manage(projects::LaunchSessionRegistry::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
@@ -82,6 +84,13 @@ pub fn run() {
             app_update::open_legacy_workbench_uninstaller,
             app_lifecycle::is_launch_at_startup_enabled,
             app_lifecycle::set_launch_at_startup,
+            data_backup::create_local_data_backup,
+            data_backup::get_auto_backup_settings,
+            data_backup::inspect_local_data_backup,
+            data_backup::mark_local_data_changed,
+            data_backup::restore_local_data_backup,
+            data_backup::select_local_data_backup_file,
+            data_backup::set_auto_backup_settings,
             diagnostics::get_diagnostic_environment,
             diagnostics::run_diagnostic_health_check,
             projects::list_projects,

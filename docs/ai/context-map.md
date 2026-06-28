@@ -33,7 +33,9 @@ Do not read `docs/plans/`, `docs/audits/`, or archived directories by default.
 - `src/lib/types/domain.ts`：前端领域类型。
 - `src/lib/api/workbenchApi.ts`：前端到 Tauri commands 的 API 边界。
 - `src/lib/api/diagnosticsApi.ts`：设置诊断页的运行环境读取、健康检查 API 和 Web preview fallback。
+- `src/lib/api/dataBackupApi.ts`：设置本地数据页的 SQLite 备份、恢复检查、恢复和自动备份设置 API。
 - `src-tauri/src/lib.rs`：Tauri command 注册入口。
+- `src-tauri/src/data_backup.rs`：本地数据备份、恢复和延迟自动备份 command，只处理 `workbench.sqlite` 与 `manifest.json`，不备份 Skills 实体目录。
 - `src-tauri/src/diagnostics.rs`、`src-tauri/src/diagnostics/health.rs`：诊断页使用的系统平台、处理器类型和本机依赖健康检查 command。
 - `src-tauri/src/app_update.rs`：应用更新弹窗的 GitHub Releases notes 读取、旧版 Workbench App 安装检测和旧快捷方式清理 command。
 - `src-tauri/src/projects.rs`、`src-tauri/src/projects/`：项目 command facade、类型、SQLite 持久化、项目记录删除、GitHub/Gitee 远程导入、项目打开方式 Profiles 和启动会话进程管理。
