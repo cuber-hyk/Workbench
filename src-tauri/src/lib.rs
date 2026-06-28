@@ -1,5 +1,6 @@
 mod app_lifecycle;
 mod app_update;
+mod diagnostics;
 mod projects;
 mod radar;
 mod skills;
@@ -81,6 +82,7 @@ pub fn run() {
             app_update::open_legacy_workbench_uninstaller,
             app_lifecycle::is_launch_at_startup_enabled,
             app_lifecycle::set_launch_at_startup,
+            diagnostics::get_diagnostic_environment,
             projects::list_projects,
             projects::launch_project,
             projects::restart_launch_session,

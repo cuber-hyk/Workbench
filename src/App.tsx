@@ -570,6 +570,15 @@ function WorkbenchApp() {
     }
   }
 
+  async function createAndOpenDirectoryWithToast(path: string) {
+    try {
+      await workbenchApi.createAndOpenDirectory(path);
+      showToast("目录已打开", { tone: "success" });
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error), { tone: "danger" });
+    }
+  }
+
   function openProjectDialog(projectId = "") {
     setEditingProjectId(projectId);
     setActiveDialog("project");
@@ -1087,6 +1096,8 @@ function WorkbenchApp() {
             onLaunchAtStartupChange={(enabled) => void updateLaunchAtStartup(enabled)}
             onStartHiddenToTrayChange={(enabled) => void updateStartHiddenToTray(enabled)}
             onOpenPath={(path) => void openPathOrPromptCreate(path)}
+            onOpenDirectory={(path) => void createAndOpenDirectoryWithToast(path)}
+            onNotify={(message, tone) => showToast(message, { tone })}
             onAddProjectOpenProfile={() => {
               setEditingProjectOpenProfileId("");
               setActiveDialog("project-open-profile");

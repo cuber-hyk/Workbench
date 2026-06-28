@@ -10,6 +10,7 @@ import { ExternalSkillsDialog } from "./components/dialogs/skills/ExternalSkills
 import { SkillCategoryDialog } from "./components/dialogs/skills/SkillCategoryDialog";
 import { SkillsRootMigrationDialog } from "./components/dialogs/skills/SkillsRootMigrationDialog";
 import { AppUpdateProvider } from "./contexts/AppUpdateContext";
+import { getDiagnosticEnvironment } from "./lib/api/diagnosticsApi";
 import { workbenchApi } from "./lib/api/workbenchApi";
 import type { AppSettings, ExternalSkillCandidateGroup, LaunchSessionEvent, Project, ProjectImportProgress, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, RemoteProjectImportInspection, RemoteProjectImportRequest, Skill, SkillCategory, SkillMarketItem, SkillMarketResponse, SkillUpdateResult, SkillsRootMigrationState, SkillsState } from "./lib/types/domain";
 import { ProjectsView } from "./views/projects/ProjectsView";
@@ -1211,6 +1212,79 @@ describe("Workbench UI interactions", () => {
     expect(screen.getByLabelText("启动后隐藏到托盘")).not.toBeChecked();
     expect(onLaunchAtStartupChange).toHaveBeenCalledWith(true);
     expect(onStartHiddenToTrayChange).toHaveBeenCalledWith(true);
+  });
+
+  it("shows diagnostics info and supports copy plus log directory actions", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText }
+    });
+    const onOpenPath = vi.fn();
+    const onOpenDirectory = vi.fn();
+    const onNotify = vi.fn();
+
+    renderWithUpdateProvider(
+      <SettingsView
+        settings={skillsSettings}
+        theme="dark"
+        onOpenUpdateDetails={vi.fn()}
+        onThemeToggle={vi.fn()}
+        onRootChange={vi.fn()}
+        onReorderToolTargets={vi.fn()}
+        onCloseBehaviorChange={vi.fn()}
+        onLaunchAtStartupChange={vi.fn()}
+        onStartHiddenToTrayChange={vi.fn()}
+        onOpenPath={onOpenPath}
+        onOpenDirectory={onOpenDirectory}
+        onNotify={onNotify}
+        onAddCustomTool={vi.fn()}
+        onEditCustomTool={vi.fn()}
+        onDeleteCustomTool={vi.fn()}
+        onAddProjectOpenProfile={vi.fn()}
+        onEditProjectOpenProfile={vi.fn()}
+        onDeleteProjectOpenProfile={vi.fn()}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: /诊断/ }));
+
+    expect(screen.getByRole("heading", { name: "诊断" })).toBeInTheDocument();
+    expect(await screen.findAllByText("web-preview")).toHaveLength(2);
+    expect(screen.getByText("C:\\Users\\dev\\.workbench\\workbench.sqlite")).toBeInTheDocument();
+    expect(screen.getByText("C:\\Users\\dev\\.workbench\\logs")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "打开日志目录" }));
+    expect(onOpenDirectory).toHaveBeenCalledWith("C:\\Users\\dev\\.workbench\\logs");
+
+    await user.click(screen.getByRole("button", { name: "打开 Skills 根目录" }));
+    expect(onOpenPath).toHaveBeenCalledWith("C:\\Users\\dev\\.workbench\\skills");
+
+    await user.click(screen.getByRole("button", { name: "复制诊断信息" }));
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining("Workbench Diagnostic Info"));
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining("Tauri available: no"));
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining("Log directory: C:\\Users\\dev\\.workbench\\logs"));
+    expect(onNotify).toHaveBeenCalledWith("诊断信息已复制", "success");
+
+    if (clipboardDescriptor) {
+      Object.defineProperty(navigator, "clipboard", clipboardDescriptor);
+    } else {
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: undefined
+      });
+    }
+  });
+
+  it("falls back to web preview diagnostics when Tauri is unavailable", async () => {
+    await expect(getDiagnosticEnvironment()).resolves.toEqual({
+      runtime: "web-preview",
+      tauriAvailable: false,
+      platform: "browser",
+      arch: "unknown"
+    });
   });
 
   it("tracks active launch sessions for multiple projects at the same time", () => {
