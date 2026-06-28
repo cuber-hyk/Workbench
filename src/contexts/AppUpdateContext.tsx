@@ -23,6 +23,7 @@ interface AppUpdateContextValue {
 }
 
 const AppUpdateContext = createContext<AppUpdateContextValue | undefined>(undefined);
+const STARTUP_UPDATE_CHECK_DELAY_MS = 10_000;
 
 export function AppUpdateProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AppUpdateStatus>("idle");
@@ -123,7 +124,7 @@ export function AppUpdateProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       void checkUpdate({ silent: true });
-    }, 1000);
+    }, STARTUP_UPDATE_CHECK_DELAY_MS);
 
     return () => window.clearTimeout(timer);
   }, [checkUpdate]);

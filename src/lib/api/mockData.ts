@@ -259,6 +259,8 @@ export const settings: AppSettings = {
   previousSkillsRoot: null,
   closeBehavior: "hide_to_tray",
   closeTrayHintDismissed: false,
+  launchAtStartup: false,
+  startHiddenToTray: false,
   projectOpenProfiles,
   toolTargets: [
     {

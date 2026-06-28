@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Workbench Settings Concept</title>
+  <link rel="stylesheet" href="settings-concept.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" aria-label="Workbench 主导航">
+      <div class="brand">
+        <img src="../../src/assets/brand/workbench-icon.png" alt="">
+        <span>Workbench</span>
+      </div>
+
+      <nav class="main-nav">
+        <button><span>◇</span>项目</button>
+        <button><span>✦</span>Skills</button>
+        <button><span>⦿</span>资源 Radar</button>
+        <button class="active"><span>⚙</span>设置</button>
+      </nav>
+
+      <section class="local-card">
+        <h2>本机工作区</h2>
+        <div><strong>SQLite</strong><span>本地数据</span></div>
+        <div><strong>Auto</strong><span>Skills 启用</span></div>
+        <div><strong>Tauri</strong><span>桌面壳</span></div>
+      </section>
+
+      <footer class="sidebar-footer">
+        <button class="theme-button">☼ 深色主题</button>
+        <p><span class="dot"></span>本地模式</p>
+      </footer>
+    </aside>
+
+    <main class="workspace">
+      <header class="page-title">
+        <h1>设置</h1>
+        <p>管理 Workbench 的本地路径、工具、行为和更新</p>
+      </header>
+
+      <div class="settings-layout">
+        <nav class="settings-nav" aria-label="设置分类">
+          <button class="active" data-settings-tab="general"><strong>常规</strong><small>更新与基础状态</small></button>
+          <button data-settings-tab="skills"><strong>Skills</strong><small>统一根目录与映射</small></button>
+          <button data-settings-tab="tools"><strong>工具目录</strong><small>全局 Skills 目标</small></button>
+          <button data-settings-tab="profiles"><strong>项目打开方式</strong><small>外部工具入口</small></button>
+          <button data-settings-tab="data"><strong>本地数据</strong><small>工作台数据位置</small></button>
+          <button data-settings-tab="behavior"><strong>应用行为</strong><small>窗口与生命周期</small></button>
+          <button data-settings-tab="appearance"><strong>外观</strong><small>主题显示</small></button>
+        </nav>
+
+        <section class="content-shell">
+          <article class="settings-page active" id="settings-general">
+            <header class="content-header">
+              <div>
+                <h2>常规</h2>
+                <p>查看软件更新和 Workbench 基础状态。</p>
+              </div>
+              <span class="health-chip"><span class="dot"></span>已是最新</span>
+            </header>
+
+            <div class="settings-body">
+              <section class="setting-section">
+                <div class="section-title">
+                  <div><h3>软件更新</h3><p>启动后会静默检查更新；手动检查只在这里显示结果。</p></div>
+                </div>
+                <div class="settings-table">
+                  <div class="setting-row">
+                    <div class="setting-copy"><strong>当前版本</strong><span>当前安装的 Workbench 版本。</span></div>
+                    <span class="badge on">0.2.3</span>
+                    <div class="control"><button class="action">查看更新</button></div>
+                  </div>
+                  <div class="setting-row">
+                    <div class="setting-copy"><strong>检查更新</strong><span>立即检查 GitHub Releases 中的最新版本。</span></div>
+                    <span class="badge on">已是最新</span>
+                    <div class="control"><button class="action">检查更新</button></div>
+                  </div>
+                </div>
+              </section>
+
+              <section class="setting-section">
+                <div class="section-title">
+                  <div><h3>本机状态</h3><p>用于判断当前工作台是否处在可用的本地环境。</p></div>
+                </div>
+                <div class="metric-grid">
+                  <div><span>数据存储</span><strong>SQLite</strong><small>本地可读写</small></div>
+                  <div><span>桌面壳</span><strong>Tauri</strong><small>托盘可用</small></div>
+                  <div><span>Skills 来源</span><strong>本机</strong><small>统一根目录</small></div>
+                </div>
+              </section>
+            </div>
+          </article>
+
+          <article class="settings-page" id="settings-skills">
+            <header class="content-header">
+              <div>
+                <h2>Skills</h2>
+                <p>统一管理 Workbench Skills 的真实来源和链接关系。</p>
+              </div>
+              <span class="health-chip">24 个本地 Skills</span>
+            </header>
+
+            <div class="settings-body">
+              <section class="setting-section">
+                <div class="section-title">
+                  <div><h3>Skills 存储</h3><p>Workbench Skills 根目录是所有 Skill 的唯一真实来源。</p></div>
+                </div>
+                <div class="path-row">
+                  <label>
+                    <span>统一 Skills 根目录</span>
+                    <code>C:\Users\胡运宽\.workbench\skills</code>
+                  </label>
+                  <button class="icon-action">📁</button>
+                  <button class="action">检查迁移</button>
+                </div>
+              </section>
+
+              <section class="setting-section">
+                <div class="section-title">
+                  <div><h3>Skills 路径映射</h3><p>真实副本、全局链接和项目链接保持单一来源关系。</p></div>
+                </div>
+                <div class="definition-table">
+                  <div><span>真实副本</span><code>C:\Users\胡运宽\.workbench\skills\*\SKILL.md</code></div>
+                  <div><span>全局链接</span><strong>工具全局 skills 目录中的符号链接</strong></div>
+                  <div><span>项目链接</span><strong>受支持项目内工具 skills 目录中的符号链接</strong></div>
+                </div>
+              </section>
+
+              <div class="info-strip"><b>边界</b><span>符号链接目标已存在时，Workbench 不会覆盖或删除已有内容。</span></div>
+            </div>
+          </article>
+
+          <article class="settings-page" id="settings-tools">
+            <header class="content-header">
+              <div>
+                <h2>工具目录</h2>
+                <p>Workbench 通过符号链接为以下工具启用 Skills。</p>
+              </div>
+              <button class="primary-action">添加工具</button>
+            </header>
+
+            <div class="settings-body">
+              <section class="setting-section">
+                <div class="section-title">
+                  <div><h3>支持的工具目录</h3><p>展示顺序会影响 Skills 表格中的全局工具列。</p></div>
+                </div>
+                <div class="tool-list">
+                  <div class="tool-row">
+                    <span class="tool-icon">C</span>
+                    <div><strong>Codex</strong><code>C:\Users\胡运宽\.codex\skills</code></div>
+                    <span class="badge on">可用</span>
+                    <div class="tool-actions"><button>↑</button><button>↓</button><button>📁</button></div>
+                  </div>
+                  <div class="tool-row">
+                    <span class="tool-icon">Cl</span>
+                    <div><strong>Claude Code</strong><code>C:\Users\胡运宽\.claude\skills</code></div>
+                    <span class="badge on">可用</span>
+                    <div class="tool-actions"><button>↑</button><button>↓</button><button>📁</button></div>
+                  </div>
+                  <div class="tool-row">
+                    <span class="tool-icon custom">M</span>
+                    <div><strong>My Agent</strong><code>C:\Users\胡运宽\.my-agent\skills</code></div>
+                    <span class="badge">自定义</span>
+                    <div class="tool-actions"><button>✎</button><button>🗑</button><button>📁</button></div>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </article>
+
+          <article class="settings-page" id="settings-profiles">
+            <header class="content-header">
+              <div>
+                <h2>项目打开方式</h2>
+                <p>配置项目列表中的“用工具打开”菜单。</p>
+              </div>
+              <button class="primary-action">添加</button>
+            </header>
+
+            <div class="settings-body">
+              <section class="setting-section">
+                <div class="section-title">
+                  <div><h3>打开方式</h3><p>GUI 应用直接打开项目目录，交互式 CLI 通过外部终端打开。</p></div>
+                </div>
+                <div class="profile-list">
+                  <div class="profile-row">
+                    <div><strong>VS Code</strong><code>code {projectPath}</code></div>
+                    <span class="badge on">启用</span>
+                    <span class="badge">应用</span>
+                    <div class="tool-actions"><button>✎</button><button>🗑</button></div>
+                  </div>
+                  <div class="profile-row">
+                    <div><strong>Claude Code</strong><code>claude {projectPath}</code></div>
+                    <span class="badge on">启用</span>
+                    <span class="badge">终端</span>
+                    <div class="tool-actions"><button>✎</button><button>🗑</button></div>
+                  </div>
+                  <div class="profile-row">
+                    <div><strong>PowerShell</strong><code>pwsh -NoExit -Command cd {projectPath}</code></div>
+                    <span class="badge">停用</span>
+                    <span class="badge">终端</span>
+                    <div class="tool-actions"><button>✎</button><button>🗑</button></div>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </article>
+
+          <article class="settings-page" id="settings-data">
+            <header class="content-header">
+              <div>
+                <h2>本地数据</h2>
+                <p>项目、分类和资源 Radar 数据保存在系统应用数据目录。</p>
+              </div>
+              <span class="health-chip"><span class="dot"></span>本地可写</span>
+            </header>
+
+            <div class="settings-body">
+              <section class="setting-section">
+                <div class="section-title">
+                  <div><h3>数据位置</h3><p>这些路径只展示 Workbench 当前使用的位置，不会移动或删除文件。</p></div>
+                </div>
+                <div class="settings-table">
+                  <div class="setting-row">
+                    <div class="setting-copy"><strong>Workbench 根目录</strong><span>C:\Users\胡运宽\.workbench</span></div>
+                    <span class="badge on">目录</span>
+                    <div class="control"><button class="action">打开目录</button></div>
+                  </div>
+                  <div class="setting-row">
+                    <div class="setting-copy"><strong>SQLite 数据库</strong><span>C:\Users\胡运宽\.workbench\workbench.sqlite</span></div>
+                    <span class="badge">文件</span>
+                    <div class="control"><button class="action">打开所在目录</button></div>
+                  </div>
+                </div>
+              </section>
+
+              <div class="info-strip"><b>边界</b><span>删除项目记录只影响 Workbench 数据库，不删除本地项目目录。</span></div>
+            </div>
+          </article>
+
+          <article class="settings-page" id="settings-behavior">
+            <header class="content-header">
+              <div>
+                <h2>应用行为</h2>
+                <p>控制 Workbench 启动、窗口关闭和托盘行为。</p>
+              </div>
+              <span class="health-chip"><span class="dot"></span>托盘可用</span>
+            </header>
+
+            <div class="settings-body">
+              <section class="setting-section">
+                <div class="section-title">
+                  <div><h3>启动</h3><p>这些选项只控制应用启动后的可见状态，不会自动执行同步、更新或项目启动。</p></div>
+                </div>
+                <div class="settings-table">
+                  <div class="setting-row">
+                    <div class="setting-copy"><strong>开机时启动 Workbench</strong><span>系统登录后自动启动应用；不会自动运行项目或 Agent。</span></div>
+                    <span class="badge on">已开启</span>
+                    <div class="control"><span class="switch on"></span></div>
+                  </div>
+                  <div class="setting-row">
+                    <div class="setting-copy"><strong>启动后隐藏到托盘</strong><span>应用启动后直接进入托盘，可从托盘菜单恢复主窗口。</span></div>
+                    <span class="badge">已关闭</span>
+                    <div class="control"><span class="switch"></span></div>
+                  </div>
+                </div>
+              </section>
+
+              <section class="setting-section">
+                <div class="section-title">
+                  <div><h3>窗口</h3><p>关闭按钮只处理主窗口，不改变最小化按钮和系统托盘菜单。</p></div>
+                </div>
+                <div class="settings-table">
+                  <div class="setting-row">
+                    <div class="setting-copy"><strong>关闭窗口时</strong><span>选择点击窗口关闭按钮后的处理方式。</span></div>
+                    <span class="badge on">隐藏到托盘</span>
+                    <div class="control"><button class="select">隐藏到托盘 <span>⌄</span></button></div>
+                  </div>
+                </div>
+              </section>
+
+              <div class="info-strip"><b>边界</b><span>开机自启动只负责打开 Workbench；资源 Radar 同步、Skills 更新和项目启动仍需要用户显式操作。</span></div>
+            </div>
+          </article>
+
+          <article class="settings-page" id="settings-appearance">
+            <header class="content-header">
+              <div>
+                <h2>外观</h2>
+                <p>切换 Workbench 的浅色或深色界面。</p>
+              </div>
+              <span class="health-chip">深色主题</span>
+            </header>
+
+            <div class="settings-body">
+              <section class="setting-section">
+                <div class="section-title">
+                  <div><h3>主题</h3><p>App Shell 和设置页使用同一主题状态。</p></div>
+                </div>
+                <div class="settings-table">
+                  <div class="setting-row">
+                    <div class="setting-copy"><strong>当前主题</strong><span>深色主题适合长期开发使用，浅色主题适合高亮环境。</span></div>
+                    <span class="badge on">深色主题</span>
+                    <div class="control"><button class="action">切换主题</button></div>
+                  </div>
+                  <div class="setting-row">
+                    <div class="setting-copy"><strong>界面密度</strong><span>当前设置页使用紧凑行距和专业软件偏好设置布局。</span></div>
+                    <span class="badge">紧凑</span>
+                    <div class="control"><button class="select">紧凑 <span>⌄</span></button></div>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </article>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script src="settings-concept.js"></script>
+</body>
+</html>

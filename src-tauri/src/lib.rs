@@ -1,3 +1,4 @@
+mod app_lifecycle;
 mod app_update;
 mod projects;
 mod radar;
@@ -64,6 +65,10 @@ pub fn run() {
         .manage(projects::LaunchSessionRegistry::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(setup_tray)
         .invoke_handler(tauri::generate_handler![
@@ -74,6 +79,8 @@ pub fn run() {
             app_update::inspect_legacy_workbench_install,
             app_update::delete_legacy_workbench_shortcuts,
             app_update::open_legacy_workbench_uninstaller,
+            app_lifecycle::is_launch_at_startup_enabled,
+            app_lifecycle::set_launch_at_startup,
             projects::list_projects,
             projects::launch_project,
             projects::restart_launch_session,
@@ -102,6 +109,7 @@ pub fn run() {
             skills::set_skills_root,
             skills::set_close_behavior,
             skills::set_close_tray_hint_dismissed,
+            skills::set_start_hidden_to_tray,
             skills::set_tool_target_order,
             skills::save_custom_tool_target,
             skills::delete_custom_tool_target,

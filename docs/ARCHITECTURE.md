@@ -546,6 +546,7 @@ Workbench/
 - `tool_target_order`
 - `close_behavior`
 - `close_tray_hint_dismissed`
+- `start_hidden_to_tray`
 - `project_open_profiles_seeded`
 
 `tool_target_order` 只影响 Skills 表格和设置页中的展示顺序，不改变工具目录路径或启用数据所有权。删除自定义工具时，后端会从该设置中移除对应 key。
@@ -553,6 +554,8 @@ Workbench/
 `close_behavior` 控制主窗口关闭请求的处理方式，取值为 `exit` 或 `hide_to_tray`。默认值为 `hide_to_tray`。
 
 `close_tray_hint_dismissed` 记录隐藏到托盘首次提示是否已经确认，默认值为 `false`。
+
+`start_hidden_to_tray` 控制 Workbench 启动后是否自动隐藏主窗口到托盘，默认值为 `false`。开机自启动状态由系统 autostart 注册状态提供，不只依赖 SQLite 设置值。
 
 ## 7. 关键流程
 
@@ -572,6 +575,20 @@ Workbench/
 - 最小化按钮保持系统默认行为，不进入托盘。
 - 隐藏到托盘不启动后台任务，只保持应用进程和托盘入口。
 - 退出应用是显式进程退出，不保留窗口恢复状态。
+
+### 7.0.1 启动行为
+
+流程：
+
+1. 应用启动后读取 `app_settings.start_hidden_to_tray`。
+2. 当前值为 `true` 时，前端在首次加载设置后调用 `hide_main_window`，主窗口隐藏到托盘。
+3. 设置页切换“开机时启动 Workbench”时，后端通过 Tauri autostart 插件注册或取消系统自启动，并返回系统实际状态。
+4. 设置页切换“启动后隐藏到托盘”时，后端写入 `app_settings.start_hidden_to_tray`。
+
+边界：
+
+- 开机自启动不代表后台任务调度，不自动同步资源、不更新 Skills、不启动项目。
+- 启动后隐藏到托盘不自动开启开机自启动。
 
 ### 7.1 保存项目
 

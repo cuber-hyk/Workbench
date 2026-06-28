@@ -4,6 +4,9 @@ use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
 const WORKBENCH_RELEASES_API: &str = "https://api.github.com/repos/cuber-hyk/Workbench/releases";
 const RELEASES_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -106,7 +109,9 @@ fn fetch_app_releases(url: &str) -> Result<Vec<AppReleaseNotes>, String> {
 
 #[cfg(target_os = "windows")]
 fn inspect_legacy_install() -> Result<LegacyWorkbenchInstall, String> {
-    let output = Command::new("powershell")
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    let mut command = Command::new("powershell");
+    command
         .args([
             "-NoProfile",
             "-ExecutionPolicy",
@@ -114,6 +119,8 @@ fn inspect_legacy_install() -> Result<LegacyWorkbenchInstall, String> {
             "-Command",
             LEGACY_INSTALL_INSPECTION_SCRIPT,
         ])
+        .creation_flags(CREATE_NO_WINDOW);
+    let output = command
         .output()
         .map_err(|error| format!("检查旧版 Workbench App 安装失败: {error}"))?;
 

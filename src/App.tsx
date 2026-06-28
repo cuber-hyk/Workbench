@@ -153,6 +153,7 @@ function WorkbenchApp() {
   const [marketInstallTask, setMarketInstallTask] = useState<MarketInstallTask | null>(null);
   const marketInstallRunningRef = useRef(false);
   const legacyInstallNoticeShownRef = useRef(false);
+  const startupHiddenAppliedRef = useRef(false);
 
   useEffect(() => {
     document.body.dataset.theme = theme;
@@ -204,6 +205,13 @@ function WorkbenchApp() {
       })
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!("__TAURI_INTERNALS__" in window) || !settings || startupHiddenAppliedRef.current) return;
+    startupHiddenAppliedRef.current = true;
+    if (!settings.startHiddenToTray) return;
+    void workbenchApi.hideMainWindow().catch((error) => showToast(String(error), { tone: "warning" }));
+  }, [settings?.startHiddenToTray]);
 
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
@@ -292,6 +300,28 @@ function WorkbenchApp() {
       await executeCloseBehavior("hide_to_tray");
     } catch (error) {
       showToast(String(error));
+    }
+  }
+
+  async function updateLaunchAtStartup(enabled: boolean) {
+    try {
+      const launchAtStartup = await workbenchApi.setLaunchAtStartup(enabled);
+      setSettings((current) => current ? { ...current, launchAtStartup } : current);
+      showToast(launchAtStartup ? "开机自启动已开启" : "开机自启动已关闭");
+    } catch (error) {
+      showToast(String(error), { tone: "warning" });
+    }
+  }
+
+  async function updateStartHiddenToTray(enabled: boolean) {
+    try {
+      const state = await workbenchApi.setStartHiddenToTray(enabled);
+      setSettings(state.settings);
+      setSkills(state.skills);
+      setSkillCategories(state.categories);
+      showToast(enabled ? "启动后隐藏到托盘已开启" : "启动后隐藏到托盘已关闭");
+    } catch (error) {
+      showToast(String(error), { tone: "warning" });
     }
   }
 
@@ -1054,6 +1084,8 @@ function WorkbenchApp() {
               setActiveDialog("custom-tool-delete");
             }}
             onCloseBehaviorChange={(behavior) => void runSkillAction(() => workbenchApi.setCloseBehavior(behavior), "关闭窗口行为已更新")}
+            onLaunchAtStartupChange={(enabled) => void updateLaunchAtStartup(enabled)}
+            onStartHiddenToTrayChange={(enabled) => void updateStartHiddenToTray(enabled)}
             onOpenPath={(path) => void openPathOrPromptCreate(path)}
             onAddProjectOpenProfile={() => {
               setEditingProjectOpenProfileId("");
