@@ -1,6 +1,9 @@
+mod health;
+
 use serde::Serialize;
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DiagnosticEnvironment {
     platform: &'static str,
     arch: &'static str,
@@ -12,4 +15,11 @@ pub fn get_diagnostic_environment() -> DiagnosticEnvironment {
         platform: std::env::consts::OS,
         arch: std::env::consts::ARCH,
     }
+}
+
+#[tauri::command]
+pub fn run_diagnostic_health_check(
+    tool_targets: Vec<health::HealthToolTarget>,
+) -> health::DiagnosticHealthCheck {
+    health::run_diagnostic_health_check(tool_targets)
 }

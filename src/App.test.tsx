@@ -1268,6 +1268,15 @@ describe("Workbench UI interactions", () => {
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining("Log directory: C:\\Users\\dev\\.workbench\\logs"));
     expect(onNotify).toHaveBeenCalledWith("诊断信息已复制", "success");
 
+    expect(screen.getByText("未检查")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查看结果" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "开始检查" }));
+    expect(await screen.findByText("未执行 1")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "查看结果" }));
+    expect(screen.getByRole("dialog", { name: "检查结果" })).toBeInTheDocument();
+    expect(screen.getByText("健康检查仅在 Tauri 桌面应用中运行。")).toBeInTheDocument();
+    expect(screen.getByText("未执行")).toBeInTheDocument();
+
     if (clipboardDescriptor) {
       Object.defineProperty(navigator, "clipboard", clipboardDescriptor);
     } else {
