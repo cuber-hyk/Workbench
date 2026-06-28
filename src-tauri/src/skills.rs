@@ -63,6 +63,11 @@ fn current_settings() -> SkillResult<SkillsSettings> {
             CLOSE_TRAY_HINT_DISMISSED_SETTING,
             false,
         )?,
+        start_hidden_to_tray: configured_bool_setting(
+            &connection,
+            START_HIDDEN_TO_TRAY_SETTING,
+            false,
+        )?,
     })
 }
 
@@ -515,6 +520,21 @@ pub fn set_close_tray_hint_dismissed(dismissed: bool) -> SkillResult<SkillsState
             "INSERT INTO app_settings(key, value) VALUES(?1, ?2)
              ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             params![CLOSE_TRAY_HINT_DISMISSED_SETTING, dismissed_json],
+        )
+        .map_err(error_message)?;
+    get_skills_state()
+}
+
+#[tauri::command]
+pub fn set_start_hidden_to_tray(enabled: bool) -> SkillResult<SkillsState> {
+    let workbench_root = default_workbench_root()?;
+    let connection = open_database(&workbench_root)?;
+    let enabled_json = serde_json::to_string(&enabled).map_err(error_message)?;
+    connection
+        .execute(
+            "INSERT INTO app_settings(key, value) VALUES(?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![START_HIDDEN_TO_TRAY_SETTING, enabled_json],
         )
         .map_err(error_message)?;
     get_skills_state()
@@ -1662,6 +1682,7 @@ mod tests {
             tool_targets: Vec::new(),
             close_behavior: CloseBehavior::HideToTray,
             close_tray_hint_dismissed: false,
+            start_hidden_to_tray: false,
         };
 
         let candidates = managed_target_rebuild_candidates(&connection, &settings).unwrap();
@@ -1808,17 +1829,18 @@ mod tests {
             !configured_bool_setting(&connection, CLOSE_TRAY_HINT_DISMISSED_SETTING, false)
                 .unwrap()
         );
+        assert!(
+            !configured_bool_setting(&connection, START_HIDDEN_TO_TRAY_SETTING, false).unwrap()
+        );
 
         connection
             .execute(
                 "INSERT INTO app_settings(key, value) VALUES(?1, ?2)",
-                params![CLOSE_TRAY_HINT_DISMISSED_SETTING, "true"],
+                params![START_HIDDEN_TO_TRAY_SETTING, "true"],
             )
             .unwrap();
 
-        assert!(
-            configured_bool_setting(&connection, CLOSE_TRAY_HINT_DISMISSED_SETTING, false).unwrap()
-        );
+        assert!(configured_bool_setting(&connection, START_HIDDEN_TO_TRAY_SETTING, false).unwrap());
     }
 
     #[test]

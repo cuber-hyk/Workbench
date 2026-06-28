@@ -17,7 +17,8 @@ async function skillsState(): Promise<SkillsState> {
 async function hydrateSkillsState(state: SkillsState): Promise<SkillsState> {
   if (!isTauri) return normalizeSkillsState(state);
   const projectOpenProfiles = await invoke<ProjectOpenProfile[]>("list_project_open_profiles");
-  return normalizeSkillsState({ ...state, settings: { ...state.settings, projectOpenProfiles } });
+  const launchAtStartup = await invoke<boolean>("is_launch_at_startup_enabled").catch(() => false);
+  return normalizeSkillsState({ ...state, settings: { ...state.settings, projectOpenProfiles, launchAtStartup } });
 }
 
 function normalizeSkillsState(state: SkillsState): SkillsState {
@@ -25,6 +26,8 @@ function normalizeSkillsState(state: SkillsState): SkillsState {
     ...state,
     settings: {
       ...state.settings,
+      launchAtStartup: state.settings.launchAtStartup ?? false,
+      startHiddenToTray: state.settings.startHiddenToTray ?? false,
       toolTargets: state.settings.toolTargets ?? [],
       projectOpenProfiles: state.settings.projectOpenProfiles ?? []
     }
@@ -716,6 +719,20 @@ export const workbenchApi = {
       return { settings, skills, categories: previewSkillCategories() };
     }
     return invokeSkillsState("set_close_tray_hint_dismissed", { dismissed });
+  },
+  async setLaunchAtStartup(enabled: boolean) {
+    if (!isTauri) {
+      settings.launchAtStartup = enabled;
+      return enabled;
+    }
+    return invoke<boolean>("set_launch_at_startup", { enabled });
+  },
+  async setStartHiddenToTray(enabled: boolean) {
+    if (!isTauri) {
+      settings.startHiddenToTray = enabled;
+      return { settings, skills, categories: previewSkillCategories() };
+    }
+    return invokeSkillsState("set_start_hidden_to_tray", { enabled });
   },
   async hideMainWindow() {
     if (!isTauri) return;

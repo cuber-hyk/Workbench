@@ -97,6 +97,8 @@ const appSettings: AppSettings = {
   skillsRoot: "C:\\Users\\dev\\.workbench\\skills",
   closeBehavior: "hide_to_tray",
   closeTrayHintDismissed: false,
+  launchAtStartup: false,
+  startHiddenToTray: false,
   projectOpenProfiles,
   toolTargets: [
     {
@@ -953,6 +955,8 @@ describe("Workbench UI interactions", () => {
         onRootChange={vi.fn()}
         onReorderToolTargets={vi.fn()}
         onCloseBehaviorChange={vi.fn()}
+        onLaunchAtStartupChange={vi.fn()}
+        onStartHiddenToTrayChange={vi.fn()}
         onOpenPath={vi.fn()}
         onAddCustomTool={vi.fn()}
         onEditCustomTool={vi.fn()}
@@ -988,6 +992,8 @@ describe("Workbench UI interactions", () => {
         inspectingRootMigration
         onReorderToolTargets={vi.fn()}
         onCloseBehaviorChange={vi.fn()}
+        onLaunchAtStartupChange={vi.fn()}
+        onStartHiddenToTrayChange={vi.fn()}
         onOpenPath={vi.fn()}
         onAddCustomTool={vi.fn()}
         onEditCustomTool={vi.fn()}
@@ -1068,6 +1074,8 @@ describe("Workbench UI interactions", () => {
         onEditCustomTool={onEditCustomTool}
         onDeleteCustomTool={onDeleteCustomTool}
         onCloseBehaviorChange={vi.fn()}
+        onLaunchAtStartupChange={vi.fn()}
+        onStartHiddenToTrayChange={vi.fn()}
         onOpenPath={vi.fn()}
         onAddProjectOpenProfile={vi.fn()}
         onEditProjectOpenProfile={vi.fn()}
@@ -1122,6 +1130,8 @@ describe("Workbench UI interactions", () => {
         onRootChange={vi.fn()}
         onReorderToolTargets={onReorderToolTargets}
         onCloseBehaviorChange={vi.fn()}
+        onLaunchAtStartupChange={vi.fn()}
+        onStartHiddenToTrayChange={vi.fn()}
         onOpenPath={vi.fn()}
         onAddCustomTool={vi.fn()}
         onEditCustomTool={vi.fn()}
@@ -1150,6 +1160,8 @@ describe("Workbench UI interactions", () => {
         onRootChange={vi.fn()}
         onReorderToolTargets={vi.fn()}
         onCloseBehaviorChange={onCloseBehaviorChange}
+        onLaunchAtStartupChange={vi.fn()}
+        onStartHiddenToTrayChange={vi.fn()}
         onOpenPath={vi.fn()}
         onAddCustomTool={vi.fn()}
         onEditCustomTool={vi.fn()}
@@ -1164,6 +1176,41 @@ describe("Workbench UI interactions", () => {
     await user.selectOptions(screen.getByLabelText("关闭窗口时"), "exit");
 
     expect(onCloseBehaviorChange).toHaveBeenCalledWith("exit");
+  });
+
+  it("updates startup behavior toggles from settings", async () => {
+    const user = userEvent.setup();
+    const onLaunchAtStartupChange = vi.fn();
+    const onStartHiddenToTrayChange = vi.fn();
+    renderWithUpdateProvider(
+      <SettingsView
+        settings={skillsSettings}
+        theme="dark"
+        onOpenUpdateDetails={vi.fn()}
+        onThemeToggle={vi.fn()}
+        onRootChange={vi.fn()}
+        onReorderToolTargets={vi.fn()}
+        onCloseBehaviorChange={vi.fn()}
+        onLaunchAtStartupChange={onLaunchAtStartupChange}
+        onStartHiddenToTrayChange={onStartHiddenToTrayChange}
+        onOpenPath={vi.fn()}
+        onAddCustomTool={vi.fn()}
+        onEditCustomTool={vi.fn()}
+        onDeleteCustomTool={vi.fn()}
+        onAddProjectOpenProfile={vi.fn()}
+        onEditProjectOpenProfile={vi.fn()}
+        onDeleteProjectOpenProfile={vi.fn()}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: /应用行为/ }));
+    await user.click(screen.getByLabelText("开机时启动 Workbench"));
+    await user.click(screen.getByLabelText("启动后隐藏到托盘"));
+
+    expect(screen.getByLabelText("开机时启动 Workbench")).not.toBeChecked();
+    expect(screen.getByLabelText("启动后隐藏到托盘")).not.toBeChecked();
+    expect(onLaunchAtStartupChange).toHaveBeenCalledWith(true);
+    expect(onStartHiddenToTrayChange).toHaveBeenCalledWith(true);
   });
 
   it("tracks active launch sessions for multiple projects at the same time", () => {

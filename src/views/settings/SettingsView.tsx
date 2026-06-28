@@ -32,6 +32,8 @@ export function SettingsView({
   onEditCustomTool,
   onDeleteCustomTool,
   onCloseBehaviorChange,
+  onLaunchAtStartupChange,
+  onStartHiddenToTrayChange,
   onOpenPath,
   onAddProjectOpenProfile,
   onEditProjectOpenProfile,
@@ -49,6 +51,8 @@ export function SettingsView({
   onEditCustomTool: (tool: ToolTarget) => void;
   onDeleteCustomTool: (tool: ToolTarget) => void;
   onCloseBehaviorChange: (behavior: CloseBehavior) => void;
+  onLaunchAtStartupChange: (enabled: boolean) => void;
+  onStartHiddenToTrayChange: (enabled: boolean) => void;
   onOpenPath: (path: string) => void;
   onAddProjectOpenProfile: () => void;
   onEditProjectOpenProfile: (profile: ProjectOpenProfile) => void;
@@ -101,7 +105,14 @@ export function SettingsView({
       case "data":
         return <LocalDataSettings settings={settings} onOpenPath={onOpenPath} />;
       case "behavior":
-        return <BehaviorSettings settings={settings} onCloseBehaviorChange={onCloseBehaviorChange} />;
+        return (
+          <BehaviorSettings
+            settings={settings}
+            onCloseBehaviorChange={onCloseBehaviorChange}
+            onLaunchAtStartupChange={onLaunchAtStartupChange}
+            onStartHiddenToTrayChange={onStartHiddenToTrayChange}
+          />
+        );
       case "appearance":
         return <AppearanceSettings theme={theme} onThemeToggle={onThemeToggle} />;
       default:
@@ -231,9 +242,11 @@ function ToolDirectorySettings({
                   <small>{tool.globalSkillsDir}</small>
                 </span>
               </span>
-              <span className="settings-row-actions">
+              <span className="settings-row-status">
                 <StatusBadge tone={tool.source === "custom" ? "attention" : "neutral"}>{tool.source === "custom" ? "自定义" : "内置"}</StatusBadge>
                 <StatusBadge tone={tool.available ? "accent" : "neutral"}>{tool.available ? "可用" : "不可用"}</StatusBadge>
+              </span>
+              <span className="settings-row-actions">
                 <IconButton title={`上移 ${tool.name}`} disabled={index === 0} onClick={() => moveToolTarget(index, -1)}><ArrowUp size={15} /></IconButton>
                 <IconButton title={`下移 ${tool.name}`} disabled={index === settings.toolTargets.length - 1} onClick={() => moveToolTarget(index, 1)}><ArrowDown size={15} /></IconButton>
                 <IconButton title={`打开 ${tool.name} Skills 目录`} onClick={() => onOpenPath(tool.globalSkillsDir)}><FolderOpen size={15} /></IconButton>
@@ -275,9 +288,11 @@ function ProjectOpenProfileSettings({
                   <strong>{profile.name}</strong>
                   <small>{projectOpenProfileSummary(profile)}</small>
                 </span>
-                <span className="settings-row-actions">
+                <span className="settings-row-status">
                   <StatusBadge tone={profile.enabled ? "accent" : "neutral"}>{profile.enabled ? "启用" : "停用"}</StatusBadge>
                   <StatusBadge tone={profile.kind === "terminal" ? "attention" : "neutral"}>{profile.kind === "terminal" ? "终端" : "应用"}</StatusBadge>
+                </span>
+                <span className="settings-row-actions">
                   <IconButton title={`编辑 ${profile.name}`} onClick={() => onEditProjectOpenProfile(profile)}><Edit3 size={15} /></IconButton>
                   <IconButton variant="danger" title={`删除 ${profile.name}`} onClick={() => onDeleteProjectOpenProfile(profile)}><Trash2 size={15} /></IconButton>
                 </span>
@@ -300,14 +315,20 @@ function LocalDataSettings({ settings, onOpenPath }: { settings: AppSettings; on
     <div className="settings-form">
       <SettingsContentHeader title="本地数据" description="项目、分类和资源 Radar 数据保存在系统应用数据目录。" />
       <SettingsSection title="数据位置">
-        <div className="settings-row">
-          <span><small>Workbench 根目录</small>{settings.workbenchRoot}</span>
+        <SettingsRow
+          title="Workbench 根目录"
+          description={settings.workbenchRoot}
+          status={<StatusBadge tone="neutral">本地</StatusBadge>}
+        >
           <IconButton title="打开 Workbench 根目录" onClick={() => onOpenPath(settings.workbenchRoot)}><FolderOpen size={15} /></IconButton>
-        </div>
-        <div className="settings-row">
-          <span><small>SQLite 数据库</small>{settings.workbenchRoot}\\workbench.sqlite</span>
+        </SettingsRow>
+        <SettingsRow
+          title="SQLite 数据库"
+          description={`${settings.workbenchRoot}\\workbench.sqlite`}
+          status={<StatusBadge tone="neutral">SQLite</StatusBadge>}
+        >
           <IconButton title="打开数据库所在目录" onClick={() => onOpenPath(settings.workbenchRoot)}><FolderOpen size={15} /></IconButton>
-        </div>
+        </SettingsRow>
       </SettingsSection>
     </div>
   );
@@ -315,17 +336,52 @@ function LocalDataSettings({ settings, onOpenPath }: { settings: AppSettings; on
 
 function BehaviorSettings({
   settings,
-  onCloseBehaviorChange
+  onCloseBehaviorChange,
+  onLaunchAtStartupChange,
+  onStartHiddenToTrayChange
 }: {
   settings: AppSettings;
   onCloseBehaviorChange: (behavior: CloseBehavior) => void;
+  onLaunchAtStartupChange: (enabled: boolean) => void;
+  onStartHiddenToTrayChange: (enabled: boolean) => void;
 }) {
   return (
     <div className="settings-form">
-      <SettingsContentHeader title="应用行为" description="控制窗口关闭时的处理方式。" />
-      <SettingsSection title="窗口">
-        <div className="settings-row">
-          <span><small>关闭窗口时</small><strong>{closeBehaviorLabel(settings.closeBehavior)}</strong></span>
+      <SettingsContentHeader title="应用行为" description="控制 Workbench 启动、窗口关闭和托盘行为。" />
+      <SettingsSection title="启动" description="这些选项只控制应用启动后的可见状态，不会自动同步 Skills 或启动项目。">
+        <SettingsRow
+          title="开机时启动 Workbench"
+          description="系统登录后自动启动应用；不会自动运行项目或 Agent。"
+          status={<StatusBadge tone={settings.launchAtStartup ? "accent" : "neutral"}>{settings.launchAtStartup ? "已开启" : "已关闭"}</StatusBadge>}
+        >
+          <input
+            className="settings-switch"
+            type="checkbox"
+            aria-label="开机时启动 Workbench"
+            checked={settings.launchAtStartup}
+            onChange={(event) => onLaunchAtStartupChange(event.target.checked)}
+          />
+        </SettingsRow>
+        <SettingsRow
+          title="启动后隐藏到托盘"
+          description="应用启动后直接进入托盘，可从托盘菜单恢复主窗口。"
+          status={<StatusBadge tone={settings.startHiddenToTray ? "accent" : "neutral"}>{settings.startHiddenToTray ? "已开启" : "已关闭"}</StatusBadge>}
+        >
+          <input
+            className="settings-switch"
+            type="checkbox"
+            aria-label="启动后隐藏到托盘"
+            checked={settings.startHiddenToTray}
+            onChange={(event) => onStartHiddenToTrayChange(event.target.checked)}
+          />
+        </SettingsRow>
+      </SettingsSection>
+      <SettingsSection title="窗口" description="关闭按钮只处理主窗口，不改变最小化按钮和系统托盘菜单。">
+        <SettingsRow
+          title="关闭窗口时"
+          description="选择点击窗口关闭按钮后的处理方式。"
+          status={<StatusBadge tone="accent">{closeBehaviorLabel(settings.closeBehavior)}</StatusBadge>}
+        >
           <select
             aria-label="关闭窗口时"
             className="settings-select"
@@ -335,7 +391,7 @@ function BehaviorSettings({
             <option value="hide_to_tray">隐藏到托盘</option>
             <option value="exit">退出应用</option>
           </select>
-        </div>
+        </SettingsRow>
       </SettingsSection>
     </div>
   );
@@ -346,10 +402,13 @@ function AppearanceSettings({ theme, onThemeToggle }: { theme: "light" | "dark";
     <div className="settings-form">
       <SettingsContentHeader title="外观" description="切换 Workbench 的浅色或深色界面。" />
       <SettingsSection title="主题">
-        <div className="settings-row">
-          <span><small>当前主题</small><strong>{theme === "dark" ? "深色主题" : "浅色主题"}</strong></span>
+        <SettingsRow
+          title="当前主题"
+          description="App Shell 和设置页使用同一主题状态。"
+          status={<StatusBadge tone="accent">{theme === "dark" ? "深色主题" : "浅色主题"}</StatusBadge>}
+        >
           <Button onClick={onThemeToggle}>切换主题</Button>
-        </div>
+        </SettingsRow>
       </SettingsSection>
     </div>
   );
@@ -386,11 +445,36 @@ function SettingsSection({
 }) {
   return (
     <section className="settings-section">
-      <div className="settings-section-title">
-        <h3>{title}</h3>
-        {description && <p>{description}</p>}
+      <div className={`settings-section-title ${description ? "has-description" : ""}`}>
+        <span>
+          <h3>{title}</h3>
+          {description && <p>{description}</p>}
+        </span>
       </div>
       {children}
     </section>
+  );
+}
+
+function SettingsRow({
+  title,
+  description,
+  status,
+  children
+}: {
+  title: string;
+  description?: ReactNode;
+  status?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className="settings-row">
+      <span className="settings-row-copy">
+        <strong>{title}</strong>
+        {description && <small>{description}</small>}
+      </span>
+      <span className="settings-row-status">{status}</span>
+      <span className="settings-row-actions">{children}</span>
+    </div>
   );
 }

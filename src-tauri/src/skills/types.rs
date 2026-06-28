@@ -89,6 +89,7 @@ pub struct SkillsSettings {
     pub tool_targets: Vec<ToolTarget>,
     pub close_behavior: CloseBehavior,
     pub close_tray_hint_dismissed: bool,
+    pub start_hidden_to_tray: bool,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

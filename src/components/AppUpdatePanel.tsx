@@ -34,18 +34,20 @@ export function AppUpdatePanel({
 
   return (
     <section className="settings-section update-settings-panel">
-      <div className="settings-section-title settings-section-title-row">
+      <div className="settings-section-title">
         <span>
           <h3>软件更新</h3>
           <p>启动后会静默检查更新；发现新版本时可从左下角入口查看详情。</p>
         </span>
-        <StatusBadge tone={updateStatusTone(status)}>{updateStatusLabel(status)}</StatusBadge>
       </div>
       <div className="settings-row update-compact-row">
         <span>
           <small>当前版本</small>
           <strong>{currentVersion || "读取中"}</strong>
           {updateInfo && <small>发现新版本 {updateInfo.latestVersion}</small>}
+        </span>
+        <span className="settings-row-status">
+          <StatusBadge tone={updateStatusTone(status)}>{updateStatusLabel(status)}</StatusBadge>
         </span>
         <span className="settings-row-actions">
           <Button onClick={() => void checkUpdate()} disabled={checking}>

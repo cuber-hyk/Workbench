@@ -300,6 +300,8 @@ export interface AppSettings {
   previousSkillsRoot?: string | null;
   closeBehavior: CloseBehavior;
   closeTrayHintDismissed: boolean;
+  launchAtStartup: boolean;
+  startHiddenToTray: boolean;
   toolTargets: ToolTarget[];
   projectOpenProfiles: ProjectOpenProfile[];
 }

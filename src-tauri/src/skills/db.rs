@@ -12,6 +12,7 @@ use super::{
 
 pub(super) const CLOSE_BEHAVIOR_SETTING: &str = "close_behavior";
 pub(super) const CLOSE_TRAY_HINT_DISMISSED_SETTING: &str = "close_tray_hint_dismissed";
+pub(super) const START_HIDDEN_TO_TRAY_SETTING: &str = "start_hidden_to_tray";
 
 pub(super) fn default_workbench_root() -> SkillResult<PathBuf> {
     dirs::home_dir()
