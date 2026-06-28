@@ -19,7 +19,7 @@ Do not read `docs/plans/`, `docs/audits/`, or archived directories by default.
 - `src/views/projects/launchState.ts`：项目启动状态、启动事件归并、停止状态标记和启动配置筛选的前端纯逻辑。
 - `src/views/radar/RadarView.tsx`：资源 Radar 前端列表、详情、筛选和增删弹窗。
 - `src/views/settings/SettingsView.tsx`：设置页分类导航和视图编排入口。
-- `src/views/settings/DiagnosticsSettings.tsx`：设置页“诊断”入口，展示运行信息、本地路径、日志目录和复制诊断信息操作。
+- `src/views/settings/DiagnosticsSettings.tsx`：设置页“诊断”入口，展示运行信息、本地路径、日志目录、复制诊断信息和手动健康检查操作。
 - `src/views/settings/settingsLayout.tsx`、`src/views/settings/settingsFormatters.ts`：设置页专用布局组件和展示格式化逻辑。
 - `src/views/skills/SkillsView.tsx`：Skills 本地列表、项目启用、市场/更新子视图编排和 Skills 前端交互入口。
 - `src/views/skills/SkillsMarketView.tsx`：skills.sh 市场前端列表、详情、安装和卸载入口。
@@ -32,9 +32,9 @@ Do not read `docs/plans/`, `docs/audits/`, or archived directories by default.
 - `src/lib/ui/pagination.ts`：项目、Skills、市场、更新和资源 Radar 列表分页的纯计算规则。
 - `src/lib/types/domain.ts`：前端领域类型。
 - `src/lib/api/workbenchApi.ts`：前端到 Tauri commands 的 API 边界。
-- `src/lib/api/diagnosticsApi.ts`：设置诊断页的运行环境读取 API 和 Web preview fallback。
+- `src/lib/api/diagnosticsApi.ts`：设置诊断页的运行环境读取、健康检查 API 和 Web preview fallback。
 - `src-tauri/src/lib.rs`：Tauri command 注册入口。
-- `src-tauri/src/diagnostics.rs`：诊断页使用的系统平台和处理器类型读取 command。
+- `src-tauri/src/diagnostics.rs`、`src-tauri/src/diagnostics/health.rs`：诊断页使用的系统平台、处理器类型和本机依赖健康检查 command。
 - `src-tauri/src/app_update.rs`：应用更新弹窗的 GitHub Releases notes 读取、旧版 Workbench App 安装检测和旧快捷方式清理 command。
 - `src-tauri/src/projects.rs`、`src-tauri/src/projects/`：项目 command facade、类型、SQLite 持久化、项目记录删除、GitHub/Gitee 远程导入、项目打开方式 Profiles 和启动会话进程管理。
 - `docs/capabilities/project-management.md`：项目管理当前能力、启动项、外部工具打开 Profiles、数据所有权和错误边界。

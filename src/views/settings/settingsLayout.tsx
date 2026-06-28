@@ -46,15 +46,17 @@ export function SettingsRow({
   title,
   description,
   status,
-  children
+  children,
+  className = ""
 }: {
   title: string;
   description?: ReactNode;
   status?: ReactNode;
   children: ReactNode;
+  className?: string;
 }) {
   return (
-    <div className="settings-row">
+    <div className={`settings-row ${className}`.trim()}>
       <span className="settings-row-copy">
         <strong>{title}</strong>
         {description && <small>{description}</small>}
