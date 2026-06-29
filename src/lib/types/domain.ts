@@ -322,6 +322,36 @@ export interface ImportResult {
 
 export type ExternalSkillCandidateStatus = "new" | "same_as_current" | "conflict" | "invalid" | "unreadable";
 
+export interface GithubSkillImportCandidate {
+  directoryName: string;
+  displayName: string;
+  description: string;
+  skillPath: string;
+  markdownPreview: string;
+  fileCount: number;
+  totalSize: number;
+  hasScripts: boolean;
+  status: ExternalSkillCandidateStatus;
+  message: string;
+}
+
+export interface GithubSkillImportInspection {
+  repoUrl: string;
+  owner: string;
+  repo: string;
+  refName: string;
+  resolvedRef: string;
+  fixedRef: boolean;
+  scopePath: string;
+  candidates: GithubSkillImportCandidate[];
+  message: string;
+}
+
+export interface GithubSkillImportSelection {
+  skillPath: string;
+  overwrite: boolean;
+}
+
 export interface ExternalSkillCandidateSource {
   tool: ToolKey;
   toolName: string;

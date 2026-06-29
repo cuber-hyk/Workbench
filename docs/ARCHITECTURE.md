@@ -126,7 +126,7 @@ Workbench/
 - `src/views/` 保存从 `App.tsx` 拆出的页面级视图模块。
 - `src/components/dialogs/` 保存按功能域拆分的项目、设置和 Skills 弹窗。
 - `src-tauri/src/projects.rs` 是当前 Project command facade；类型、SQLite、项目打开方式 Profiles 和启动会话进程管理位于 `src-tauri/src/projects/`。
-- `src-tauri/src/skills.rs` 是当前 Skills command facade；类型、SQLite、文件系统同步、工具目标、分类、自定义工具、导入、根目录迁移、skills.sh 市场和 CLI 适配位于 `src-tauri/src/skills/`。
+- `src-tauri/src/skills.rs` 是当前 Skills command facade；类型、SQLite、文件系统同步、工具目标、分类、自定义工具、导入、GitHub 导入、根目录迁移、skills.sh 市场和 CLI 适配位于 `src-tauri/src/skills/`。
 
 ## 4. 前端模块说明
 
@@ -191,8 +191,9 @@ Workbench/
 - 通过“同步 Skills”刷新统一根目录，并在用户确认后导入和接管已注册工具全局目录中的既有 Skills。
 - 切换统一 Skills 根目录后检查旧根目录迁移和受管启用目标重建。
 - 从 ZIP 文件或已解压文件夹导入 Skills。
+- 从 public GitHub 仓库链接扫描、预览并导入标准 `SKILL.md` Skills。
 - 从 `skills.sh` 浏览、安装和卸载 GitHub 来源 Skills。
-- 检查并更新由 Workbench 从 `skills.sh` 安装的 Skills。
+- 检查并更新由 Workbench 管理的远程来源 Skills，当前包括 `skills_sh` 和 GitHub 分支来源。
 
 关键原则：
 
@@ -213,7 +214,7 @@ Workbench/
 - 删除或市场卸载 Skill 只删除统一根目录内容和 Workbench 管理的启用目标，不删除未被 Workbench 管理的工具目录。
 - 自定义工具只支持全局 Skills 目录；项目级启用必须由后端拒绝。
 - 删除自定义工具只删除 Workbench 配置、排序项和启用记录，不删除外部工具目录。
-- `skills.sh` 安装和更新由 Workbench 自行下载 GitHub 仓库内容，不调用 `npx skills` 作为核心路径。
+- `skills.sh` 安装和更新通过隔离临时目录调用官方 `npx skills add` 提取 Skill；GitHub 直连导入是独立来源，不作为 `skills.sh` fallback。
 - 从 `skills.sh` 安装或更新后默认不自动启用到任何 Agent 工具目录。
 - 非 GitHub 来源的 `skills.sh` 条目暂不支持 Workbench 自管安装。
 
@@ -261,10 +262,11 @@ Workbench/
 
 `src-tauri/src/lib.rs` 注册前端唯一可调用的 Tauri commands。
 
-当前已实现的 Skills command 入口位于 `src-tauri/src/skills.rs`，类型、SQLite、文件系统同步、工具目标、分类、自定义工具、导入、根目录迁移、skills.sh 市场和 CLI 适配位于 `src-tauri/src/skills/`：
+当前已实现的 Skills command 入口位于 `src-tauri/src/skills.rs`，类型、SQLite、文件系统同步、工具目标、分类、自定义工具、导入、GitHub 导入、根目录迁移、skills.sh 市场和 CLI 适配位于 `src-tauri/src/skills/`：
 
 - 扫描和解析 `SKILL.md`。
 - 系统选择器、ZIP / 文件夹导入与冲突检查。
+- public GitHub 链接解析、本机 Git 浅克隆、commit 固定版本 codeload 下载、标准 `SKILL.md` 候选扫描和导入。
 - 已注册工具全局目录只读发现、显式导入、旧根目录迁移检查和受管启用目标重建。
 - SQLite 设置、分类和启用关系读写。
 - 固定工具目标注册表、目标路径计算和项目级支持守卫。
@@ -274,10 +276,10 @@ Workbench/
 - 扫描时自动登记内容一致的全局启用，统一解决 Skill 级版本冲突并备份被替换版本。
 - 创建、检测和移除受管符号链接或副本。
 - 删除统一根目录中的 Skill 并清理对应 Workbench 管理记录。
-- `skills.sh` 市场列表、详情、安装、卸载、更新检查、单项更新和批量更新。
+- `skills.sh` 市场列表、详情、安装、卸载，以及远程来源更新检查、单项更新和批量更新。
 - 打开本地文件或目录。
 
-当前 Skills 后端按 command facade、类型、数据库、文件系统同步、工具目标、分类、自定义工具、导入、根目录迁移、受管目标重建、skills.sh 市场和 CLI 适配拆分；启用、冲突、删除和市场 command wrapper 仍由 `src-tauri/src/skills.rs` 承载 command 编排。
+当前 Skills 后端按 command facade、类型、数据库、文件系统同步、工具目标、分类、自定义工具、导入、GitHub 导入、根目录迁移、受管目标重建、skills.sh 市场和 CLI 适配拆分；启用、冲突、删除、市场和更新 command wrapper 仍由 `src-tauri/src/skills.rs` 承载 command 编排。
 
 ## 6. 核心数据模型
 
@@ -430,13 +432,13 @@ Workbench/
 
 ### 6.5.2 skill_sources
 
-保存由 Workbench 管理的远程 Skill 来源记录。当前只写入 `skills_sh` 来源，用于市场状态、更新检查和更新执行。
+保存由 Workbench 管理的远程 Skill 来源记录。当前写入 `skills_sh` 和 `github` 来源，用于市场状态、来源更新检查和更新执行。
 
 | 字段 | 说明 |
 | --- | --- |
 | directory_name | 统一 Skills 根目录下的 Skill 目录名，主键 |
-| source | 来源类型，当前为 `skills_sh` |
-| package_slug | `skills.sh` 包标识 |
+| source | 来源类型，当前为 `skills_sh` 或 `github` |
+| package_slug | 来源包标识；`skills_sh` 为市场包，`github` 为 `owner/repo/path` |
 | repo_url | GitHub 仓库 URL |
 | skill_path | 仓库内 Skill 目录路径 |
 | installed_ref | 安装时使用的远端分支或引用 |
@@ -448,12 +450,13 @@ Workbench/
 
 约束：
 
-- `skill_sources` 只描述 Workbench 从市场安装的 Skill，不参与本地 ZIP / 文件夹导入。
+- `skill_sources` 只描述 Workbench 管理的远程来源 Skill，不参与本地 ZIP / 文件夹导入或外部工具目录同步来源。
 - 删除或市场卸载对应 Skill 时必须同步删除 `skill_sources` 记录。
-- 更新检查通过重新下载远端 GitHub Skill 并计算内容 hash 判断是否变化。
+- `skills_sh` 更新检查通过官方 CLI 重新提取远端 Skill；GitHub 分支来源通过重新克隆同一 repo/ref/path 并计算内容 hash 判断是否变化。
+- GitHub tag 或 commit 固定版本不参与更新检查。
 - 内容 hash 用于本地更新检测，不作为安全校验或可信签名。
 - 远端下载设置连接和读取超时，并限制压缩包大小、解压大小和仓库文件数量。
-- 更新执行前会把统一根目录中的旧版本备份到 `~/.workbench/backups/skills/market/<timestamp>/<skill>`。
+- 更新执行前会把统一根目录中的旧版本备份到 `~/.workbench/backups/skills/<source>/<timestamp>/<skill>`。
 - 更新成功只替换统一 Skills 根目录内容，不自动重同步已启用的 Copy 副本。
 
 ### 6.6 skill_enablements
@@ -753,7 +756,29 @@ Workbench/
 - 当前统一根目录已存在同名不同内容时返回冲突，不覆盖；若提交时状态变化为同名不同内容，用户需重新扫描后选择版本来源。
 - 自定义工具路径与当前统一根目录相同时跳过，避免把真实来源当成外部来源。
 
-### 7.6.2 切换根目录、迁移和重建
+### 7.6.2 从 GitHub 导入 Skills
+
+流程：
+
+1. 用户在本地 Skills 的导入菜单中选择 GitHub 链接。
+2. 前端提交 public GitHub repo、tree 路径或 `SKILL.md` blob 链接。
+3. 后端解析 owner、repo、ref 和扫描范围；默认仓库链接使用 GitHub 默认分支。
+4. 后端通过本机 `git clone --depth 1` 克隆 public 仓库到临时目录；commit 固定版本链接使用 GitHub codeload ZIP 直下；随后只扫描包含 `SKILL.md` 的目录。
+5. 前端展示候选列表、`SKILL.md` 预览、文件数量、大小、脚本提示和冲突状态。
+6. 用户勾选一个或多个候选后导入；导入单位固定为 `SKILL.md` 所在目录整体。
+7. 后端复制候选目录到统一 Skills 根目录，遇到同名冲突时按用户选择跳过或覆盖，覆盖前备份旧版本。
+8. GitHub 分支来源写入 `skill_sources`，用于后续检查更新；tag 或 commit 固定版本可导入但不参与更新检查。
+
+边界：
+
+- 只支持 public GitHub 仓库。
+- 不执行仓库脚本、安装命令、构建命令或测试命令。
+- 不支持没有 `SKILL.md` 的目录，不支持用户自由拼装文件或文件夹。
+- 仓库根目录只有在存在 `SKILL.md` 时才作为整个仓库 Skill 候选。
+- GitHub 直连导入不作为 `skills.sh` 安装失败后的 fallback。
+- 导入后默认不启用到任何 Agent 工具目录。
+
+### 7.6.3 切换根目录、迁移和重建
 
 流程：
 
@@ -772,13 +797,13 @@ Workbench/
 - Copy 副本不会自动随根目录设置变化；已被用户修改或无法证明受管的目标返回冲突。
 - 未受管工具目录内容永不覆盖。
 
-### 7.6.3 从 skills.sh 安装、卸载和更新 Skills
+### 7.6.4 从 skills.sh 安装、卸载和来源更新 Skills
 
 安装流程：
 
 1. 用户在 Skills 模块切换到 `技能市场`。
 2. 前端优先复用当前应用进程内的市场列表缓存；首次进入、手动刷新或安装完成后调用 `list_skill_market` 获取最新条目，并调用 `get_skill_market_detail` 查看详情。
-3. 用户点击安装时，前端调用异步 `install_skill_from_market`，后端在 blocking worker 中下载对应 GitHub 仓库内容，定位包含 `SKILL.md` 的 Skill 目录。
+3. 用户点击安装时，前端调用异步 `install_skill_from_market`，后端在 blocking worker 中通过隔离临时 HOME 调用官方 `npx skills add` 提取 Skill。
 4. 后端通过 `skill-install-progress` 事件回传阶段进度；前端用百分比展示安装反馈。
 5. 后端将 Skill 复制到统一 Skills 根目录，同名目录已存在时失败并提示。
 6. 后端写入 `skill_sources` 来源记录。
@@ -792,16 +817,17 @@ Workbench/
 4. 后端删除该 Skill 的 `skill_sources` 来源记录。
 5. 前端刷新本地 Skills、市场状态和更新列表。
 
-更新流程：
+来源更新流程：
 
 1. 用户切换到 `更新` 子视图。
-2. 前端调用 `list_skill_updates` 展示已记录的 `skills.sh` 来源 Skill。
-3. 用户点击检查全部时，后端重新下载远端 Skill 并计算内容 hash。
+2. 前端调用 `list_skill_updates` 展示已记录且可进入来源更新页的远程来源 Skill。
+3. 用户点击检查全部时，后端按来源类型重新提取远端 Skill 并计算内容 hash：`skills_sh` 使用官方 CLI，`github` 分支来源重新克隆同一 repo/ref/path。
 4. hash 不一致时标记为可更新。
-5. 前端只允许勾选状态为可更新的条目；已是最新、检查失败和更新执行中的条目不可勾选。
+5. GitHub tag 或 commit 固定版本标记为不支持更新，不进入可更新集合。
+6. 前端只允许勾选状态为可更新的条目；已是最新、检查失败、不支持和更新执行中的条目不可勾选。
 6. 用户可执行单项更新、选中批量更新或更新全部可更新项。
-6. 每个更新项替换前先备份统一根目录旧版本；单项失败会返回该项错误并继续处理其他项。
-7. 更新完成后刷新本地 Skills 状态和来源记录。
+7. 每个更新项替换前先备份统一根目录旧版本；单项失败会返回该项错误并继续处理其他项。
+8. 更新完成后刷新本地 Skills 状态和来源记录。
 
 前端市场缓存只在当前应用进程内有效，不写入 SQLite 或磁盘；“刷新市场”始终绕过缓存。安装百分比由后端阶段事件驱动，只表达流程阶段，不代表已下载字节比例。
 

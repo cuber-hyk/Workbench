@@ -741,12 +741,14 @@ pub(super) fn directory_content_hash(root: &Path) -> SkillResult<String> {
         if !entry.file_type().is_file() {
             continue;
         }
-        let relative = entry
-            .path()
-            .strip_prefix(root)
-            .map_err(error_message)?
-            .to_string_lossy()
-            .replace('\\', "/");
+        let relative_path = entry.path().strip_prefix(root).map_err(error_message)?;
+        if relative_path
+            .components()
+            .any(|part| part.as_os_str() == ".git")
+        {
+            continue;
+        }
+        let relative = relative_path.to_string_lossy().replace('\\', "/");
         let bytes = fs::read(entry.path()).map_err(error_message)?;
         entries.push((relative, bytes));
     }
@@ -757,4 +759,23 @@ pub(super) fn directory_content_hash(root: &Path) -> SkillResult<String> {
         bytes.hash(&mut hasher);
     }
     Ok(format!("{:016x}", hasher.finish()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn directory_content_hash_ignores_git_metadata() {
+        let root = tempdir().unwrap();
+        fs::write(root.path().join("SKILL.md"), "# Demo").unwrap();
+        let before = directory_content_hash(root.path()).unwrap();
+
+        fs::create_dir_all(root.path().join(".git/objects")).unwrap();
+        fs::write(root.path().join(".git/objects/ignored"), "metadata").unwrap();
+        let after = directory_content_hash(root.path()).unwrap();
+
+        assert_eq!(before, after);
+    }
 }

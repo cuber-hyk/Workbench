@@ -145,6 +145,8 @@ pub fn run() {
             skills::rebuild_managed_skill_targets,
             skills::import_skills_from_folder,
             skills::import_skills_from_zip,
+            skills::inspect_github_skill_import,
+            skills::import_github_skills,
             skills::set_skill_enabled,
             skills::open_local_path,
             skills::select_skill_import_source,
