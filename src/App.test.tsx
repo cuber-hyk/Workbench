@@ -7,6 +7,7 @@ import { ProjectDialog } from "./components/dialogs/projects/ProjectDialog";
 import { RemoteProjectImportDialog } from "./components/dialogs/projects/RemoteProjectImportDialog";
 import { CustomToolDialog } from "./components/dialogs/settings/CustomToolDialog";
 import { ExternalSkillsDialog } from "./components/dialogs/skills/ExternalSkillsDialog";
+import { GithubSkillImportDialog } from "./components/dialogs/skills/GithubSkillImportDialog";
 import { SkillCategoryDialog } from "./components/dialogs/skills/SkillCategoryDialog";
 import { SkillsRootMigrationDialog } from "./components/dialogs/skills/SkillsRootMigrationDialog";
 import { AppUpdateProvider } from "./contexts/AppUpdateContext";
@@ -2187,6 +2188,7 @@ describe("Workbench UI interactions", () => {
     const onSyncSkills = vi.fn();
     const onManageCategories = vi.fn();
     const onImport = vi.fn();
+    const onImportGithub = vi.fn();
     render(
       <SkillsView
         skills={skillsForView}
@@ -2196,6 +2198,7 @@ describe("Workbench UI interactions", () => {
         projects={[activeProject, secondActiveProject]}
         onSelect={vi.fn()}
         onImport={onImport}
+        onImportGithub={onImportGithub}
         onRefresh={vi.fn()}
         onSyncSkills={onSyncSkills}
         onManageCategories={onManageCategories}
@@ -2216,11 +2219,80 @@ describe("Workbench UI interactions", () => {
     await user.click(screen.getByRole("heading", { name: "Skills" }));
     expect(screen.queryByText("选择 ZIP 文件")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /导入 Skills/ }));
+    expect(screen.getByText("GitHub 链接")).toBeInTheDocument();
+    await user.click(screen.getByText("GitHub 链接"));
+    await user.click(screen.getByRole("button", { name: /导入 Skills/ }));
     await user.click(screen.getByText("选择 ZIP 文件"));
 
     expect(onSyncSkills).toHaveBeenCalledTimes(1);
     expect(onManageCategories).toHaveBeenCalledTimes(1);
+    expect(onImportGithub).toHaveBeenCalledOnce();
     expect(onImport).toHaveBeenCalledWith("zip");
+  });
+
+  it("previews and imports selected GitHub skill candidates", async () => {
+    const user = userEvent.setup();
+    const inspectGithub = vi.spyOn(workbenchApi, "inspectGithubSkillImport").mockResolvedValue({
+      repoUrl: "https://github.com/acme/skills",
+      owner: "acme",
+      repo: "skills",
+      refName: "main",
+      resolvedRef: "abc",
+      fixedRef: false,
+      scopePath: "",
+      message: "发现 1 个 Skill 候选",
+      candidates: [
+        {
+          directoryName: "github-preview-skill",
+          displayName: "github-preview-skill",
+          description: "GitHub preview",
+          skillPath: "",
+          markdownPreview: "# GitHub preview",
+          fileCount: 2,
+          totalSize: 2048,
+          hasScripts: false,
+          status: "new",
+          message: "可导入"
+        }
+      ]
+    });
+    const importGithub = vi.spyOn(workbenchApi, "importGithubSkills").mockResolvedValue([
+      {
+        directoryName: "github-preview-skill",
+        status: "imported",
+        message: "导入成功"
+      }
+    ]);
+    const onImported = vi.fn();
+
+    try {
+      render(<GithubSkillImportDialog onClose={vi.fn()} onImported={onImported} />);
+      await user.type(screen.getByLabelText("GitHub 链接"), "https://github.com/acme/skills");
+      await user.click(screen.getByRole("button", { name: "扫描" }));
+
+      expect((await screen.findAllByText("github-preview-skill")).length).toBeGreaterThan(0);
+      expect(screen.getAllByText("仓库根目录").length).toBeGreaterThan(0);
+      expect(screen.getByText("Skill 内容")).toBeInTheDocument();
+      expect(screen.getByText("# GitHub preview")).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "导入选中项 1" }));
+
+      await waitFor(() => {
+        expect(importGithub).toHaveBeenCalledWith("https://github.com/acme/skills", [
+          { skillPath: "", overwrite: false }
+        ]);
+        expect(onImported).toHaveBeenCalledWith([
+          {
+            directoryName: "github-preview-skill",
+            status: "imported",
+            message: "导入成功"
+          }
+        ]);
+      });
+      expect(inspectGithub).toHaveBeenCalledOnce();
+    } finally {
+      inspectGithub.mockRestore();
+      importGithub.mockRestore();
+    }
   });
 
   it("keeps local Skills management actions out of market and updates", async () => {
@@ -3265,8 +3337,8 @@ describe("Workbench UI interactions", () => {
 
     await user.click(screen.getByRole("button", { name: "更新" }));
 
-    expect(await screen.findByText("暂无可检查的 skills.sh Skill")).toBeInTheDocument();
-    expect(screen.getByText("从技能市场安装的 Skill 会出现在这里，用于检查和执行更新。")).toBeInTheDocument();
+    expect(await screen.findByText("暂无可检查的远程来源 Skill")).toBeInTheDocument();
+    expect(screen.getByText("从技能市场或 GitHub 分支导入的 Skill 会出现在这里，用于检查和执行更新。")).toBeInTheDocument();
     expect(screen.getByText("等待可更新项")).toBeInTheDocument();
     expect(screen.getByText("检查后发现可更新 Skill 时，可在左侧选择并批量更新。")).toBeInTheDocument();
     expect(screen.queryByText(/已选择 0 个可更新 Skill/)).not.toBeInTheDocument();

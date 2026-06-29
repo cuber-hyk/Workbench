@@ -60,7 +60,7 @@ export function SkillUpdatesView({
   return (
     <>
       <div className="bulk-bar">
-        <span><strong>更新检查</strong><small>仅管理从 skills.sh 安装的 Skill。更新前会备份统一根目录中的旧版本。</small></span>
+        <span><strong>来源更新</strong><small>检查 skills.sh 与 GitHub 分支来源。更新前会备份统一根目录中的旧版本。</small></span>
         <div className="bulk-actions">
           <Button disabled={checking} onClick={onCheck}><RefreshCcw className={checking ? "spin" : ""} size={15} />{checking ? "检查中" : "检查更新"}</Button>
           <Button variant="primary" disabled={selectedUpdateable.length === 0 || updatingNames.length > 0} onClick={onUpdateSelected}>更新选中项</Button>
@@ -71,14 +71,14 @@ export function SkillUpdatesView({
         <Panel className="list-panel">
           <div className="table-head update-grid">
             <span><input type="checkbox" aria-label="选择全部可更新项" checked={allUpdateableSelected} disabled={updateable.length === 0 || updatingNames.length > 0} onClick={(event) => event.stopPropagation()} onChange={(event) => onSelectNames(event.target.checked ? updateable.map((status) => status.source.directoryName) : [])} /></span>
-            <span>Skill</span><span>本地版本</span><span>远端状态</span><span>最近检查</span><span className="table-action-heading">操作</span>
+            <span>Skill</span><span>来源</span><span>远端状态</span><span>最近检查</span><span className="table-action-heading">操作</span>
           </div>
           <div className="list-body">
             {statuses.length === 0 && (
               <div className="empty-state update-empty-state">
                 <span className="empty-state-icon"><RefreshCcw size={18} /></span>
-                <strong>暂无可检查的 skills.sh Skill</strong>
-                <small>从技能市场安装的 Skill 会出现在这里，用于检查和执行更新。</small>
+                <strong>暂无可检查的远程来源 Skill</strong>
+                <small>从技能市场或 GitHub 分支导入的 Skill 会出现在这里，用于检查和执行更新。</small>
                 <Button onClick={onOpenMarket}>去技能市场</Button>
               </div>
             )}
@@ -92,7 +92,7 @@ export function SkillUpdatesView({
                 <div className="table-row update-grid" key={directoryName}>
                   <span><input type="checkbox" aria-label={`选择 ${directoryName}`} disabled={!updateableStatus || updatingNames.length > 0} checked={updateableStatus && checked} onClick={(event) => event.stopPropagation()} onChange={(event) => toggleUpdateSelection(directoryName, event.target.checked)} /></span>
                   <span className="title-cell"><strong>{status.name}</strong><small>{status.source.packageSlug}</small></span>
-                  <span className="path">{status.source.installedHash}</span>
+                  <span className="path">{sourceLabel(status.source.source)} · {status.source.installedHash}</span>
                   <SkillStatusIndicator status={status.status} label={updateStatusLabel(status.status)} />
                   <span>{status.source.lastCheckedAt || "未检查"}</span>
                   <span className={`row-actions table-actions progress-action ${updating ? "progressing" : ""}`}>
@@ -148,4 +148,10 @@ export function SkillUpdatesView({
       </div>
     </>
   );
+}
+
+function sourceLabel(source: string) {
+  if (source === "skills_sh") return "skills.sh";
+  if (source === "github") return "GitHub";
+  return source || "未知来源";
 }

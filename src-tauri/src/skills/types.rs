@@ -135,6 +135,42 @@ pub enum ImportStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct GithubSkillImportCandidate {
+    pub directory_name: String,
+    pub display_name: String,
+    pub description: String,
+    pub skill_path: String,
+    pub markdown_preview: String,
+    pub file_count: usize,
+    pub total_size: u64,
+    pub has_scripts: bool,
+    pub status: ExternalSkillCandidateStatus,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubSkillImportInspection {
+    pub repo_url: String,
+    pub owner: String,
+    pub repo: String,
+    pub ref_name: String,
+    pub resolved_ref: String,
+    pub fixed_ref: bool,
+    pub scope_path: String,
+    pub candidates: Vec<GithubSkillImportCandidate>,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubSkillImportSelection {
+    pub skill_path: String,
+    pub overwrite: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct ExternalSkillCandidateGroup {
     pub directory_name: String,
     pub display_name: String,

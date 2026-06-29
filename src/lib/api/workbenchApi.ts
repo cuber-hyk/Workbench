@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { markLocalDataChanged } from "./dataBackupApi";
 import { projects, radarItems, settings, skillCategories, skills } from "./mockData";
-import type { CloseBehavior, CustomToolTargetInput, ExternalSkillCandidateGroup, ExternalSkillSyncResult, ExternalSkillSyncSelection, GitHubCliStatus, GitHubStarsSyncResult, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, ManagedTargetRebuildResult, ManagedTargetRebuildSelection, Project, ProjectImportProgress, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, RemoteProjectImportInspection, RemoteProjectImportRequest, RootSkillMigrationCandidate, SkillInstallProgress, SkillMarketDetail, SkillMarketItem, SkillMarketResponse, SkillUpdateProgress, SkillUpdateResult, SkillUpdateStatus, SkillVersionSource, SkillsRootMigrationState, SkillsState, ToolKey } from "../types/domain";
+import type { CloseBehavior, CustomToolTargetInput, ExternalSkillCandidateGroup, ExternalSkillSyncResult, ExternalSkillSyncSelection, GitHubCliStatus, GitHubStarsSyncResult, GithubSkillImportInspection, GithubSkillImportSelection, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, ManagedTargetRebuildResult, ManagedTargetRebuildSelection, Project, ProjectImportProgress, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, RemoteProjectImportInspection, RemoteProjectImportRequest, RootSkillMigrationCandidate, SkillInstallProgress, SkillMarketDetail, SkillMarketItem, SkillMarketResponse, SkillUpdateProgress, SkillUpdateResult, SkillUpdateStatus, SkillVersionSource, SkillsRootMigrationState, SkillsState, ToolKey } from "../types/domain";
 
 const delay = async () => new Promise((resolve) => window.setTimeout(resolve, 80));
 const isTauri = "__TAURI_INTERNALS__" in window;
@@ -670,6 +670,47 @@ export const workbenchApi = {
   },
   async importSkillsFromZip(zipPath: string, overwriteDirectoryNames?: string[]) {
     return markDataChangedAfter(invoke<ImportResult[]>("import_skills_from_zip", { zipPath, overwriteDirectoryNames }));
+  },
+  async inspectGithubSkillImport(url: string) {
+    if (!isTauri) {
+      await delay();
+      return {
+        repoUrl: url.trim() || "https://github.com/acme/skills",
+        owner: "acme",
+        repo: "skills",
+        refName: "main",
+        resolvedRef: "preview",
+        fixedRef: false,
+        scopePath: "",
+        message: "发现 1 个 Skill 候选",
+        candidates: [
+          {
+            directoryName: "github-preview-skill",
+            displayName: "github-preview-skill",
+            description: "从 GitHub public 仓库扫描到的预览候选。",
+            skillPath: "skills/github-preview-skill",
+            markdownPreview: "---\nname: github-preview-skill\ndescription: 从 GitHub public 仓库扫描到的预览候选。\n---",
+            fileCount: 2,
+            totalSize: 2048,
+            hasScripts: false,
+            status: "new",
+            message: "可导入"
+          }
+        ]
+      } satisfies GithubSkillImportInspection;
+    }
+    return invoke<GithubSkillImportInspection>("inspect_github_skill_import", { url });
+  },
+  async importGithubSkills(url: string, selections: GithubSkillImportSelection[]) {
+    if (!isTauri) {
+      await delay();
+      return selections.map((selection) => ({
+        directoryName: selection.skillPath.split(/[\\/]/).pop() || selection.skillPath,
+        status: "imported" as const,
+        message: "GitHub Skill 导入成功"
+      }));
+    }
+    return markDataChangedAfter(invoke<ImportResult[]>("import_github_skills", { url, selections }));
   },
   async selectSkillImportSource(kind: "zip" | "folder") {
     return invoke<string | null>("select_skill_import_source", { kind });

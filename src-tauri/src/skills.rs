@@ -11,6 +11,7 @@ mod cli;
 mod custom_tools;
 mod db;
 mod filesystem;
+mod github_import;
 mod importer;
 mod market;
 mod migration;
@@ -22,6 +23,7 @@ use self::cli::*;
 use self::custom_tools::*;
 use self::db::*;
 use self::filesystem::*;
+use self::github_import::*;
 use self::importer::*;
 use self::market::*;
 use self::migration::*;
@@ -610,6 +612,23 @@ pub fn import_skills_from_zip(
 }
 
 #[tauri::command]
+pub async fn inspect_github_skill_import(url: String) -> SkillResult<GithubSkillImportInspection> {
+    tauri::async_runtime::spawn_blocking(move || inspect_github_skill_import_state(url))
+        .await
+        .map_err(error_message)?
+}
+
+#[tauri::command]
+pub async fn import_github_skills(
+    url: String,
+    selections: Vec<GithubSkillImportSelection>,
+) -> SkillResult<Vec<ImportResult>> {
+    tauri::async_runtime::spawn_blocking(move || import_github_skills_state(url, selections))
+        .await
+        .map_err(error_message)?
+}
+
+#[tauri::command]
 pub async fn discover_external_skills() -> SkillResult<Vec<ExternalSkillCandidateGroup>> {
     tauri::async_runtime::spawn_blocking(discover_external_skills_state)
         .await
@@ -644,7 +663,11 @@ pub fn rebuild_managed_skill_targets(
     rebuild_managed_skill_targets_state(selections)
 }
 
-fn source_backup_path(workbench_root: &Path, directory_name: &str) -> SkillResult<PathBuf> {
+fn source_backup_path(
+    workbench_root: &Path,
+    source: &str,
+    directory_name: &str,
+) -> SkillResult<PathBuf> {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(error_message)?
@@ -653,7 +676,7 @@ fn source_backup_path(workbench_root: &Path, directory_name: &str) -> SkillResul
         .join("backups")
         .join("skills")
         .join(timestamp.to_string())
-        .join("skills-sh")
+        .join(source)
         .join(directory_name))
 }
 
@@ -806,30 +829,30 @@ fn check_skill_updates_state() -> SkillResult<Vec<SkillUpdateStatus>> {
             });
             continue;
         }
-        let mut status = SkillUpdateState::CheckFailed;
-        let mut message = "检查失败".to_string();
         let mut next_record = record.clone();
-        if let Some((source, skill_id)) = record.package_slug.rsplit_once('/') {
-            match extract_skill_with_skills_cli(source, skill_id, &|_| {}) {
-                Ok((_temporary, _skill_source, _relative, hash)) => {
-                    next_record.remote_ref = hash.clone();
-                    status = if hash == record.installed_hash {
-                        SkillUpdateState::UpToDate
-                    } else {
-                        SkillUpdateState::UpdateAvailable
-                    };
-                    message = if status == SkillUpdateState::UpToDate {
-                        "已是最新".to_string()
-                    } else {
-                        "发现可更新版本".to_string()
-                    };
-                    upsert_skill_source_record(&connection, &next_record)?;
-                }
-                Err(error) => {
-                    message = error;
-                }
+        let (status, message) = match check_one_skill_update(&record) {
+            Ok((relative, hash)) => {
+                next_record.skill_path = relative;
+                next_record.remote_ref = hash.clone();
+                let status = if hash == record.installed_hash {
+                    SkillUpdateState::UpToDate
+                } else {
+                    SkillUpdateState::UpdateAvailable
+                };
+                let message = if status == SkillUpdateState::UpToDate {
+                    "已是最新".to_string()
+                } else {
+                    "发现可更新版本".to_string()
+                };
+                upsert_skill_source_record(&connection, &next_record)?;
+                (status, message)
             }
-        }
+            Err(error) if error == "unsupported" => (
+                SkillUpdateState::Unsupported,
+                "该来源不支持检查更新".to_string(),
+            ),
+            Err(error) => (SkillUpdateState::CheckFailed, error),
+        };
         results.push(SkillUpdateStatus {
             name: next_record.directory_name.clone(),
             description: String::new(),
@@ -839,6 +862,26 @@ fn check_skill_updates_state() -> SkillResult<Vec<SkillUpdateStatus>> {
         });
     }
     Ok(results)
+}
+
+fn check_one_skill_update(record: &SkillSourceRecord) -> SkillResult<(String, String)> {
+    match record.source.as_str() {
+        "skills_sh" => {
+            let (source, skill_id) = record
+                .package_slug
+                .rsplit_once('/')
+                .ok_or_else(|| "来源记录无效".to_string())?;
+            let (_temporary, _skill_source, relative, hash) =
+                extract_skill_with_skills_cli(source, skill_id, &|_| {})?;
+            Ok((relative, hash))
+        }
+        "github" if github_source_is_fixed(record) => Err("unsupported".to_string()),
+        "github" => {
+            let (_temporary, _skill_source, relative, hash) = extract_github_remote_skill(record)?;
+            Ok((relative, hash))
+        }
+        _ => Err("unsupported".to_string()),
+    }
 }
 
 fn is_recent_skill_update_check(
@@ -907,15 +950,8 @@ fn update_skill_from_market_state(
     let workbench_root = PathBuf::from(&settings.workbench_root);
     let connection = open_database(&workbench_root)?;
     let record = source_record_for_directory(&connection, &directory_name)?;
-    let (source, skill_id) = record
-        .package_slug
-        .rsplit_once('/')
-        .ok_or_else(|| "来源记录无效".to_string())?;
-    let progress_directory_name = directory_name.clone();
     let (_temporary, remote_skill, relative, hash) =
-        extract_skill_with_skills_cli(source, skill_id, &|progress| {
-            on_progress(&progress_directory_name, progress);
-        })?;
+        extract_remote_skill_for_update(&record, &directory_name, on_progress)?;
     if hash == record.installed_hash {
         on_progress(&directory_name, 100);
         return Ok(SkillUpdateResult {
@@ -928,7 +964,7 @@ fn update_skill_from_market_state(
     if !target.is_dir() {
         return Err("本地 Skill 目录不存在，无法更新".to_string());
     }
-    let backup = source_backup_path(&workbench_root, &record.directory_name)?;
+    let backup = source_backup_path(&workbench_root, &record.source, &record.directory_name)?;
     on_progress(&directory_name, 82);
     copy_path_to_backup(&target, &backup)?;
     on_progress(&directory_name, 92);
@@ -947,6 +983,35 @@ fn update_skill_from_market_state(
         status: SkillUpdateState::UpToDate,
         message: format!("已更新，旧版本已备份到 {}", backup.to_string_lossy()),
     })
+}
+
+fn extract_remote_skill_for_update(
+    record: &SkillSourceRecord,
+    directory_name: &str,
+    on_progress: &dyn Fn(&str, u8),
+) -> SkillResult<(tempfile::TempDir, PathBuf, String, String)> {
+    match record.source.as_str() {
+        "skills_sh" => {
+            let (source, skill_id) = record
+                .package_slug
+                .rsplit_once('/')
+                .ok_or_else(|| "来源记录无效".to_string())?;
+            let progress_directory_name = directory_name.to_string();
+            extract_skill_with_skills_cli(source, skill_id, &|progress| {
+                on_progress(&progress_directory_name, progress);
+            })
+        }
+        "github" if github_source_is_fixed(record) => {
+            Err("GitHub 固定版本来源不支持更新".to_string())
+        }
+        "github" => {
+            on_progress(directory_name, 45);
+            let result = extract_github_remote_skill(record);
+            on_progress(directory_name, 72);
+            result
+        }
+        _ => Err("该来源不支持更新".to_string()),
+    }
 }
 
 #[tauri::command]
@@ -1424,6 +1489,28 @@ mod tests {
         assert_eq!(
             cached_skill_update_state(&record),
             SkillUpdateState::UpdateAvailable
+        );
+    }
+
+    #[test]
+    fn github_fixed_sources_are_not_updateable() {
+        let record = SkillSourceRecord {
+            directory_name: "github-fixed".to_string(),
+            source: "github".to_string(),
+            package_slug: "owner/repo/github-fixed".to_string(),
+            repo_url: "https://github.com/owner/repo".to_string(),
+            skill_path: "github-fixed".to_string(),
+            installed_ref: "tag:v1.0.0@abc".to_string(),
+            installed_hash: "local".to_string(),
+            remote_ref: "local".to_string(),
+            last_checked_at: String::new(),
+            installed_at: String::new(),
+            updated_at: String::new(),
+        };
+
+        assert_eq!(
+            check_one_skill_update(&record),
+            Err("unsupported".to_string())
         );
     }
 

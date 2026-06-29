@@ -618,6 +618,39 @@ code { font-family: Consolas, monospace; }
 .import-list label small { color: var(--muted); }
 .skill-import-list .import-result { min-height: 76px; padding: 14px 16px; border-bottom-color: color-mix(in srgb, var(--border), transparent 42%); }
 .skill-import-list .import-result:last-child { border-bottom: 0; }
+.github-skill-import-dialog { width: min(860px, calc(100vw - 48px)); }
+.github-import-body { display: grid; gap: 12px; align-content: start; }
+.github-import-form { gap: 8px; }
+.github-import-input-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.github-import-input-row input { height: 42px; }
+.github-import-input-row button { min-height: 42px; }
+.github-import-alert { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--warning-text), transparent 78%); border-radius: 6px; background: var(--warning-bg); color: var(--warning-text); font-size: 12px; line-height: 1.45; }
+.github-import-alert svg { flex: 0 0 auto; margin-top: 1px; }
+.github-import-meta { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; background: color-mix(in srgb, var(--bg), var(--panel) 32%); }
+.github-import-meta span { display: grid; gap: 2px; min-width: 0; }
+.github-import-meta small, .dialog-footer-note { color: var(--muted); font-size: 11px; }
+.github-import-layout { display: grid; grid-template-columns: minmax(280px, .95fr) minmax(0, 1.25fr); gap: 12px; min-height: 0; }
+.github-import-layout.single { grid-template-columns: minmax(260px, .82fr) minmax(0, 1.38fr); align-items: start; }
+.github-candidate-list { min-height: 0; max-height: 420px; overflow: auto; border: 1px solid var(--border); border-radius: 7px; background: var(--panel); }
+.github-import-layout.single .github-candidate-list { max-height: none; }
+.github-candidate-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: start; min-height: 84px; padding: 12px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.github-import-layout.single .github-candidate-row { min-height: 0; }
+.github-candidate-row:last-child { border-bottom: 0; }
+.github-candidate-row.selected { background: var(--accent-soft); }
+.github-candidate-row.disabled { opacity: .62; cursor: not-allowed; }
+.github-candidate-row > span:not(.github-overwrite-control) { display: grid; gap: 3px; min-width: 0; }
+.github-candidate-row small { color: var(--muted); overflow-wrap: anywhere; }
+.github-overwrite-control { display: inline-flex; align-items: center; gap: 5px; color: var(--warning-text); }
+.github-preview-panel { display: grid; align-content: start; gap: 10px; min-width: 0; max-height: 420px; overflow: auto; padding: 12px; border: 1px solid var(--border); border-radius: 7px; background: color-mix(in srgb, var(--bg), var(--panel) 30%); }
+.github-preview-head { display: flex; justify-content: space-between; gap: 10px; align-items: start; }
+.github-preview-head span { display: grid; gap: 3px; min-width: 0; }
+.github-preview-head small, .github-preview-panel p, .github-preview-stats small { color: var(--muted); font-size: 12px; }
+.github-preview-stats { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 8px; align-items: baseline; padding: 9px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); }
+.github-preview-stats span { color: var(--muted); font-size: 11px; font-weight: 700; }
+.github-preview-stats strong { font-size: 12px; }
+.github-preview-stats small { grid-column: 1 / -1; }
+.github-preview-label { font-size: 12px; }
+.github-preview-panel pre { overflow: auto; max-height: 300px; margin: 0; padding: 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); font-size: 12px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
 .import-conflict-choice { cursor: pointer; background: transparent; }
 .import-conflict-choice:hover { background: color-mix(in srgb, var(--warning-bg), transparent 88%); }
 .import-conflict-choice input { width: 15px; height: 15px; accent-color: var(--accent); }

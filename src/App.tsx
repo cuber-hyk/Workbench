@@ -30,6 +30,7 @@ import { TrayHintDialog } from "./components/dialogs/settings/TrayHintDialog";
 import { DeleteMarketSkillDialog } from "./components/dialogs/skills/DeleteMarketSkillDialog";
 import { DeleteSkillDialog } from "./components/dialogs/skills/DeleteSkillDialog";
 import { ExternalSkillsDialog } from "./components/dialogs/skills/ExternalSkillsDialog";
+import { GithubSkillImportDialog } from "./components/dialogs/skills/GithubSkillImportDialog";
 import { SkillCategoryDialog } from "./components/dialogs/skills/SkillCategoryDialog";
 import { SkillsImportDialog } from "./components/dialogs/skills/SkillsImportDialog";
 import { SkillsRootMigrationDialog } from "./components/dialogs/skills/SkillsRootMigrationDialog";
@@ -127,7 +128,7 @@ function WorkbenchApp() {
   const [loadError, setLoadError] = useState("");
   const [toast, setToast] = useState<ToastState | null>(null);
   const toastTimerRef = useRef<number | null>(null);
-  const [activeDialog, setActiveDialog] = useState<"project" | "project-delete" | "remote-project-import" | "project-open-profile" | "project-open-profile-delete" | "custom-tool" | "custom-tool-delete" | "skills-import" | "external-skills" | "skills-root-migration" | "skills-root-change" | "skill-delete" | "skill-categories" | "radar" | "radar-delete" | "app-update" | "create-directory" | "tray-hint" | null>(null);
+  const [activeDialog, setActiveDialog] = useState<"project" | "project-delete" | "remote-project-import" | "project-open-profile" | "project-open-profile-delete" | "custom-tool" | "custom-tool-delete" | "skills-import" | "github-skill-import" | "external-skills" | "skills-root-migration" | "skills-root-change" | "skill-delete" | "skill-categories" | "radar" | "radar-delete" | "app-update" | "create-directory" | "tray-hint" | null>(null);
   const [editingProjectId, setEditingProjectId] = useState("");
   const [deleteProjectRequest, setDeleteProjectRequest] = useState<ProjectDeleteRequest | null>(null);
   const [editingProjectOpenProfileId, setEditingProjectOpenProfileId] = useState("");
@@ -950,6 +951,7 @@ function WorkbenchApp() {
                 showToast(String(error));
               }
             }}
+            onImportGithub={() => setActiveDialog("github-skill-import")}
             onSyncSkills={() => void openSkillsSyncDialog()}
             isSyncingSkills={externalSyncLoading}
             onRefresh={() => void runSkillAction(refreshSkills, "Skills 已重新扫描")}
@@ -1215,6 +1217,17 @@ function WorkbenchApp() {
             setActiveDialog(null);
             setImportResults([]);
             setSkillImportRequest(null);
+          }}
+        />
+      )}
+      {activeDialog === "github-skill-import" && (
+        <GithubSkillImportDialog
+          onClose={() => setActiveDialog(null)}
+          onImported={(results) => {
+            setImportResults(results);
+            setSkillImportRequest(null);
+            setActiveDialog("skills-import");
+            void refreshSkills();
           }}
         />
       )}

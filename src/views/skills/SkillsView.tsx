@@ -48,6 +48,7 @@ export function SkillsView({
   projects,
   onSelect,
   onImport,
+  onImportGithub,
   onRefresh,
   marketInstallTask,
   onInstallMarketSkill,
@@ -69,6 +70,7 @@ export function SkillsView({
   projects: Project[];
   onSelect: (id: string) => void;
   onImport: (kind: "zip" | "folder") => Promise<void>;
+  onImportGithub?: () => void;
   onRefresh: () => void | Promise<void>;
   marketInstallTask?: MarketInstallTask | null;
   onInstallMarketSkill?: (item: SkillMarketItem) => void;
@@ -398,6 +400,7 @@ export function SkillsView({
                   <div className="import-menu">
                     <button onClick={() => { setImportMenuOpen(false); void onImport("zip"); }}>选择 ZIP 文件</button>
                     <button onClick={() => { setImportMenuOpen(false); void onImport("folder"); }}>选择已解压文件夹</button>
+                    <button onClick={() => { setImportMenuOpen(false); onImportGithub?.(); }}>GitHub 链接</button>
                   </div>
                 )}
               </div>
