@@ -380,9 +380,6 @@ fn prepare_github_repository_with_api(
 }
 
 fn clone_github_repository(request: &GithubImportRequest) -> SkillResult<PreparedGithubRepository> {
-    let _ = request;
-    return Err("临时禁用 git clone fallback：请验证 GitHub API Token 路径".to_string());
-
     let temporary = tempdir().map_err(error_message)?;
     let root = temporary.path().join("repo");
     let clone_url = github_clone_url(&request.owner, &request.repo);

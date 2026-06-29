@@ -1,6 +1,6 @@
 [package]
 name = "workbench"
-version = "0.2.3"
+version = "0.3.0"
 description = "Local-first AI development workbench"
 authors = ["Workbench"]
 edition = "2021"

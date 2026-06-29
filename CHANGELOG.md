@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-29
+
 ### Added
 
 - Skills 支持从 public GitHub 仓库、tree 路径或 `SKILL.md` blob 链接扫描标准 Skill 候选，预览后导入到统一 Skills 根目录。
