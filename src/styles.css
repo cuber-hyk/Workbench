@@ -446,6 +446,15 @@ code { font-family: Consolas, monospace; }
 .settings-row small, .settings-table-row small { color: var(--muted); font-size: 10px; }
 .settings-row-status { display: flex !important; align-items: center; justify-content: flex-start; flex-wrap: wrap; gap: 6px; min-width: 0; }
 .settings-row-actions { display: flex !important; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; min-width: 132px; }
+.github-token-row { grid-template-columns: minmax(0, 1fr) minmax(82px, max-content) minmax(420px, 46%); align-items: start; }
+.github-token-row .settings-row-status { padding-top: 8px; }
+.github-token-row .settings-row-actions { display: grid !important; justify-content: stretch; min-width: 0; }
+.github-token-control { display: grid !important; gap: 10px; width: 100%; min-width: 0; }
+.github-token-input-row { display: grid !important; grid-template-columns: minmax(0, 1fr) 34px; gap: 8px; min-width: 0; }
+.github-token-input-row input { width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg); color: var(--text); font-family: var(--font-mono); font-size: 12px; }
+.github-token-input-row .icon-button { width: 34px; height: 34px; }
+.github-token-button-row { display: flex !important; justify-content: flex-end; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.github-token-button-row .button { white-space: nowrap; }
 .settings-health-summary { display: flex !important; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; }
 .settings-health-row { grid-template-columns: minmax(0, 1fr) max-content max-content; }
 .settings-health-row .settings-row-actions { flex-wrap: nowrap; min-width: 0; }

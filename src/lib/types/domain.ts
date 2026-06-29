@@ -294,6 +294,11 @@ export interface GitHubCliStatus {
   message: string;
 }
 
+export interface GithubTokenStatus {
+  configured: boolean;
+  message: string;
+}
+
 export interface AppSettings {
   workbenchRoot: string;
   skillsRoot: string;
@@ -302,6 +307,7 @@ export interface AppSettings {
   closeTrayHintDismissed: boolean;
   launchAtStartup: boolean;
   startHiddenToTray: boolean;
+  githubTokenConfigured: boolean;
   toolTargets: ToolTarget[];
   projectOpenProfiles: ProjectOpenProfile[];
 }

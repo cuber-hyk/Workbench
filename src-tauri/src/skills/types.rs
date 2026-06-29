@@ -90,6 +90,7 @@ pub struct SkillsSettings {
     pub close_behavior: CloseBehavior,
     pub close_tray_hint_dismissed: bool,
     pub start_hidden_to_tray: bool,
+    pub github_token_configured: bool,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -167,6 +168,13 @@ pub struct GithubSkillImportInspection {
 pub struct GithubSkillImportSelection {
     pub skill_path: String,
     pub overwrite: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubTokenStatus {
+    pub configured: bool,
+    pub message: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

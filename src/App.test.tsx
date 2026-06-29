@@ -101,6 +101,7 @@ const appSettings: AppSettings = {
   closeTrayHintDismissed: false,
   launchAtStartup: false,
   startHiddenToTray: false,
+  githubTokenConfigured: false,
   projectOpenProfiles,
   toolTargets: [
     {
@@ -1010,6 +1011,57 @@ describe("Workbench UI interactions", () => {
     const checkButton = screen.getByRole("button", { name: "检查中" });
     expect(checkButton).toBeDisabled();
     expect(checkButton.querySelector("svg")).toHaveClass("spin");
+  });
+
+  it("configures GitHub token from skills settings without echoing saved values", async () => {
+    const user = userEvent.setup();
+    const onSaveGithubToken = vi.fn().mockResolvedValue(undefined);
+    const onClearGithubToken = vi.fn().mockResolvedValue(undefined);
+    const onTestGithubToken = vi.fn().mockResolvedValue(undefined);
+    renderWithUpdateProvider(
+      <SettingsView
+        settings={{ ...appSettings, githubTokenConfigured: true }}
+        theme="dark"
+        onOpenUpdateDetails={vi.fn()}
+        onThemeToggle={vi.fn()}
+        onRootChange={vi.fn()}
+        onReorderToolTargets={vi.fn()}
+        onCloseBehaviorChange={vi.fn()}
+        onLaunchAtStartupChange={vi.fn()}
+        onStartHiddenToTrayChange={vi.fn()}
+        onSaveGithubToken={onSaveGithubToken}
+        onClearGithubToken={onClearGithubToken}
+        onTestGithubToken={onTestGithubToken}
+        onOpenPath={vi.fn()}
+        onAddCustomTool={vi.fn()}
+        onEditCustomTool={vi.fn()}
+        onDeleteCustomTool={vi.fn()}
+        onAddProjectOpenProfile={vi.fn()}
+        onEditProjectOpenProfile={vi.fn()}
+        onDeleteProjectOpenProfile={vi.fn()}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: "Skills统一根目录与映射" }));
+    expect(screen.getByText("已配置")).toBeInTheDocument();
+    const tokenInput = screen.getByLabelText("GitHub Token");
+    expect(tokenInput).toHaveValue("");
+    expect(tokenInput).toHaveAttribute("type", "password");
+    await user.type(tokenInput, "ghp_secret_preview");
+    await user.click(screen.getByRole("button", { name: "显示 Token" }));
+    expect(tokenInput).toHaveAttribute("type", "text");
+    await user.click(screen.getByRole("button", { name: "隐藏 Token" }));
+    expect(tokenInput).toHaveAttribute("type", "password");
+    await user.click(screen.getByRole("button", { name: "测试" }));
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    await user.click(screen.getByRole("button", { name: "清除" }));
+
+    await waitFor(() => {
+      expect(onTestGithubToken).toHaveBeenCalledWith("ghp_secret_preview");
+      expect(onSaveGithubToken).toHaveBeenCalledWith("ghp_secret_preview");
+      expect(onClearGithubToken).toHaveBeenCalledOnce();
+    });
+    expect(tokenInput).toHaveValue("");
   });
 
   it("groups root migration footer actions and spins while refreshing", () => {

@@ -261,6 +261,7 @@ export const settings: AppSettings = {
   closeTrayHintDismissed: false,
   launchAtStartup: false,
   startHiddenToTray: false,
+  githubTokenConfigured: false,
   projectOpenProfiles,
   toolTargets: [
     {

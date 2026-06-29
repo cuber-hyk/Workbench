@@ -192,6 +192,7 @@ Workbench/
 - 切换统一 Skills 根目录后检查旧根目录迁移和受管启用目标重建。
 - 从 ZIP 文件或已解压文件夹导入 Skills。
 - 从 public GitHub 仓库链接扫描、预览并导入标准 `SKILL.md` Skills。
+- 在设置页保存、测试和清除 GitHub Token，用于 GitHub Skill 导入和 GitHub 分支来源更新的 API 优先路径。
 - 从 `skills.sh` 浏览、安装和卸载 GitHub 来源 Skills。
 - 检查并更新由 Workbench 管理的远程来源 Skills，当前包括 `skills_sh` 和 GitHub 分支来源。
 
@@ -215,6 +216,7 @@ Workbench/
 - 自定义工具只支持全局 Skills 目录；项目级启用必须由后端拒绝。
 - 删除自定义工具只删除 Workbench 配置、排序项和启用记录，不删除外部工具目录。
 - `skills.sh` 安装和更新通过隔离临时目录调用官方 `npx skills add` 提取 Skill；GitHub 直连导入是独立来源，不作为 `skills.sh` fallback。
+- GitHub Token 只用于 public GitHub API 请求；前端只读取是否已配置，不读取或回显 token 明文。
 - 从 `skills.sh` 安装或更新后默认不自动启用到任何 Agent 工具目录。
 - 非 GitHub 来源的 `skills.sh` 条目暂不支持 Workbench 自管安装。
 
@@ -266,7 +268,7 @@ Workbench/
 
 - 扫描和解析 `SKILL.md`。
 - 系统选择器、ZIP / 文件夹导入与冲突检查。
-- public GitHub 链接解析、本机 Git 浅克隆、commit 固定版本 codeload 下载、标准 `SKILL.md` 候选扫描和导入。
+- public GitHub 链接解析、Token API 优先、本机 Git 浅克隆、commit 固定版本 codeload 下载、标准 `SKILL.md` 候选扫描和导入。
 - 已注册工具全局目录只读发现、显式导入、旧根目录迁移检查和受管启用目标重建。
 - SQLite 设置、分类和启用关系读写。
 - 固定工具目标注册表、目标路径计算和项目级支持守卫。
@@ -551,6 +553,7 @@ Workbench/
 - `close_tray_hint_dismissed`
 - `start_hidden_to_tray`
 - `project_open_profiles_seeded`
+- `github_api_token`
 
 `tool_target_order` 只影响 Skills 表格和设置页中的展示顺序，不改变工具目录路径或启用数据所有权。删除自定义工具时，后端会从该设置中移除对应 key。
 
@@ -559,6 +562,8 @@ Workbench/
 `close_tray_hint_dismissed` 记录隐藏到托盘首次提示是否已经确认，默认值为 `false`。
 
 `start_hidden_to_tray` 控制 Workbench 启动后是否自动隐藏主窗口到托盘，默认值为 `false`。开机自启动状态由系统 autostart 注册状态提供，不只依赖 SQLite 设置值。
+
+`github_api_token` 保存用户在设置页配置的 GitHub Token，用于 public GitHub Skill 导入和 GitHub 分支来源更新的 API 优先路径。后端状态接口只返回是否已配置，UI、诊断复制信息、toast 和错误不回显 token 明文。
 
 ## 7. 关键流程
 
@@ -763,7 +768,7 @@ Workbench/
 1. 用户在本地 Skills 的导入菜单中选择 GitHub 链接。
 2. 前端提交 public GitHub repo、tree 路径或 `SKILL.md` blob 链接。
 3. 后端解析 owner、repo、ref 和扫描范围；默认仓库链接使用 GitHub 默认分支。
-4. 后端通过本机 `git clone --depth 1` 克隆 public 仓库到临时目录；commit 固定版本链接使用 GitHub codeload ZIP 直下；随后只扫描包含 `SKILL.md` 的目录。
+4. 后端读取本地 GitHub Token 配置；有 Token 时优先通过 GitHub API 解析 repo/default branch/ref 并下载 API zipball，无 Token 时通过本机 `git clone --depth 1` 克隆 public 仓库到临时目录；commit 固定版本链接继续使用 GitHub codeload ZIP 直下；随后只扫描包含 `SKILL.md` 的目录。
 5. 前端展示候选列表、`SKILL.md` 预览、文件数量、大小、脚本提示和冲突状态。
 6. 用户勾选一个或多个候选后导入；导入单位固定为 `SKILL.md` 所在目录整体。
 7. 后端复制候选目录到统一 Skills 根目录，遇到同名冲突时按用户选择跳过或覆盖，覆盖前备份旧版本。
@@ -772,6 +777,7 @@ Workbench/
 边界：
 
 - 只支持 public GitHub 仓库。
+- GitHub API 鉴权失败或 Token 权限不足必须明确提示，不静默降级为 clone。
 - 不执行仓库脚本、安装命令、构建命令或测试命令。
 - 不支持没有 `SKILL.md` 的目录，不支持用户自由拼装文件或文件夹。
 - 仓库根目录只有在存在 `SKILL.md` 时才作为整个仓库 Skill 候选。
@@ -821,7 +827,7 @@ Workbench/
 
 1. 用户切换到 `更新` 子视图。
 2. 前端调用 `list_skill_updates` 展示已记录且可进入来源更新页的远程来源 Skill。
-3. 用户点击检查全部时，后端按来源类型重新提取远端 Skill 并计算内容 hash：`skills_sh` 使用官方 CLI，`github` 分支来源重新克隆同一 repo/ref/path。
+3. 用户点击检查全部时，后端按来源类型重新提取远端 Skill 并计算内容 hash：`skills_sh` 使用官方 CLI，`github` 分支来源复用 GitHub 导入的仓库准备策略，有 Token 时优先 GitHub API，无 Token 时重新克隆同一 repo/ref/path。
 4. hash 不一致时标记为可更新。
 5. GitHub tag 或 commit 固定版本标记为不支持更新，不进入可更新集合。
 6. 前端只允许勾选状态为可更新的条目；已是最新、检查失败、不支持和更新执行中的条目不可勾选。

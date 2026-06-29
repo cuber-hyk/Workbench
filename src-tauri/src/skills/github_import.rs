@@ -5,20 +5,23 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use rusqlite::Connection;
+use serde_json::Value;
 use tempfile::tempdir;
 use walkdir::WalkDir;
 use zip::ZipArchive;
 
 use super::{
-    copy_directory, current_settings, directories_match, directory_content_hash, error_message,
-    import_skill_directory_with_overwrite, parse_skill_markdown, upsert_skill_source_record,
-    validate_directory_name, GithubSkillImportCandidate, GithubSkillImportInspection,
-    GithubSkillImportSelection, ImportResult, SkillResult, SkillSourceRecord,
+    configured_github_api_token, copy_directory, current_settings, directories_match,
+    directory_content_hash, error_message, import_skill_directory_with_overwrite,
+    parse_skill_markdown, upsert_skill_source_record, validate_directory_name,
+    GithubSkillImportCandidate, GithubSkillImportInspection, GithubSkillImportSelection,
+    GithubTokenStatus, ImportResult, SkillResult, SkillSourceRecord,
 };
 
 const GITHUB_ARCHIVE_MAX_BYTES: u64 = 80 * 1024 * 1024;
 const GITHUB_ARCHIVE_MAX_FILES: usize = 6000;
 const GITHUB_GIT_TIMEOUT_SECS: u64 = 300;
+const GITHUB_API_ROOT: &str = "https://api.github.com";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct GithubImportRequest {
@@ -43,11 +46,20 @@ struct PreparedGithubRepository {
     fixed: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum GithubApiFailure {
+    Auth(String),
+    Other(String),
+}
+
 pub(super) fn inspect_github_skill_import_state(
     url: String,
 ) -> SkillResult<GithubSkillImportInspection> {
     let settings = current_settings()?;
-    inspect_github_skill_import_in(url, Path::new(&settings.skills_root))
+    let workbench_root = PathBuf::from(&settings.workbench_root);
+    let connection = super::db::open_database(&workbench_root)?;
+    let token = configured_github_api_token(&connection)?;
+    inspect_github_skill_import_in(url, Path::new(&settings.skills_root), token.as_deref())
 }
 
 pub(super) fn import_github_skills_state(
@@ -61,15 +73,24 @@ pub(super) fn import_github_skills_state(
     let workbench_root = PathBuf::from(&settings.workbench_root);
     let skills_root = PathBuf::from(&settings.skills_root);
     let connection = super::db::open_database(&workbench_root)?;
-    import_github_skills_in(url, selections, &connection, &workbench_root, &skills_root)
+    let token = configured_github_api_token(&connection)?;
+    import_github_skills_in(
+        url,
+        selections,
+        &connection,
+        &workbench_root,
+        &skills_root,
+        token.as_deref(),
+    )
 }
 
 fn inspect_github_skill_import_in(
     url: String,
     skills_root: &Path,
+    token: Option<&str>,
 ) -> SkillResult<GithubSkillImportInspection> {
     let request = parse_github_skill_url(&url)?;
-    let repository = prepare_github_repository(&request)?;
+    let repository = prepare_github_repository(&request, token)?;
     let scope = scoped_archive_path(&repository.root, &request.scope_path)?;
     let candidates =
         scan_github_skill_candidates(&scope, &repository.root, skills_root, &request.repo)?;
@@ -96,9 +117,10 @@ fn import_github_skills_in(
     connection: &Connection,
     workbench_root: &Path,
     skills_root: &Path,
+    token: Option<&str>,
 ) -> SkillResult<Vec<ImportResult>> {
     let request = parse_github_skill_url(&url)?;
-    let repository = prepare_github_repository(&request)?;
+    let repository = prepare_github_repository(&request, token)?;
     let scope = scoped_archive_path(&repository.root, &request.scope_path)?;
     let candidates =
         scan_github_skill_candidates(&scope, &repository.root, skills_root, &request.repo)?;
@@ -161,7 +183,10 @@ pub(super) fn extract_github_remote_skill(
     record: &SkillSourceRecord,
 ) -> SkillResult<(tempfile::TempDir, PathBuf, String, String)> {
     let request = request_from_source_record(record)?;
-    let repository = prepare_github_repository(&request)?;
+    let settings = current_settings()?;
+    let connection = super::db::open_database(Path::new(&settings.workbench_root))?;
+    let token = configured_github_api_token(&connection)?;
+    let repository = prepare_github_repository(&request, token.as_deref())?;
     if repository.fixed {
         return Err("GitHub 固定版本来源不支持检查更新".to_string());
     }
@@ -176,6 +201,27 @@ pub(super) fn extract_github_remote_skill(
 
 pub(super) fn github_source_is_fixed(record: &SkillSourceRecord) -> bool {
     record.installed_ref.starts_with("tag:") || record.installed_ref.starts_with("commit:")
+}
+
+pub(super) fn test_github_api_token_state(token: Option<String>) -> SkillResult<GithubTokenStatus> {
+    let token = match token {
+        Some(value) if !value.trim().is_empty() => value.trim().to_string(),
+        _ => {
+            let settings = current_settings()?;
+            let connection = super::db::open_database(Path::new(&settings.workbench_root))?;
+            configured_github_api_token(&connection)?
+                .ok_or_else(|| "尚未配置 GitHub Token".to_string())?
+        }
+    };
+    match github_api_json("/user", &token) {
+        Ok(_) => Ok(GithubTokenStatus {
+            configured: true,
+            message: "GitHub Token 可用".to_string(),
+        }),
+        Err(GithubApiFailure::Auth(message)) | Err(GithubApiFailure::Other(message)) => {
+            Err(message)
+        }
+    }
 }
 
 fn parse_github_skill_url(url: &str) -> SkillResult<GithubImportRequest> {
@@ -238,6 +284,7 @@ fn split_ref_and_path(
 
 fn prepare_github_repository(
     request: &GithubImportRequest,
+    token: Option<&str>,
 ) -> SkillResult<PreparedGithubRepository> {
     if let Some(ref_name) = request
         .ref_name
@@ -254,10 +301,88 @@ fn prepare_github_repository(
         });
     }
 
+    if let Some(token) = token.filter(|value| !value.trim().is_empty()) {
+        match prepare_github_repository_with_api(request, token.trim()) {
+            Ok(repository) => return Ok(repository),
+            Err(GithubApiFailure::Auth(message)) => return Err(message),
+            Err(GithubApiFailure::Other(_)) => {}
+        }
+    }
+
     clone_github_repository(request)
 }
 
+fn prepare_github_repository_with_api(
+    request: &GithubImportRequest,
+    token: &str,
+) -> Result<PreparedGithubRepository, GithubApiFailure> {
+    let repository = github_api_json(&format!("/repos/{}/{}", request.owner, request.repo), token)?;
+    if repository
+        .get("private")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        return Err(GithubApiFailure::Auth(
+            "当前只支持 public GitHub 仓库".to_string(),
+        ));
+    }
+    let default_branch = repository
+        .get("default_branch")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| GithubApiFailure::Other("GitHub API 未返回默认分支".to_string()))?;
+    let requested_ref = request
+        .ref_name
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or(default_branch);
+
+    let branch_path = format!(
+        "/repos/{}/{}/branches/{}",
+        request.owner,
+        request.repo,
+        encode_api_path_value(requested_ref)
+    );
+    let (revision, fixed) = match github_api_json(&branch_path, token) {
+        Ok(branch) => {
+            let sha = branch
+                .pointer("/commit/sha")
+                .and_then(Value::as_str)
+                .ok_or_else(|| GithubApiFailure::Other("GitHub API 未返回分支提交".to_string()))?;
+            (sha.to_string(), false)
+        }
+        Err(GithubApiFailure::Auth(message)) => return Err(GithubApiFailure::Auth(message)),
+        Err(GithubApiFailure::Other(_)) => {
+            let commit = github_api_json(
+                &format!(
+                    "/repos/{}/{}/commits/{}",
+                    request.owner,
+                    request.repo,
+                    encode_api_path_value(requested_ref)
+                ),
+                token,
+            )?;
+            let sha = commit
+                .get("sha")
+                .and_then(Value::as_str)
+                .ok_or_else(|| GithubApiFailure::Other("GitHub API 未返回提交 SHA".to_string()))?;
+            (sha.to_string(), true)
+        }
+    };
+    let archive = download_and_extract_api_zipball(request, requested_ref, token)?;
+    Ok(PreparedGithubRepository {
+        _temporary: archive._temporary,
+        root: archive.root,
+        ref_name: requested_ref.to_string(),
+        revision,
+        fixed,
+    })
+}
+
 fn clone_github_repository(request: &GithubImportRequest) -> SkillResult<PreparedGithubRepository> {
+    let _ = request;
+    return Err("临时禁用 git clone fallback：请验证 GitHub API Token 路径".to_string());
+
     let temporary = tempdir().map_err(error_message)?;
     let root = temporary.path().join("repo");
     let clone_url = github_clone_url(&request.owner, &request.repo);
@@ -396,6 +521,81 @@ fn download_and_extract_archive(
         return Err("GitHub 仓库归档超过大小限制".to_string());
     }
     extract_zip_bytes(bytes)
+}
+
+fn download_and_extract_api_zipball(
+    request: &GithubImportRequest,
+    ref_name: &str,
+    token: &str,
+) -> Result<ExtractedGithubArchive, GithubApiFailure> {
+    let url = format!(
+        "{GITHUB_API_ROOT}/repos/{}/{}/zipball/{}",
+        request.owner,
+        request.repo,
+        encode_ref_path(ref_name)
+    );
+    let mut response = github_api_request(&url, token)
+        .call()
+        .map_err(github_api_failure)?
+        .into_reader()
+        .take(GITHUB_ARCHIVE_MAX_BYTES + 1);
+    let mut bytes = Vec::new();
+    response
+        .read_to_end(&mut bytes)
+        .map_err(|error| GithubApiFailure::Other(error.to_string()))?;
+    if bytes.len() as u64 > GITHUB_ARCHIVE_MAX_BYTES {
+        return Err(GithubApiFailure::Other(
+            "GitHub 仓库归档超过大小限制".to_string(),
+        ));
+    }
+    extract_zip_bytes(bytes).map_err(GithubApiFailure::Other)
+}
+
+fn github_api_json(path: &str, token: &str) -> Result<Value, GithubApiFailure> {
+    let url = format!("{GITHUB_API_ROOT}{path}");
+    github_api_request(&url, token)
+        .call()
+        .map_err(github_api_failure)?
+        .into_json::<Value>()
+        .map_err(|error| GithubApiFailure::Other(format!("解析 GitHub API 响应失败: {error}")))
+}
+
+fn github_api_request(url: &str, token: &str) -> ureq::Request {
+    ureq::get(url)
+        .set("User-Agent", "Workbench-App/0.1")
+        .set("Accept", "application/vnd.github+json")
+        .set("X-GitHub-Api-Version", "2022-11-28")
+        .set("Authorization", &format!("Bearer {}", token.trim()))
+}
+
+fn github_api_failure(error: ureq::Error) -> GithubApiFailure {
+    match error {
+        ureq::Error::Status(status, response) if status == 401 || status == 403 => {
+            let message = response
+                .into_json::<Value>()
+                .ok()
+                .and_then(|value| {
+                    value
+                        .get("message")
+                        .and_then(Value::as_str)
+                        .map(str::to_string)
+                })
+                .unwrap_or_default();
+            if message.to_ascii_lowercase().contains("rate limit") {
+                GithubApiFailure::Auth(
+                    "GitHub Token 已触发 API 限流，请稍后重试或更换 Token".to_string(),
+                )
+            } else {
+                GithubApiFailure::Auth("GitHub Token 无效、过期或权限不足".to_string())
+            }
+        }
+        ureq::Error::Status(status, _) => {
+            GithubApiFailure::Other(format!("GitHub API 请求失败: status code {status}"))
+        }
+        ureq::Error::Transport(error) => {
+            GithubApiFailure::Other(format!("GitHub API 网络请求失败: {error}"))
+        }
+    }
 }
 
 fn extract_zip_bytes(bytes: Vec<u8>) -> SkillResult<ExtractedGithubArchive> {
@@ -679,6 +879,18 @@ fn encode_ref_path(value: &str) -> String {
         .join("/")
 }
 
+fn encode_api_path_value(value: &str) -> String {
+    value
+        .bytes()
+        .flat_map(|byte| match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' => {
+                vec![byte as char]
+            }
+            _ => format!("%{byte:02X}").chars().collect::<Vec<_>>(),
+        })
+        .collect()
+}
+
 fn encode_path_segment(value: &str) -> String {
     value
         .bytes()
@@ -791,6 +1003,18 @@ mod tests {
         let error = scoped_archive_path(archive_root.path(), "../outside").unwrap_err();
 
         assert_eq!(error, "GitHub 路径不安全");
+    }
+
+    #[test]
+    fn api_path_encoding_escapes_slashes_in_ref_names() {
+        assert_eq!(
+            encode_api_path_value("feature/github-token"),
+            "feature%2Fgithub-token"
+        );
+        assert_eq!(
+            encode_ref_path("feature/github-token"),
+            "feature/github-token"
+        );
     }
 
     #[test]
