@@ -9,6 +9,7 @@
 ### Added
 
 - Skills 支持从 public GitHub 仓库、tree 路径或 `SKILL.md` blob 链接扫描标准 Skill 候选，预览后导入到统一 Skills 根目录。
+- 设置页 Skills 分类支持配置、测试和清除 GitHub Token；保存后只显示是否已配置，不回显明文。
 - 设置页“本地数据”新增 SQLite 备份与恢复，备份包包含 `workbench.sqlite` 和 `manifest.json`；支持手动备份、恢复前保存当前数据库副本，以及数据写入后的延迟自动备份与保留数量设置。
 - 设置页“诊断”新增手动健康检查，覆盖 Node/npm/npx、GitHub CLI、skills.sh 依赖链路、符号链接权限和工具目录可写性。
 - 设置页新增“诊断”入口，集中展示版本、运行环境、本地数据路径和日志目录，并支持复制低敏诊断信息、打开数据目录和日志目录。
@@ -17,7 +18,7 @@
 ### Changed
 
 - Skills 更新页泛化为“来源更新”，除 `skills.sh` 外支持 GitHub 分支来源检查和更新；本地导入、外部工具同步和 GitHub 固定版本不进入可更新集合。
-- GitHub Skill 导入改为优先使用本机 Git 浅克隆，避免 public 仓库导入依赖未认证 GitHub REST API 限额。
+- GitHub Skill 导入和 GitHub 分支来源更新在配置 Token 后优先使用 GitHub API；未配置时继续使用本机 Git 浅克隆。
 - 优化设置页内容层次，使用更清晰的分区标题、状态列和紧凑设置行组织各设置模块。
 
 ### Fixed

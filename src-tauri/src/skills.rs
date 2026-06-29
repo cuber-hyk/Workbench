@@ -53,6 +53,7 @@ fn current_settings() -> SkillResult<SkillsSettings> {
     let skills_root = configured_skills_root(&connection, &workbench_root)?;
     let previous_skills_root = configured_previous_skills_root(&connection)?
         .map(|path| path.to_string_lossy().to_string());
+    let github_token_configured = github_api_token_configured(&connection)?;
     fs::create_dir_all(&skills_root).map_err(error_message)?;
     Ok(SkillsSettings {
         workbench_root: workbench_root.to_string_lossy().to_string(),
@@ -70,6 +71,7 @@ fn current_settings() -> SkillResult<SkillsSettings> {
             START_HIDDEN_TO_TRAY_SETTING,
             false,
         )?,
+        github_token_configured,
     })
 }
 
@@ -540,6 +542,29 @@ pub fn set_start_hidden_to_tray(enabled: bool) -> SkillResult<SkillsState> {
         )
         .map_err(error_message)?;
     get_skills_state()
+}
+
+#[tauri::command]
+pub fn set_github_api_token(token: String) -> SkillResult<SkillsState> {
+    let workbench_root = default_workbench_root()?;
+    let connection = open_database(&workbench_root)?;
+    save_github_api_token_setting(&connection, &token)?;
+    get_skills_state()
+}
+
+#[tauri::command]
+pub fn clear_github_api_token() -> SkillResult<SkillsState> {
+    let workbench_root = default_workbench_root()?;
+    let connection = open_database(&workbench_root)?;
+    clear_github_api_token_setting(&connection)?;
+    get_skills_state()
+}
+
+#[tauri::command]
+pub async fn test_github_api_token(token: Option<String>) -> SkillResult<GithubTokenStatus> {
+    tauri::async_runtime::spawn_blocking(move || test_github_api_token_state(token))
+        .await
+        .map_err(error_message)?
 }
 
 #[tauri::command]
@@ -1770,6 +1795,7 @@ mod tests {
             close_behavior: CloseBehavior::HideToTray,
             close_tray_hint_dismissed: false,
             start_hidden_to_tray: false,
+            github_token_configured: false,
         };
 
         let candidates = managed_target_rebuild_candidates(&connection, &settings).unwrap();
@@ -1928,6 +1954,30 @@ mod tests {
             .unwrap();
 
         assert!(configured_bool_setting(&connection, START_HIDDEN_TO_TRAY_SETTING, false).unwrap());
+    }
+
+    #[test]
+    fn github_api_token_setting_never_reads_blank_as_configured() {
+        let connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute(
+                "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+                [],
+            )
+            .unwrap();
+
+        assert!(!github_api_token_configured(&connection).unwrap());
+        save_github_api_token_setting(&connection, "  ghp_preview  ").unwrap();
+        assert_eq!(
+            configured_github_api_token(&connection).unwrap(),
+            Some("ghp_preview".to_string())
+        );
+        assert!(github_api_token_configured(&connection).unwrap());
+
+        save_github_api_token_setting(&connection, "   ").unwrap();
+
+        assert_eq!(configured_github_api_token(&connection).unwrap(), None);
+        assert!(!github_api_token_configured(&connection).unwrap());
     }
 
     #[test]

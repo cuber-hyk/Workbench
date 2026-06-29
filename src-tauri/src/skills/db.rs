@@ -13,6 +13,7 @@ use super::{
 pub(super) const CLOSE_BEHAVIOR_SETTING: &str = "close_behavior";
 pub(super) const CLOSE_TRAY_HINT_DISMISSED_SETTING: &str = "close_tray_hint_dismissed";
 pub(super) const START_HIDDEN_TO_TRAY_SETTING: &str = "start_hidden_to_tray";
+pub(super) const GITHUB_API_TOKEN_SETTING: &str = "github_api_token";
 
 pub(super) fn default_workbench_root() -> SkillResult<PathBuf> {
     dirs::home_dir()
@@ -307,4 +308,57 @@ pub(super) fn configured_bool_setting(
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(default_value),
         Err(error) => Err(error.to_string()),
     }
+}
+
+pub(super) fn configured_github_api_token(connection: &Connection) -> SkillResult<Option<String>> {
+    let configured = connection.query_row(
+        "SELECT value FROM app_settings WHERE key = ?1",
+        [GITHUB_API_TOKEN_SETTING],
+        |row| row.get::<_, String>(0),
+    );
+    match configured {
+        Ok(value) => {
+            let token = value.trim().to_string();
+            if token.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(token))
+            }
+        }
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+pub(super) fn github_api_token_configured(connection: &Connection) -> SkillResult<bool> {
+    configured_github_api_token(connection).map(|token| token.is_some())
+}
+
+pub(super) fn save_github_api_token_setting(
+    connection: &Connection,
+    token: &str,
+) -> SkillResult<()> {
+    let token = token.trim();
+    if token.is_empty() {
+        clear_github_api_token_setting(connection)?;
+        return Ok(());
+    }
+    connection
+        .execute(
+            "INSERT INTO app_settings(key, value) VALUES(?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![GITHUB_API_TOKEN_SETTING, token],
+        )
+        .map_err(error_message)?;
+    Ok(())
+}
+
+pub(super) fn clear_github_api_token_setting(connection: &Connection) -> SkillResult<()> {
+    connection
+        .execute(
+            "DELETE FROM app_settings WHERE key = ?1",
+            [GITHUB_API_TOKEN_SETTING],
+        )
+        .map_err(error_message)?;
+    Ok(())
 }

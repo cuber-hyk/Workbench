@@ -1097,6 +1097,16 @@ function WorkbenchApp() {
             onCloseBehaviorChange={(behavior) => void runSkillAction(() => workbenchApi.setCloseBehavior(behavior), "关闭窗口行为已更新")}
             onLaunchAtStartupChange={(enabled) => void updateLaunchAtStartup(enabled)}
             onStartHiddenToTrayChange={(enabled) => void updateStartHiddenToTray(enabled)}
+            onSaveGithubToken={(token) => runSkillAction(() => workbenchApi.setGithubApiToken(token), token.trim() ? "GitHub Token 已保存" : "GitHub Token 已清除")}
+            onClearGithubToken={() => runSkillAction(() => workbenchApi.clearGithubApiToken(), "GitHub Token 已清除")}
+            onTestGithubToken={async (token) => {
+              try {
+                const result = await workbenchApi.testGithubApiToken(token);
+                showToast(result.message, { tone: "success" });
+              } catch (error) {
+                showToast(error instanceof Error ? error.message : String(error), { tone: "warning" });
+              }
+            }}
             onOpenPath={(path) => void openPathOrPromptCreate(path)}
             onOpenDirectory={(path) => void createAndOpenDirectoryWithToast(path)}
             onNotify={(message, tone) => showToast(message, { tone })}

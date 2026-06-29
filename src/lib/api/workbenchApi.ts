@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { markLocalDataChanged } from "./dataBackupApi";
 import { projects, radarItems, settings, skillCategories, skills } from "./mockData";
-import type { CloseBehavior, CustomToolTargetInput, ExternalSkillCandidateGroup, ExternalSkillSyncResult, ExternalSkillSyncSelection, GitHubCliStatus, GitHubStarsSyncResult, GithubSkillImportInspection, GithubSkillImportSelection, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, ManagedTargetRebuildResult, ManagedTargetRebuildSelection, Project, ProjectImportProgress, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, RemoteProjectImportInspection, RemoteProjectImportRequest, RootSkillMigrationCandidate, SkillInstallProgress, SkillMarketDetail, SkillMarketItem, SkillMarketResponse, SkillUpdateProgress, SkillUpdateResult, SkillUpdateStatus, SkillVersionSource, SkillsRootMigrationState, SkillsState, ToolKey } from "../types/domain";
+import type { CloseBehavior, CustomToolTargetInput, ExternalSkillCandidateGroup, ExternalSkillSyncResult, ExternalSkillSyncSelection, GitHubCliStatus, GitHubStarsSyncResult, GithubSkillImportInspection, GithubSkillImportSelection, GithubTokenStatus, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, ManagedTargetRebuildResult, ManagedTargetRebuildSelection, Project, ProjectImportProgress, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, RemoteProjectImportInspection, RemoteProjectImportRequest, RootSkillMigrationCandidate, SkillInstallProgress, SkillMarketDetail, SkillMarketItem, SkillMarketResponse, SkillUpdateProgress, SkillUpdateResult, SkillUpdateStatus, SkillVersionSource, SkillsRootMigrationState, SkillsState, ToolKey } from "../types/domain";
 
 const delay = async () => new Promise((resolve) => window.setTimeout(resolve, 80));
 const isTauri = "__TAURI_INTERNALS__" in window;
@@ -29,6 +29,7 @@ function normalizeSkillsState(state: SkillsState): SkillsState {
       ...state.settings,
       launchAtStartup: state.settings.launchAtStartup ?? false,
       startHiddenToTray: state.settings.startHiddenToTray ?? false,
+      githubTokenConfigured: state.settings.githubTokenConfigured ?? false,
       toolTargets: state.settings.toolTargets ?? [],
       projectOpenProfiles: state.settings.projectOpenProfiles ?? []
     }
@@ -785,6 +786,34 @@ export const workbenchApi = {
       return { settings, skills, categories: previewSkillCategories() };
     }
     return markDataChangedAfter(invokeSkillsState("set_start_hidden_to_tray", { enabled }));
+  },
+  async setGithubApiToken(token: string) {
+    if (!isTauri) {
+      settings.githubTokenConfigured = token.trim().length > 0;
+      return { settings, skills, categories: previewSkillCategories() };
+    }
+    return markDataChangedAfter(invokeSkillsState("set_github_api_token", { token }));
+  },
+  async clearGithubApiToken() {
+    if (!isTauri) {
+      settings.githubTokenConfigured = false;
+      return { settings, skills, categories: previewSkillCategories() };
+    }
+    return markDataChangedAfter(invokeSkillsState("clear_github_api_token"));
+  },
+  async testGithubApiToken(token?: string | null) {
+    if (!isTauri) {
+      await delay();
+      const candidateConfigured = token !== undefined && token !== null && token.trim().length > 0;
+      if (!candidateConfigured && !settings.githubTokenConfigured) {
+        throw new Error("尚未配置 GitHub Token");
+      }
+      return {
+        configured: candidateConfigured || settings.githubTokenConfigured,
+        message: "GitHub Token 可用"
+      } satisfies GithubTokenStatus;
+    }
+    return invoke<GithubTokenStatus>("test_github_api_token", { token });
   },
   async hideMainWindow() {
     if (!isTauri) return;

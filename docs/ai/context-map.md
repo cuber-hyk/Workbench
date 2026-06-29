@@ -20,6 +20,7 @@ Do not read `docs/plans/`, `docs/audits/`, or archived directories by default.
 - `src/views/radar/RadarView.tsx`：资源 Radar 前端列表、详情、筛选和增删弹窗。
 - `src/views/settings/SettingsView.tsx`：设置页分类导航和视图编排入口。
 - `src/views/settings/DiagnosticsSettings.tsx`：设置页“诊断”入口，展示运行信息、本地路径、日志目录、复制诊断信息和手动健康检查操作。
+- `src/views/settings/SettingsView.tsx`：设置页分类视图，包含 Skills 根目录、工具目录、自定义工具和 GitHub Token 配置入口。
 - `src/views/settings/settingsLayout.tsx`、`src/views/settings/settingsFormatters.ts`：设置页专用布局组件和展示格式化逻辑。
 - `src/views/skills/SkillsView.tsx`：Skills 本地列表、项目启用、市场/更新子视图编排和 Skills 前端交互入口。
 - `src/views/skills/SkillsMarketView.tsx`：skills.sh 市场前端列表、详情、安装和卸载入口。
@@ -47,8 +48,8 @@ Do not read `docs/plans/`, `docs/audits/`, or archived directories by default.
 - `src-tauri/src/radar.rs`、`src-tauri/src/radar/`：资源 Radar command facade、类型、SQLite 持久化、GitHub Stars 手动同步、URL/source 规范化、重复组合并、校验和链接打开逻辑。
 - `docs/capabilities/resource-radar.md`：资源 Radar 当前能力、领域分类、数据所有权、同步规则和重复组合并规则。
 - `docs/adr/2026-06-16-resource-radar-duplicate-merge.md`：资源 Radar 重复组合并后删除副资源的长期决策。
-- `src-tauri/src/skills.rs`、`src-tauri/src/skills/`：Skills command 入口、类型、SQLite、文件系统同步、工具目标、分类、自定义工具目标、ZIP/文件夹导入、GitHub 导入、根目录迁移、受管目标重建、skills.sh 市场/CLI、来源更新、启用、冲突和删除逻辑。
-- `docs/capabilities/skills-management.md`：Skills 当前能力、外部同步接管、根目录迁移、skills.sh 与 GitHub 来源、自定义工具目标、分类与筛选语义、数据所有权、同步边界和验证。
+- `src-tauri/src/skills.rs`、`src-tauri/src/skills/`：Skills command 入口、类型、SQLite、GitHub Token 设置、文件系统同步、工具目标、分类、自定义工具目标、ZIP/文件夹导入、GitHub 导入、根目录迁移、受管目标重建、skills.sh 市场/CLI、来源更新、启用、冲突和删除逻辑。
+- `docs/capabilities/skills-management.md`：Skills 当前能力、外部同步接管、根目录迁移、skills.sh 与 GitHub 来源、GitHub Token API 优先路径、自定义工具目标、分类与筛选语义、数据所有权、同步边界和验证。
 - `docs/adr/2026-06-18-skill-categories-table.md`：Skills 分类使用独立分类表和 `category_id` 的长期决策。
 - `docs/adr/2026-06-20-skills-sh-cli-adapter.md`：skills.sh 市场安装/更新通过官方 CLI 临时提取、Workbench 统一落盘和记录的决策。
 - `docs/references/skills-manager-engineering-lessons.md`：从 `E:\Development\12-工具-Utility\Agent\skills-manager` 提炼的工程借鉴，不是当前能力事实。

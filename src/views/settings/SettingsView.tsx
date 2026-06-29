@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowDown, ArrowUp, Download, Edit3, FolderOpen, Plus, RefreshCcw, Trash2, Upload } from "lucide-react";
+import { ArrowDown, ArrowUp, Download, Edit3, Eye, EyeOff, FolderOpen, KeyRound, Plus, RefreshCcw, Trash2, Upload } from "lucide-react";
 import { AppUpdatePanel } from "../../components/AppUpdatePanel";
 import { Button, IconButton, Modal, PageHeader, StatusBadge } from "../../components/ui";
 import {
@@ -50,6 +50,9 @@ export function SettingsView({
   onCloseBehaviorChange,
   onLaunchAtStartupChange,
   onStartHiddenToTrayChange,
+  onSaveGithubToken = async () => undefined,
+  onClearGithubToken = async () => undefined,
+  onTestGithubToken = async () => undefined,
   onOpenPath,
   onOpenDirectory = onOpenPath,
   onNotify = () => undefined,
@@ -71,6 +74,9 @@ export function SettingsView({
   onCloseBehaviorChange: (behavior: CloseBehavior) => void;
   onLaunchAtStartupChange: (enabled: boolean) => void;
   onStartHiddenToTrayChange: (enabled: boolean) => void;
+  onSaveGithubToken?: (token: string) => void | Promise<void>;
+  onClearGithubToken?: () => void | Promise<void>;
+  onTestGithubToken?: (token?: string) => void | Promise<void>;
   onOpenPath: (path: string) => void;
   onOpenDirectory?: (path: string) => void | Promise<void>;
   onNotify?: (message: string, tone?: "success" | "warning" | "danger") => void;
@@ -100,6 +106,9 @@ export function SettingsView({
             onInspectRootMigration={onInspectRootMigration}
             onOpenPath={onOpenPath}
             onRootChange={onRootChange}
+            onSaveGithubToken={onSaveGithubToken}
+            onClearGithubToken={onClearGithubToken}
+            onTestGithubToken={onTestGithubToken}
           />
         );
       case "tools":
@@ -196,14 +205,41 @@ function SkillsStorageSettings({
   inspectingRootMigration,
   onInspectRootMigration,
   onOpenPath,
-  onRootChange
+  onRootChange,
+  onSaveGithubToken,
+  onClearGithubToken,
+  onTestGithubToken
 }: {
   settings: AppSettings;
   inspectingRootMigration: boolean;
   onInspectRootMigration: () => void;
   onOpenPath: (path: string) => void;
   onRootChange: (path: string) => void;
+  onSaveGithubToken: (token: string) => void | Promise<void>;
+  onClearGithubToken: () => void | Promise<void>;
+  onTestGithubToken: (token?: string) => void | Promise<void>;
 }) {
+  const [githubTokenInput, setGithubTokenInput] = useState("");
+  const [githubTokenBusy, setGithubTokenBusy] = useState<"save" | "clear" | "test" | null>(null);
+  const [showGithubToken, setShowGithubToken] = useState(false);
+
+  async function runGithubTokenAction(action: "save" | "clear" | "test") {
+    setGithubTokenBusy(action);
+    try {
+      if (action === "save") {
+        await onSaveGithubToken(githubTokenInput);
+        setGithubTokenInput("");
+      } else if (action === "clear") {
+        await onClearGithubToken();
+        setGithubTokenInput("");
+      } else {
+        await onTestGithubToken(githubTokenInput.trim() ? githubTokenInput : undefined);
+      }
+    } finally {
+      setGithubTokenBusy(null);
+    }
+  }
+
   return (
     <div className="settings-form">
       <SettingsContentHeader title="Skills" description="统一管理 Workbench Skills 的真实来源和链接关系。" />
@@ -239,6 +275,45 @@ function SkillsStorageSettings({
           <div><small>全局链接</small><strong>工具全局 skills 目录中的符号链接</strong></div>
           <div><small>项目链接</small><strong>受支持项目内工具 skills 目录中的符号链接</strong></div>
         </div>
+      </SettingsSection>
+      <SettingsSection title="GitHub 来源" description="Token 仅用于 public GitHub API 请求，未配置时继续使用本机 Git 浅克隆。">
+        <SettingsRow
+          className="github-token-row"
+          title="GitHub Token"
+          description="保存后不回显明文；诊断信息不会复制 token。"
+          status={<StatusBadge tone={settings.githubTokenConfigured ? "success" : "neutral"}>{settings.githubTokenConfigured ? "已配置" : "未配置"}</StatusBadge>}
+        >
+          <span className="github-token-control">
+            <span className="github-token-input-row">
+              <input
+                aria-label="GitHub Token"
+                type={showGithubToken ? "text" : "password"}
+                value={githubTokenInput}
+                placeholder={settings.githubTokenConfigured ? "输入新 Token 可替换当前配置" : "粘贴 GitHub Token"}
+                autoComplete="off"
+                spellCheck={false}
+                onChange={(event) => setGithubTokenInput(event.target.value)}
+              />
+              <IconButton
+                title={showGithubToken ? "隐藏 Token" : "显示 Token"}
+                onClick={() => setShowGithubToken((visible) => !visible)}
+              >
+                {showGithubToken ? <EyeOff size={15} /> : <Eye size={15} />}
+              </IconButton>
+            </span>
+            <span className="github-token-button-row">
+              <Button disabled={githubTokenBusy !== null} onClick={() => void runGithubTokenAction("test")}>
+                <RefreshCcw className={githubTokenBusy === "test" ? "spin" : ""} size={15} />{githubTokenBusy === "test" ? "测试中" : "测试"}
+              </Button>
+              <Button disabled={githubTokenBusy !== null} onClick={() => void runGithubTokenAction("save")}>
+                <KeyRound size={15} />{githubTokenBusy === "save" ? "保存中" : "保存"}
+              </Button>
+              <Button disabled={githubTokenBusy !== null || (!settings.githubTokenConfigured && !githubTokenInput.trim())} onClick={() => void runGithubTokenAction("clear")}>
+                清除
+              </Button>
+            </span>
+          </span>
+        </SettingsRow>
       </SettingsSection>
       <div className="notice settings-notice">符号链接目标已存在时，Workbench 不会覆盖或删除已有内容。</div>
     </div>
