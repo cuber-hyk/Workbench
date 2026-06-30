@@ -70,6 +70,7 @@ pub(super) fn scan_skill_directories(root: &Path) -> SkillResult<Vec<SkillRecord
             directory_name,
             name: metadata.name,
             description: metadata.description,
+            source_url: String::new(),
             category_id: UNCATEGORIZED_CATEGORY_ID.to_string(),
             category: UNCATEGORIZED_CATEGORY_NAME.to_string(),
             skill_path: skill_path.to_string_lossy().to_string(),

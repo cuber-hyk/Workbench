@@ -402,6 +402,7 @@ mod tests {
             id: "demo".to_string(),
             name: "Demo".to_string(),
             path: "E:\\Demo".to_string(),
+            source_url: "https://github.com/acme/demo".to_string(),
             note: "note".to_string(),
             tags: vec!["Tauri".to_string(), "本地工具".to_string()],
             archived: false,
@@ -428,6 +429,7 @@ mod tests {
             id: "demo".to_string(),
             name: "Demo".to_string(),
             path: "E:\\Demo".to_string(),
+            source_url: String::new(),
             note: String::new(),
             tags: Vec::new(),
             archived: false,
@@ -450,6 +452,28 @@ mod tests {
     }
 
     #[test]
+    fn does_not_backfill_source_url_when_updating_a_historical_project() {
+        let dir = tempdir().unwrap();
+        let connection = open_database(dir.path()).unwrap();
+        let mut project = ProjectRecord {
+            id: "historical".to_string(),
+            name: "Historical".to_string(),
+            path: "E:\\Historical".to_string(),
+            source_url: String::new(),
+            note: String::new(),
+            tags: Vec::new(),
+            archived: false,
+            launch_configs: Vec::new(),
+        };
+
+        upsert_project(&connection, &project).unwrap();
+        project.source_url = "https://github.com/acme/historical".to_string();
+        upsert_project(&connection, &project).unwrap();
+
+        assert!(load_projects(&connection).unwrap()[0].source_url.is_empty());
+    }
+
+    #[test]
     fn deletes_project_record_and_launch_configs() {
         let dir = tempdir().unwrap();
         let connection = open_database(dir.path()).unwrap();
@@ -457,6 +481,7 @@ mod tests {
             id: "demo".to_string(),
             name: "Demo".to_string(),
             path: "E:\\Demo".to_string(),
+            source_url: String::new(),
             note: String::new(),
             tags: Vec::new(),
             archived: false,
@@ -505,6 +530,7 @@ mod tests {
         assert_eq!(projects[0].launch_configs[0].workdir, "E:\\Legacy");
         assert!(projects[0].launch_configs[0].enabled);
         assert!(!projects[0].archived);
+        assert!(projects[0].source_url.is_empty());
     }
 
     #[test]
@@ -515,6 +541,7 @@ mod tests {
             id: "demo".to_string(),
             name: "Demo".to_string(),
             path: "E:\\Demo".to_string(),
+            source_url: String::new(),
             note: String::new(),
             tags: Vec::new(),
             launch_configs: Vec::new(),

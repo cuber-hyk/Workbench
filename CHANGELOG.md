@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- 后续通过 skills.sh、public GitHub Skill 导入或 GitHub 项目远程导入创建的记录支持从详情跳转到可信来源；历史记录、本地来源和 Gitee 项目保持无来源入口。
+
 ### Changed
 
 - 主页面收敛为更紧凑的扁平工作台布局，统一项目、Skills、设置和启动日志的标题区与列表表头，并将 Skills 项目启用改为右侧摘要、启动日志改为独立终端式工作区。

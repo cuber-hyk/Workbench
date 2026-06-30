@@ -80,6 +80,13 @@ fn enrich_skills(
     mut skills: Vec<SkillRecord>,
 ) -> SkillResult<Vec<SkillRecord>> {
     for skill in &mut skills {
+        skill.source_url = connection
+            .query_row(
+                "SELECT source_url FROM skill_sources WHERE directory_name = ?1",
+                [&skill.directory_name],
+                |row| row.get(0),
+            )
+            .unwrap_or_default();
         let category = connection
             .query_row(
                 "SELECT skill_categories.id, skill_categories.name
@@ -761,6 +768,7 @@ fn install_skill_from_market_sync(
         source: "skills_sh".to_string(),
         package_slug: format!("{source}/{skill_id}"),
         repo_url: github_repository_url(&source).unwrap_or_default(),
+        source_url: skills_sh_source_url(&source, &skill_id),
         skill_path: relative,
         installed_ref: hash.clone(),
         installed_hash: hash.clone(),
@@ -774,6 +782,10 @@ fn install_skill_from_market_sync(
     let state = get_skills_state()?;
     on_progress(100);
     Ok(state)
+}
+
+fn skills_sh_source_url(source: &str, skill_id: &str) -> String {
+    format!("https://skills.sh/{source}/{skill_id}")
 }
 
 #[tauri::command]
@@ -1464,6 +1476,7 @@ mod tests {
             source: "skills_sh".to_string(),
             package_slug: "anthropics/skills/frontend-design".to_string(),
             repo_url: "https://github.com/anthropics/skills".to_string(),
+            source_url: String::new(),
             skill_path: ".agents/skills/frontend-design".to_string(),
             installed_ref: "local".to_string(),
             installed_hash: "local".to_string(),
@@ -1495,6 +1508,7 @@ mod tests {
             source: "skills_sh".to_string(),
             package_slug: "anthropics/skills/frontend-design".to_string(),
             repo_url: "https://github.com/anthropics/skills".to_string(),
+            source_url: String::new(),
             skill_path: ".agents/skills/frontend-design".to_string(),
             installed_ref: "same".to_string(),
             installed_hash: "same".to_string(),
@@ -1524,6 +1538,7 @@ mod tests {
             source: "github".to_string(),
             package_slug: "owner/repo/github-fixed".to_string(),
             repo_url: "https://github.com/owner/repo".to_string(),
+            source_url: String::new(),
             skill_path: "github-fixed".to_string(),
             installed_ref: "tag:v1.0.0@abc".to_string(),
             installed_hash: "local".to_string(),
@@ -1582,6 +1597,7 @@ mod tests {
             last_checked_at: String::new(),
             installed_at: String::new(),
             updated_at: String::new(),
+            source_url: "https://skills.sh/vercel-labs/next-skills/next-upgrade".to_string(),
         };
 
         upsert_skill_source_record(&connection, &record).unwrap();
@@ -1593,6 +1609,43 @@ mod tests {
             records[0].repo_url,
             "https://github.com/vercel-labs/next-skills"
         );
+        assert_eq!(records[0].source_url, record.source_url);
+    }
+
+    #[test]
+    fn builds_skills_sh_detail_urls_from_the_installed_market_identity() {
+        assert_eq!(
+            skills_sh_source_url("vercel-labs/skills", "find-skills"),
+            "https://skills.sh/vercel-labs/skills/find-skills"
+        );
+    }
+
+    #[test]
+    fn does_not_backfill_source_url_when_updating_a_historical_skill_source() {
+        let connection = Connection::open_in_memory().unwrap();
+        ensure_skill_source_schema(&connection).unwrap();
+        connection
+            .execute(
+                "INSERT INTO skill_sources(
+                    directory_name, source, package_slug, repo_url, skill_path, installed_ref,
+                    installed_hash, remote_ref
+                 ) VALUES(
+                    'historical', 'github', 'owner/repo/historical',
+                    'https://github.com/owner/repo', 'historical', 'branch:main@abc',
+                    'local', 'local'
+                 )",
+                [],
+            )
+            .unwrap();
+        let mut record = source_record_for_directory(&connection, "historical").unwrap();
+        assert!(record.source_url.is_empty());
+
+        record.source_url = "https://github.com/owner/repo/tree/abc/historical".to_string();
+        record.remote_ref = "remote".to_string();
+        upsert_skill_source_record(&connection, &record).unwrap();
+
+        let persisted = source_record_for_directory(&connection, "historical").unwrap();
+        assert!(persisted.source_url.is_empty());
     }
 
     #[test]

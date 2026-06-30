@@ -16,6 +16,7 @@ use super::ProjectResult;
 struct RemoteRepository {
     clone_url: String,
     repo_name: String,
+    source_url: String,
 }
 
 pub(crate) fn inspect_remote_project_import(
@@ -75,8 +76,7 @@ pub(crate) fn import_remote_project_sync<R: Runtime>(
     };
     emit_progress(&app, &request.import_id, 88, finalizing_message);
     let connection = db::open_database(&workbench_root)?;
-    let project =
-        project_record_for_import(&request, &project_id, &repository.repo_name, &inspection)?;
+    let project = project_record_for_import(&request, &project_id, &repository, &inspection)?;
     if let Err(error) = db::upsert_project(&connection, &project) {
         cleanup_created_target(&target_directory);
         return Err(error);
@@ -89,7 +89,7 @@ pub(crate) fn import_remote_project_sync<R: Runtime>(
 fn project_record_for_import(
     request: &RemoteProjectImportRequest,
     project_id: &str,
-    repo_name: &str,
+    repository: &RemoteRepository,
     inspection: &RemoteProjectImportInspection,
 ) -> ProjectResult<ProjectRecord> {
     if inspection.status == RemoteProjectImportStatus::ManagedMissing {
@@ -101,7 +101,7 @@ fn project_record_for_import(
     Ok(imported_project_record(
         request,
         project_id,
-        repo_name,
+        repository,
         &inspection.target_path,
     ))
 }
@@ -169,9 +169,15 @@ fn parse_https_repository(original: &str, rest: &str) -> ProjectResult<RemoteRep
     } else {
         format!("https://{host}/{owner}/{repo_name}.git")
     };
+    let source_url = if host == "github.com" {
+        format!("https://github.com/{owner}/{repo_name}")
+    } else {
+        String::new()
+    };
     Ok(RemoteRepository {
         clone_url,
         repo_name,
+        source_url,
     })
 }
 
@@ -188,9 +194,15 @@ fn parse_ssh_repository(rest: &str) -> ProjectResult<RemoteRepository> {
         return Err("仓库地址必须是 owner/repo 格式".to_string());
     }
     let repo_name = strip_git_suffix(repo)?;
+    let source_url = if host == "github.com" {
+        format!("https://github.com/{owner}/{repo_name}")
+    } else {
+        String::new()
+    };
     Ok(RemoteRepository {
         clone_url: format!("git@{host}:{owner}/{repo_name}.git"),
         repo_name,
+        source_url,
     })
 }
 
@@ -281,11 +293,11 @@ fn cleanup_created_target(target_directory: &Path) {
 fn imported_project_record(
     request: &RemoteProjectImportRequest,
     project_id: &str,
-    repo_name: &str,
+    repository: &RemoteRepository,
     target_path: &str,
 ) -> ProjectRecord {
     let name = if request.name.trim().is_empty() {
-        repo_name.to_string()
+        repository.repo_name.clone()
     } else {
         request.name.trim().to_string()
     };
@@ -293,6 +305,7 @@ fn imported_project_record(
         id: project_id.to_string(),
         name,
         path: target_path.to_string(),
+        source_url: repository.source_url.clone(),
         note: request.note.trim().to_string(),
         tags: request
             .tags
@@ -337,6 +350,10 @@ mod tests {
             repository.clone_url,
             "https://github.com/cuber-hyk/Workbench.git"
         );
+        assert_eq!(
+            repository.source_url,
+            "https://github.com/cuber-hyk/Workbench"
+        );
     }
 
     #[test]
@@ -353,6 +370,7 @@ mod tests {
 
         assert_eq!(repository.repo_name, "repo");
         assert_eq!(repository.clone_url, "git@gitee.com:owner/repo.git");
+        assert!(repository.source_url.is_empty());
     }
 
     #[test]
@@ -424,6 +442,7 @@ mod tests {
                         id: "demo".to_string(),
                         name: "Demo".to_string(),
                         path: target.to_string_lossy().to_string(),
+                        source_url: String::new(),
                         note: String::new(),
                         tags: Vec::new(),
                         launch_configs: Vec::new(),
@@ -447,6 +466,7 @@ mod tests {
             id: "existing".to_string(),
             name: "Existing".to_string(),
             path: "E:\\Projects\\demo".to_string(),
+            source_url: String::new(),
             note: String::new(),
             tags: Vec::new(),
             launch_configs: Vec::new(),
@@ -473,7 +493,13 @@ mod tests {
             "existing"
         );
         assert_eq!(
-            project_record_for_import(&confirmed_request, "existing", "demo", &inspection).unwrap(),
+            project_record_for_import(
+                &confirmed_request,
+                "existing",
+                &parse_remote_repository_url(&confirmed_request.repo_url).unwrap(),
+                &inspection,
+            )
+            .unwrap(),
             inspection.existing_project.unwrap()
         );
     }

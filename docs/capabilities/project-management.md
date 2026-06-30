@@ -2,7 +2,7 @@
 artifact_type: capability
 status: current
 created: 2026-06-16
-updated: 2026-06-24
+updated: 2026-06-30
 source_of_truth: src-tauri/src/projects.rs
 adr: docs/adr/2026-06-16-project-open-profiles.md
 ---
@@ -15,6 +15,7 @@ adr: docs/adr/2026-06-16-project-open-profiles.md
 
 - 新增、编辑、搜索、筛选、分页浏览和删除本地项目记录。
 - 从 GitHub 或 Gitee 远程仓库导入项目：用户选择本地父目录，Workbench 调用本机 `git clone` 克隆到父目录下的仓库名子目录，并在成功后保存项目记录。
+- 对功能上线后新导入的 GitHub 项目保存可信仓库主页，并在项目详情中提供系统浏览器跳转；本地项目、Gitee 项目和历史项目不显示来源入口。
 - 打开项目目录。
 - 配置一个或多个项目启动项。
 - 启动项目时执行所有启用且配置了命令的启动项。
@@ -25,6 +26,7 @@ adr: docs/adr/2026-06-16-project-open-profiles.md
 ## 数据所有权
 
 - 项目记录保存在 `projects` 表。
+- `projects.source_url` 只在创建新的 GitHub 远程导入记录时写入，后续项目编辑不重新绑定来源；空值表示没有可信来源入口。
 - 项目启动项保存在 `project_launch_configs` 表，属于项目记录的一部分。
 - 项目打开方式保存在 `project_open_profiles` 表，是全局配置，不属于单个项目。
 - 默认打开方式 seed 状态保存在 `app_settings.project_open_profiles_seeded`，避免用户删除默认 Profile 后被再次自动恢复。
@@ -45,7 +47,8 @@ adr: docs/adr/2026-06-16-project-open-profiles.md
   - 记录不存在但目录存在：不接管、不覆盖已有目录，要求选择其他父目录。
 - 导入失败时进度区显示明确失败状态和错误信息，可由用户重新尝试，不保留“正在检查 Git”等运行中状态。
 - 导入成功后的项目与本地导入项目行为一致，并创建一个空命令启动项，工作目录为 clone 后的项目目录。
-- 远程 URL 只用于导入过程，不作为项目记录的长期来源元数据保存。
+- GitHub 远程 URL 在创建新项目记录时规范化为 `https://github.com/<owner>/<repo>` 并保存为不可编辑来源；Gitee URL 仍只用于导入过程。
+- schema 升级为历史项目增加空 `source_url`，不读取 Git `origin`、不推断或回填历史来源；恢复历史缺失目录时继续沿用原记录的空来源。
 
 ## 启动项目
 

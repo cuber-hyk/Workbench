@@ -14,6 +14,7 @@ export interface Project {
   id: string;
   name: string;
   path: string;
+  sourceUrl: string;
   note: string;
   tags: string[];
   launchConfigs: ProjectLaunchConfig[];
@@ -150,6 +151,7 @@ export interface Skill {
   directoryName: string;
   name: string;
   description: string;
+  sourceUrl: string;
   categoryId: string;
   category: string;
   skillPath: string;
@@ -218,6 +220,7 @@ export interface SkillSourceRecord {
   source: string;
   packageSlug: string;
   repoUrl: string;
+  sourceUrl: string;
   skillPath: string;
   installedRef: string;
   installedHash: string;

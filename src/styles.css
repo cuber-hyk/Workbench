@@ -777,6 +777,7 @@ body[data-theme="dark"] .warning { color: #ffd58a; background: #3b2f18; }
 
 @media (max-width: 1120px) {
   .split-layout { grid-template-columns: minmax(0, 1fr); }
+  .split-layout > .list-panel { min-height: 102px; }
   .detail-panel { min-height: 320px; }
   .skills-header { grid-template-columns: minmax(160px, 1fr) auto; height: auto; row-gap: 8px; }
   .skills-header-actions { grid-column: 2; grid-row: 1; }

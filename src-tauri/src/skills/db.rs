@@ -91,6 +91,7 @@ pub(super) fn ensure_skill_source_schema(connection: &Connection) -> SkillResult
                 source TEXT NOT NULL,
                 package_slug TEXT NOT NULL,
                 repo_url TEXT NOT NULL,
+                source_url TEXT NOT NULL DEFAULT '',
                 skill_path TEXT NOT NULL,
                 installed_ref TEXT NOT NULL,
                 installed_hash TEXT NOT NULL,
@@ -102,6 +103,14 @@ pub(super) fn ensure_skill_source_schema(connection: &Connection) -> SkillResult
             [],
         )
         .map_err(error_message)?;
+    if !table_has_column(connection, "skill_sources", "source_url")? {
+        connection
+            .execute(
+                "ALTER TABLE skill_sources ADD COLUMN source_url TEXT NOT NULL DEFAULT ''",
+                [],
+            )
+            .map_err(error_message)?;
+    }
     Ok(())
 }
 

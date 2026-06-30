@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Edit3, FileText, FolderOpen, MonitorUp, Pause, Play, RefreshCcw, Square, Terminal, Trash2, X } from "lucide-react";
+import { ArrowLeft, Edit3, ExternalLink, FileText, FolderOpen, MonitorUp, Pause, Play, RefreshCcw, Square, Terminal, Trash2, X } from "lucide-react";
 import { ActionGroup, Button, DetailHeader, IconButton, PageHeader, PaginationBar, Panel, SearchInput, StatusBadge, TagList, Toolbar } from "../../components/ui";
 import type { LaunchRun, LaunchSession, Project, ProjectLaunchConfig, ProjectOpenProfile } from "../../lib/types/domain";
 import { clampPage, DEFAULT_PAGE_SIZE, paginateItems } from "../../lib/ui/pagination";
@@ -18,6 +18,7 @@ export function ProjectsView({
   onSelect,
   onOpenWithProfile,
   onOpenDirectory = () => undefined,
+  onOpenSource = () => undefined,
   onLaunch,
   onStopLaunchSession = () => undefined,
   onStopLaunchRun = () => undefined,
@@ -41,6 +42,7 @@ export function ProjectsView({
   onSelect: (id: string) => void;
   onOpenWithProfile?: (project: Project, profile: ProjectOpenProfile) => void;
   onOpenDirectory?: (project: Project) => void;
+  onOpenSource?: (url: string) => void;
   onLaunch: (project: Project) => void;
   onStopLaunchSession?: (sessionId: string) => void;
   onStopLaunchRun?: (launchRunId: string) => void;
@@ -281,6 +283,17 @@ export function ProjectsView({
               <div className="form-grid">
                 <label>项目路径<input value={detailProject.path} readOnly /></label>
                 <label>标签<input value={detailProject.tags.join(", ")} readOnly /></label>
+                {detailProject.sourceUrl && (
+                  <label className="full">
+                    来源
+                    <span className="field-with-action">
+                      <input value={detailProject.sourceUrl} readOnly />
+                      <IconButton title="查看来源" onClick={() => onOpenSource(detailProject.sourceUrl)}>
+                        <ExternalLink size={15} />
+                      </IconButton>
+                    </span>
+                  </label>
+                )}
                 <label className="full">备注<textarea rows={4} value={detailProject.note} readOnly /></label>
               </div>
               <div className="detail-meta-grid">
