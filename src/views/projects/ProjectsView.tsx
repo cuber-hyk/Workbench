@@ -570,9 +570,16 @@ function LaunchLogDetailPage({
   return (
     <section className="view launch-log-view">
       <div className="launch-log-page-header">
-        <div>
+        <div className="launch-log-heading">
           <div className="breadcrumb">项目 / {project.name} / 本次启动日志</div>
-          <h1>{project.name} 启动日志</h1>
+          <div className="launch-log-title-row">
+            <h1>{project.name} 启动日志</h1>
+            <div className="launch-log-meta">
+              <span><StatusBadge tone={hasRunningSession ? "success" : "neutral"}>{getProjectLaunchStatus(project, {}, launchRun)}</StatusBadge></span>
+              <span>{launchRun.startedAt}</span>
+              <span>{launchRun.sessions.length} 个启动项</span>
+            </div>
+          </div>
           <p>{project.path}</p>
         </div>
         <div className="launch-log-actions">
@@ -592,12 +599,6 @@ function LaunchLogDetailPage({
             </>
           )}
         </div>
-      </div>
-
-      <div className="launch-log-meta">
-        <span><StatusBadge tone={hasRunningSession ? "success" : "neutral"}>{getProjectLaunchStatus(project, {}, launchRun)}</StatusBadge></span>
-        <span>{launchRun.startedAt}</span>
-        <span>{launchRun.sessions.length} 个启动项</span>
       </div>
 
       <section className="launch-log-surface" aria-label="启动日志详情">
@@ -652,7 +653,7 @@ function LaunchLogDetailPage({
                 {renderLogLine(line.content, onOpenLogUrl)}
               </span>
             ))
-            : <span className="muted-output">等待输出...</span>}
+            : <span className="muted-output">等待输出…</span>}
         </div>
       </section>
     </section>

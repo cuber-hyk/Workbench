@@ -60,6 +60,7 @@ Do not read `docs/plans/`, `docs/audits/`, or archived directories by default.
 - `DESIGN.md`：设计系统规则和 UI 模式。
 - `design-tokens.json`：设计 token 精确值。
 - `UI/`：讨论用静态原型，不是正式构建入口。
+- `docs/references/workbench-project-description-for-ui-agent.md`：供 UI 绘制 Agent 使用的项目、模块、数据与业务关系说明，不包含具体 UI 方案。
 
 ## Dev Flow
 

@@ -282,6 +282,10 @@
       "$type": "dimension",
       "$value": "220px"
     },
+    "pageHeaderHeight": {
+      "$type": "dimension",
+      "$value": "88px"
+    },
     "buttonHeight": {
       "$type": "dimension",
       "$value": "36px"

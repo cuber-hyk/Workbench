@@ -1,0 +1,765 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Workbench Redesign Draft</title>
+  <link rel="stylesheet" href="workbench-redesign.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <img src="../src/assets/brand/workbench-icon.svg" alt="">
+        <span>Workbench</span>
+      </div>
+      <nav class="nav" aria-label="主导航">
+        <button class="is-active" data-switch="projects">
+          <svg viewBox="0 0 24 24"><path d="M12 3 4 7v10l8 4 8-4V7l-8-4Z"/><path d="m4 7 8 4 8-4"/><path d="M12 11v10"/></svg>
+          项目
+        </button>
+        <button data-switch="skills">
+          <svg viewBox="0 0 24 24"><path d="m12 2 2.4 6.8L21 12l-6.6 3.2L12 22l-2.4-6.8L3 12l6.6-3.2L12 2Z"/></svg>
+          Skills
+        </button>
+        <button data-switch="radar">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2"/></svg>
+          资源 Radar
+        </button>
+        <button>
+          <svg viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"/><path d="M4 12h2m12 0h2M12 4v2m0 12v2M6.3 6.3l1.4 1.4m8.6 8.6 1.4 1.4m0-11.4-1.4 1.4m-8.6 8.6-1.4 1.4"/></svg>
+          设置
+        </button>
+      </nav>
+
+      <section class="workspace-card">
+        <strong>本机工作区</strong>
+        <dl>
+          <dt>SQLite</dt><dd>本地数据</dd>
+          <dt>Auto</dt><dd>Skills 启用</dd>
+          <dt>Tauri</dt><dd>桌面壳</dd>
+        </dl>
+      </section>
+
+      <div class="sidebar-footer">
+        <div class="theme-row"><span>浅色主题</span><span>Ctrl K</span></div>
+        <div class="local-mode"><span class="dot"></span><span>本地模式</span></div>
+      </div>
+    </aside>
+
+    <main class="workbench">
+      <header class="topbar">
+        <div class="title-line">
+          <h1 id="page-title">Skills</h1>
+          <p id="page-subtitle">统一根目录 · 55 个 Skills</p>
+        </div>
+        <div class="view-tabs" aria-label="设计稿页面切换">
+          <button data-switch="projects">项目</button>
+          <button class="is-active" data-switch="skills">Skills</button>
+          <button data-switch="radar">Radar</button>
+        </div>
+      </header>
+
+      <section class="modulebar">
+        <div class="breadcrumb" id="breadcrumb">
+          <b>Skills</b>
+          <span>/</span>
+          <span>本地 Skills</span>
+        </div>
+        <div class="module-tabs" id="module-tabs"></div>
+      </section>
+
+      <section class="commandbar">
+        <label class="search">
+          <svg width="16" height="16" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2" fill="none"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="2"/></svg>
+          <input id="search-placeholder" placeholder="搜索名称或描述">
+        </label>
+        <div class="filter-row" id="filters">
+          <button class="button">编程开发</button>
+          <button class="button">全部状态</button>
+          <button class="button">全部项目</button>
+        </div>
+        <div class="root-path" id="root-path">C:\Users\胡运宽\.workbench\skills</div>
+        <div class="filter-row" id="actions">
+          <button class="button">
+            <svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 13.7-5.7"/><path d="M18 3v5h-5"/><path d="M20 12a8 8 0 0 1-13.7 5.7"/><path d="M6 21v-5h5"/></svg>
+            同步
+          </button>
+          <button class="button primary">
+            <svg viewBox="0 0 24 24"><path d="M12 4v12"/><path d="m7 11 5 5 5-5"/><path d="M5 20h14"/></svg>
+            导入
+          </button>
+        </div>
+      </section>
+
+      <section class="workspace is-active" data-page="skills">
+        <div class="list-pane">
+          <div class="list-summary">
+            <b>本地 Skills</b>
+            <span class="summary-chip">55 total</span>
+            <span class="summary-chip">8 selected category</span>
+            <span>操作列固定，详情区不重复删除入口</span>
+          </div>
+          <div class="table">
+            <div class="table-head">
+              <span>Skill</span><span>分类</span><span>全局启用</span><span>项目启用</span><span>操作</span>
+            </div>
+            <button class="table-row is-selected">
+              <span class="skill-title"><strong>frontend-design</strong><small>Guidance for distinctive, intentional visual design when building UI</small></span>
+              <span class="tag">编程开发</span>
+              <span class="tools"><span class="tool">C</span><span class="tool">Cl</span><span class="tool">O</span><span class="summary-chip">+15</span></span>
+              <span class="muted">未启用</span>
+              <span class="row-actions"><span class="icon-button"><svg viewBox="0 0 24 24"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/></svg></span><span class="icon-button danger"><svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6 7l1 14h10l1-14"/><path d="M9 7V4h6v3"/></svg></span></span>
+            </button>
+            <button class="table-row">
+              <span class="skill-title"><strong>ui-ux-pro-max</strong><small>UI/UX design intelligence with searchable database</small></span>
+              <span class="tag">编程开发</span>
+              <span class="tools"><span class="tool">C</span><span class="tool">Cl</span><span class="tool">O</span><span class="summary-chip">+15</span></span>
+              <span class="muted">未启用</span>
+              <span class="row-actions"><span class="icon-button"><svg viewBox="0 0 24 24"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/></svg></span><span class="icon-button danger"><svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6 7l1 14h10l1-14"/><path d="M9 7V4h6v3"/></svg></span></span>
+            </button>
+            <button class="table-row">
+              <span class="skill-title"><strong>web-design-guidelines</strong><small>Review UI code for Web Interface Guidelines compliance</small></span>
+              <span class="tag">编程开发</span>
+              <span class="tools"><span class="tool">C</span><span class="tool">Cl</span></span>
+              <span class="muted">未启用</span>
+              <span class="row-actions"><span class="icon-button"><svg viewBox="0 0 24 24"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/></svg></span><span class="icon-button danger"><svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6 7l1 14h10l1-14"/><path d="M9 7V4h6v3"/></svg></span></span>
+            </button>
+            <button class="table-row">
+              <span class="skill-title"><strong>security-review</strong><small>Security checklist and patterns for sensitive features</small></span>
+              <span class="tag">安全</span>
+              <span class="tools"><span class="tool">C</span><span class="tool">O</span></span>
+              <span class="status">3 个项目</span>
+              <span class="row-actions"><span class="icon-button"><svg viewBox="0 0 24 24"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/></svg></span><span class="icon-button danger"><svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6 7l1 14h10l1-14"/><path d="M9 7V4h6v3"/></svg></span></span>
+            </button>
+            <button class="table-row">
+              <span class="skill-title"><strong>split-large-code-files</strong><small>Scan, triage and split large code files by ownership boundary</small></span>
+              <span class="tag">代码维护</span>
+              <span class="tools"><span class="tool">C</span><span class="summary-chip">+8</span></span>
+              <span class="muted">未启用</span>
+              <span class="row-actions"><span class="icon-button"><svg viewBox="0 0 24 24"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/></svg></span><span class="icon-button danger"><svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6 7l1 14h10l1-14"/><path d="M9 7V4h6v3"/></svg></span></span>
+            </button>
+            <button class="table-row">
+              <span class="skill-title"><strong>database-business-guard</strong><small>检查数据库相关业务代码中的语义错误和副作用失配</small></span>
+              <span class="tag">数据库</span>
+              <span class="tools"><span class="tool">Cl</span><span class="tool">O</span></span>
+              <span class="muted">未启用</span>
+              <span class="row-actions"><span class="icon-button"><svg viewBox="0 0 24 24"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/></svg></span><span class="icon-button danger"><svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6 7l1 14h10l1-14"/><path d="M9 7V4h6v3"/></svg></span></span>
+            </button>
+          </div>
+          <div class="pager">
+            <span>1-50 / 55</span>
+            <div class="pager-controls"><button class="button">上一页</button><span>第</span><input value="1"><span>页 / 2</span><button class="button">下一页</button></div>
+          </div>
+        </div>
+
+        <aside class="inspector">
+          <div class="inspector-head">
+            <div class="inspector-title">
+              <div>
+                <h2>frontend-design</h2>
+                <p>独特、有意图的前端视觉设计指导。详情区只展示检查与编辑上下文，删除和打开文件保留在列表操作列。</p>
+              </div>
+              <div class="inspector-actions">
+                <button class="icon-button"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
+              </div>
+            </div>
+          </div>
+          <div class="inspector-body">
+            <section class="section">
+              <h3>基础信息</h3>
+              <dl class="kv">
+                <dt>分类</dt><dd><span class="tag">编程开发</span></dd>
+                <dt>路径</dt><dd class="mono">C:\Users\胡运宽\.workbench\skills\frontend-design</dd>
+                <dt>文件</dt><dd class="mono">SKILL.md</dd>
+              </dl>
+            </section>
+            <section class="section">
+              <h3>全局工具启用</h3>
+              <div class="enable-list">
+                <div class="enable-row"><span>Codex<small>C:\Users\胡运宽\.codex\skills</small></span><span class="muted">未启用</span><span class="switch"></span></div>
+                <div class="enable-row"><span>Claude Code<small>C:\Users\胡运宽\.claude\skills</small></span><span class="muted">未启用</span><span class="switch"></span></div>
+                <div class="enable-row"><span>OpenCode<small>C:\Users\胡运宽\.config\opencode\skills</small></span><span class="muted">未启用</span><span class="switch"></span></div>
+              </div>
+            </section>
+            <section class="section">
+              <h3>项目启用</h3>
+              <div class="inspector-summary">
+                <div class="inspector-summary-row"><span>已启用项目</span><strong>12</strong></div>
+                <div class="inspector-summary-row"><span>异常项目</span><strong class="danger">3</strong></div>
+                <div class="inspector-summary-row"><span>最近同步</span><span class="muted">2 分钟前</span></div>
+                <p class="note">项目级启用是独立管理任务，详情区只保留摘要和入口。</p>
+                <button class="button primary" data-switch="skills-projects">管理项目启用</button>
+              </div>
+            </section>
+            <section class="section">
+              <h3>边界提示</h3>
+              <p class="note">启用状态在列表中可快速比较；详情区只承载当前 Skill 的上下文和项目级开关，避免同一动作在多个区域重复出现。</p>
+            </section>
+          </div>
+        </aside>
+      </section>
+
+      <section class="card-workspace" data-page="skills-cards">
+        <div class="card-pane">
+          <div class="list-summary">
+            <b>卡片浏览</b>
+            <span class="summary-chip">适合筛选和发现</span>
+            <span class="summary-chip">点击卡片固定右侧详情</span>
+            <span>表格仍是管理默认视图，卡片用于浏览和市场风格探索。</span>
+          </div>
+          <div class="chip-toolbar">
+            <div class="chip-line">
+              <span>标签</span>
+              <div class="chip-strip">
+                <span class="chip is-active">全部标签</span>
+                <span class="chip">无标签</span>
+                <span class="chip code">code</span>
+                <span class="chip manage">manage</span>
+                <span class="chip obsidian">obsidian</span>
+                <span class="chip web">web</span>
+              </div>
+            </div>
+            <div class="chip-line">
+              <span>Preset</span>
+              <div class="chip-strip">
+                <span class="chip is-active">Basic 1/45</span>
+                <span class="chip">Obsidian</span>
+                <span class="chip">Hermes</span>
+                <span class="chip">Frontend</span>
+                <span class="chip">Search</span>
+                <span class="chip">Life</span>
+              </div>
+            </div>
+          </div>
+          <div class="card-grid">
+            <button class="skill-card is-selected is-synced">
+              <span class="skill-card-head"><strong>frontend-design</strong><span class="doc-count">▧ 2</span></span>
+              <span class="skill-card-desc">Create distinctive, production-grade frontend interfaces that avoid templated defaults.</span>
+              <span class="skill-card-tags"><span class="chip web">web</span></span>
+              <span class="skill-card-foot"><span class="sync-badge">与中心一致</span><span class="mini-tools"><span class="mini-tool dark">C</span><span class="mini-tool red">Cl</span><span class="mini-tool line">O</span></span><span class="card-status">已启用</span><span class="card-action">⌫</span></span>
+            </button>
+            <button class="skill-card is-synced">
+              <span class="skill-card-head"><strong>web-design-guidelines</strong><span class="doc-count">▧ 1</span></span>
+              <span class="skill-card-desc">Review UI code for Web Interface Guidelines compliance and accessibility risks.</span>
+              <span class="skill-card-tags"><span class="chip web">web</span></span>
+              <span class="skill-card-foot"><span class="sync-badge">与中心一致</span><span class="mini-tools"><span class="mini-tool dark">C</span><span class="mini-tool red">Cl</span><span class="mini-tool line">O</span></span><span class="card-status">已启用</span><span class="card-action">⌫</span></span>
+            </button>
+            <button class="skill-card">
+              <span class="skill-card-head"><strong>adversarial-review</strong><span class="doc-count">▧ 1</span></span>
+              <span class="skill-card-desc">Adversarial code review using cross-model approach. Spot regressions and missing tests.</span>
+              <span class="skill-card-tags"><span class="chip code">code</span></span>
+              <span class="skill-card-foot"><span class="sync-badge">与中心一致</span><span class="mini-tools"><span class="mini-tool dark">C</span><span class="mini-tool red">Cl</span></span><span class="card-status">已启用</span><span class="card-action">⌫</span></span>
+            </button>
+            <button class="skill-card">
+              <span class="skill-card-head"><strong>insight-review</strong><span class="doc-count">▧ 1</span></span>
+              <span class="skill-card-desc">Search the experience library for relevant lessons and reusable practices.</span>
+              <span class="skill-card-tags"><span class="scope-badge">仅项目</span></span>
+              <span class="skill-card-foot"><span class="scope-badge">仅项目</span><span class="mini-tools"><span class="mini-tool line">C</span><span class="mini-tool red">Cl</span></span><span class="card-status">已启用</span><span class="card-action">⌫</span></span>
+            </button>
+            <button class="skill-card">
+              <span class="skill-card-head"><strong>note-manager</strong><span class="doc-count">▧ 1</span></span>
+              <span class="skill-card-desc">Manage Obsidian vault: create, classify, and organize notes from local workflows.</span>
+              <span class="skill-card-tags"><span class="chip manage">manage</span><span class="chip obsidian">obsidian</span></span>
+              <span class="skill-card-foot"><span class="sync-badge">与中心一致</span><span class="mini-tools"><span class="mini-tool dark">C</span><span class="mini-tool line">O</span></span><span class="card-status">已启用</span><span class="card-action">⌫</span></span>
+            </button>
+            <button class="skill-card">
+              <span class="skill-card-head"><strong>vercel-react-best-practices</strong><span class="doc-count">▧ 4</span></span>
+              <span class="skill-card-desc">React and Next.js performance optimization guidelines from production projects.</span>
+              <span class="skill-card-tags"><span class="chip web">web</span></span>
+              <span class="skill-card-foot"><span class="sync-badge">与中心一致</span><span class="mini-tools"><span class="mini-tool dark">C</span><span class="mini-tool red">Cl</span></span><span class="card-status">已启用</span><span class="card-action">⌫</span></span>
+            </button>
+          </div>
+          <div class="pager">
+            <span>卡片浏览 · 6 / 55</span>
+            <div class="pager-controls"><button class="button">表格视图</button><button class="button primary">卡片视图</button></div>
+          </div>
+        </div>
+        <aside class="inspector">
+          <div class="inspector-head">
+            <div class="inspector-title">
+              <div>
+                <h2>frontend-design</h2>
+                <p>卡片用于快速浏览，右侧 Inspector 仍然承载稳定详情。hover 只暴露快捷操作，点击后固定当前卡片。</p>
+              </div>
+              <button class="icon-button"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
+            </div>
+          </div>
+          <div class="inspector-body">
+            <section class="section"><h3>为什么是卡片浏览</h3><p class="note">适合按标签、Preset、工具启用状态浏览 Skill。涉及批量比较、排序和稳定操作时仍回到表格视图。</p></section>
+            <section class="section"><h3>启用摘要</h3><div class="enable-list"><div class="enable-row"><span>Codex<small>全局启用</small></span><span class="status">已启用</span><span class="switch on"></span></div><div class="enable-row"><span>Workbench<small>项目级启用</small></span><span class="status">已启用</span><span class="switch on"></span></div></div></section>
+          </div>
+        </aside>
+      </section>
+
+      <section class="workspace full" data-page="skills-projects">
+        <div class="skill-projects-workspace">
+          <aside class="skill-projects-sidebar">
+            <div class="skill-projects-head">
+              <div>
+                <h2>frontend-design</h2>
+                <p>Skill-first 视角：当前 Skill 对应全部项目。先选择项目，再处理该项目下当前 Skill 的工具状态。</p>
+              </div>
+              <label class="compact-search">
+                <span>⌕</span>
+                <input placeholder="搜索项目">
+              </label>
+              <div class="chip-strip">
+                <span class="chip is-active">全部项目</span>
+                <span class="chip">已启用</span>
+                <span class="chip">异常</span>
+              </div>
+            </div>
+            <div class="skill-projects-list">
+              <button class="skill-projects-item is-active">
+                <span><strong>Workbench</strong><small>2 enabled · 1 issue</small></span>
+                <span class="issue-count">1 异常</span>
+              </button>
+              <button class="skill-projects-item">
+                <span><strong>AIRadar</strong><small>1 enabled · symlink</small></span>
+                <span class="status-badge success">正常</span>
+              </button>
+              <button class="skill-projects-item">
+                <span><strong>Default</strong><small>not enabled</small></span>
+                <span class="status-badge">未启用</span>
+              </button>
+              <button class="skill-projects-item">
+                <span><strong>dev-flow</strong><small>3 enabled · copy</small></span>
+                <span class="status-badge success">正常</span>
+              </button>
+              <button class="skill-projects-item">
+                <span><strong>IconCraft-Pro</strong><small>1 enabled · target missing</small></span>
+                <span class="issue-count">缺失</span>
+              </button>
+              <button class="skill-projects-item">
+                <span><strong>LLM</strong><small>not enabled</small></span>
+                <span class="status-badge">未启用</span>
+              </button>
+            </div>
+          </aside>
+
+          <section class="skill-projects-main">
+            <div class="project-skill-head">
+              <div>
+                <button class="back-link" data-switch="skills">← 返回 Skills</button>
+                <h2>Workbench / frontend-design</h2>
+                <p>当前项目路径：<span class="mono">E:\Development\12-工具-Utility\Workbench</span></p>
+              </div>
+              <div class="filter-row">
+                <button class="button">重新检查</button>
+                <button class="button primary">启用推荐工具</button>
+              </div>
+            </div>
+            <div class="project-stats">
+              <span class="summary-chip">2 个工具已启用</span>
+              <span class="summary-chip">1 个冲突</span>
+              <span class="summary-chip">2 个工具支持项目级</span>
+              <span class="summary-chip">最近同步 2 分钟前</span>
+            </div>
+            <div class="tool-status-table">
+              <div class="tool-status-head">
+                <span>工具</span><span>状态</span><span>同步方式</span><span>目标路径 / 状态说明</span><span>操作</span>
+              </div>
+              <div class="tool-status-row">
+                <strong>Codex</strong>
+                <span class="status-badge success">已启用</span>
+                <span>symlink</span>
+                <span class="mono muted">E:\Development\12-工具-Utility\Workbench\.codex\skills\frontend-design</span>
+                <span class="row-actions"><button class="button">停用</button></span>
+              </div>
+              <div class="tool-status-row">
+                <strong>Claude Code</strong>
+                <span class="status-badge">未启用</span>
+                <span>-</span>
+                <span class="muted">支持项目级 Skills，可启用到项目目录</span>
+                <span class="row-actions"><button class="button primary">启用</button></span>
+              </div>
+              <div class="tool-status-row">
+                <strong>OpenCode</strong>
+                <span class="status-badge danger">内容冲突</span>
+                <span>existing</span>
+                <span class="muted">目标位置已有非 Workbench 管理内容，需要选择版本来源</span>
+                <span class="row-actions"><button class="button primary">解决</button></span>
+              </div>
+              <div class="tool-status-row">
+                <strong>Gemini CLI</strong>
+                <span class="status-badge warning">不支持项目级</span>
+                <span>-</span>
+                <span class="muted">该工具仅支持全局 Skills 目录</span>
+                <span class="row-actions"><span class="summary-chip">只读</span></span>
+              </div>
+              <div class="tool-status-row">
+                <strong>Qwen Code</strong>
+                <span class="status-badge">未启用</span>
+                <span>-</span>
+                <span class="muted">该项目暂无 Qwen Code 项目级目标</span>
+                <span class="row-actions"><button class="button">启用</button></span>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="workspace market-grid market-row" data-page="skills-market">
+        <div class="list-pane">
+          <div class="list-summary">
+            <b>技能市场</b>
+            <span class="summary-chip">skills.sh</span>
+            <span class="summary-chip">可安装 128</span>
+            <span>市场是 Skills 模块内的同级子视图，不进入左侧主导航。</span>
+          </div>
+          <div class="table">
+            <div class="table-head"><span>Skill</span><span>来源</span><span>安装状态</span><span>最近更新</span><span>操作</span></div>
+            <button class="table-row is-selected"><span class="skill-title"><strong>browser-control</strong><small>Control local browser pages for UI verification</small></span><span>skills.sh</span><span class="tag">未安装</span><span class="muted">今天</span><span class="row-actions"><span class="button primary">安装</span></span></button>
+            <button class="table-row"><span class="skill-title"><strong>github-workflow</strong><small>Inspect pull requests, issues and release notes</small></span><span>skills.sh</span><span class="status">已安装</span><span class="muted">昨天</span><span class="row-actions"><span class="button">卸载</span></span></button>
+            <button class="table-row"><span class="skill-title"><strong>docs-render</strong><small>Create document artifacts from structured content</small></span><span>skills.sh</span><span class="tag">可更新</span><span class="muted">6月28日</span><span class="row-actions"><span class="button primary">更新</span></span></button>
+          </div>
+          <div class="pager"><span>1-50 / 128</span><div class="pager-controls"><button class="button">上一页</button><input value="1"><button class="button">下一页</button></div></div>
+        </div>
+        <aside class="inspector">
+          <div class="inspector-head">
+            <div class="inspector-title"><div><h2>browser-control</h2><p>市场详情只解释来源、能力和安装边界；安装入口留在列表操作列，避免双入口。</p></div></div>
+          </div>
+          <div class="inspector-body">
+            <section class="section"><h3>来源</h3><dl class="kv"><dt>仓库</dt><dd class="mono">github.com/example/browser-control</dd><dt>来源</dt><dd>skills.sh</dd><dt>状态</dt><dd><span class="tag">未安装</span></dd></dl></section>
+            <section class="section"><h3>说明</h3><p class="note">安装完成后默认只进入 Workbench 统一根目录，不自动启用到任何 Agent 工具目录。</p></section>
+          </div>
+        </aside>
+      </section>
+
+      <section class="workspace market-grid update-row" data-page="skills-updates">
+        <div class="list-pane">
+          <div class="list-summary">
+            <b>来源更新</b>
+            <span class="summary-chip">3 可更新</span>
+            <span>更新页是 Skills 子视图，批量动作放在命令条，不放左侧导航。</span>
+          </div>
+          <div class="table">
+            <div class="table-head"><span></span><span>Skill</span><span>本地版本</span><span>远端状态</span><span>最近检查</span><span>操作</span></div>
+            <button class="table-row is-selected"><span><input type="checkbox" checked></span><span class="skill-title"><strong>docs-render</strong><small>skills.sh / docs-render</small></span><span class="mono">a8c21f</span><span class="tag">可更新</span><span class="muted">2 分钟前</span><span class="row-actions"><span class="button primary">更新</span></span></button>
+            <button class="table-row"><span><input type="checkbox"></span><span class="skill-title"><strong>github-workflow</strong><small>skills.sh / github-workflow</small></span><span class="mono">19bc7e</span><span class="status">最新</span><span class="muted">2 分钟前</span><span class="row-actions"><span class="button">检查</span></span></button>
+            <button class="table-row"><span><input type="checkbox" disabled></span><span class="skill-title"><strong>legacy-import</strong><small>GitHub tag 固定版本</small></span><span class="mono">v1.0.0</span><span class="muted">不支持</span><span class="muted">昨天</span><span class="row-actions"><span class="summary-chip">只读</span></span></button>
+          </div>
+          <div class="pager"><span>1-20 / 20</span><div class="pager-controls"><button class="button">上一页</button><input value="1"><button class="button">下一页</button></div></div>
+        </div>
+        <aside class="inspector">
+          <div class="inspector-head"><div class="inspector-title"><div><h2>docs-render</h2><p>更新说明进入详情区，批量更新仍由上方命令条承载。</p></div></div></div>
+          <div class="inspector-body">
+            <section class="section"><h3>变更摘要</h3><p class="note">新增 DOCX 渲染校验，修复 Windows 路径展示，改进失败提示。</p></section>
+            <section class="section"><h3>执行边界</h3><p class="note">替换统一根目录前会先备份旧版本，不自动同步已启用目标。</p></section>
+          </div>
+        </aside>
+      </section>
+
+      <section class="workspace project-table" data-page="projects">
+        <div class="list-pane">
+          <div class="list-summary"><b>项目列表</b><span class="summary-chip">8 total</span><span>表格与详情共享同一工作区，不再使用大卡片嵌套。</span></div>
+          <div class="table">
+            <div class="table-head"><span>项目</span><span>标签</span><span>启动项</span><span>状态</span><span>操作</span></div>
+            <button class="table-row is-selected"><span class="skill-title"><strong>AIRadar</strong><small>E:\Development\01-Web-全栈\ai-radar</small></span><span class="tag">本地工具</span><span>1/1 启动项</span><span class="status">可启动</span><span class="row-actions"><span class="icon-button"><svg viewBox="0 0 24 24"><path d="M3 7h7l2 3h9v9H3z"/></svg></span><span class="icon-button"><svg viewBox="0 0 24 24"><path d="m8 5 10 7-10 7Z"/></svg></span><span class="icon-button"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span></span></button>
+            <button class="table-row"><span class="skill-title"><strong>Workbench</strong><small>E:\Development\12-工具-Utility\Workbench</small></span><span class="tag">Tauri</span><span>1/1 启动项</span><span class="status">可启动</span><span class="row-actions"><span class="icon-button"><svg viewBox="0 0 24 24"><path d="M3 7h7l2 3h9v9H3z"/></svg></span><span class="icon-button"><svg viewBox="0 0 24 24"><path d="m8 5 10 7-10 7Z"/></svg></span><span class="icon-button"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span></span></button>
+            <button class="table-row"><span class="skill-title"><strong>IconCraft-Pro</strong><small>E:\Development\12-工具-Utility\IconCraft-Pro</small></span><span class="tag">icon图标制作</span><span>0/1 启动项</span><span class="muted">未配置</span><span class="row-actions"><span class="icon-button"><svg viewBox="0 0 24 24"><path d="M3 7h7l2 3h9v9H3z"/></svg></span><span class="icon-button"><svg viewBox="0 0 24 24"><path d="m8 5 10 7-10 7Z"/></svg></span><span class="icon-button"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span></span></button>
+          </div>
+          <div class="pager"><span>1-8 / 8</span><div class="pager-controls"><button class="button">上一页</button><input value="1"><button class="button">下一页</button></div></div>
+        </div>
+        <aside class="inspector">
+          <div class="inspector-head"><div class="inspector-title"><div><h2>AIRadar</h2><p>项目检查器使用紧凑字段，不把只读信息伪装成大输入框。</p></div><button class="icon-button"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button></div></div>
+          <div class="inspector-body">
+            <section class="section"><h3>项目字段</h3><dl class="kv"><dt>路径</dt><dd class="mono">E:\Development\01-Web-全栈\ai-radar</dd><dt>标签</dt><dd><span class="tag">本地工具</span></dd><dt>状态</dt><dd class="status">可启动</dd><dt>最近启动</dt><dd>暂无</dd></dl></section>
+            <section class="section"><h3>启动项</h3><p class="note mono">uv run uvicorn app.main:app --host 127.0.0.1 --port 8001</p></section>
+            <section class="section">
+              <h3>项目 Skills</h3>
+              <div class="inspector-summary">
+                <div class="inspector-summary-row"><span>已启用 Skills</span><strong>18</strong></div>
+                <div class="inspector-summary-row"><span>涉及工具</span><strong>3</strong></div>
+                <div class="inspector-summary-row"><span>异常状态</span><strong class="danger">2</strong></div>
+                <p class="note">项目页只显示当前项目的 Skills 摘要，完整启用管理进入独立工作区。</p>
+                <button class="button primary" data-switch="project-skills">管理项目 Skills</button>
+              </div>
+            </section>
+            <section class="section"><h3>运行边界</h3><p class="note">Workbench 只展示本次启动的内存日志，不保存历史日志。</p></section>
+          </div>
+        </aside>
+      </section>
+
+      <section class="workspace full" data-page="project-skills">
+        <div class="project-skills-workspace">
+          <aside class="project-skills-sidebar">
+            <div class="project-skills-head">
+              <div>
+                <h2>AIRadar</h2>
+                <p>Project-first 视角：当前项目对应全部 Skills。先选择 Skill，再处理该 Skill 在本项目下的工具状态。</p>
+              </div>
+              <label class="compact-search">
+                <span>⌕</span>
+                <input placeholder="搜索 Skill">
+              </label>
+              <div class="chip-strip">
+                <span class="chip is-active">全部 Skills</span>
+                <span class="chip">已启用</span>
+                <span class="chip">异常</span>
+                <span class="chip">未启用</span>
+              </div>
+            </div>
+            <div class="project-skills-list">
+              <button class="project-skills-item is-active">
+                <span><strong>frontend-design</strong><small>Codex on · OpenCode conflict</small></span>
+                <span class="issue-count">1 异常</span>
+              </button>
+              <button class="project-skills-item">
+                <span><strong>security-review</strong><small>Codex on · Claude on</small></span>
+                <span class="status-badge success">正常</span>
+              </button>
+              <button class="project-skills-item">
+                <span><strong>playwright-cli</strong><small>not enabled</small></span>
+                <span class="status-badge">未启用</span>
+              </button>
+              <button class="project-skills-item">
+                <span><strong>database-business-guard</strong><small>OpenCode copy · target missing</small></span>
+                <span class="issue-count">缺失</span>
+              </button>
+              <button class="project-skills-item">
+                <span><strong>web-design-guidelines</strong><small>Codex symlink</small></span>
+                <span class="status-badge success">正常</span>
+              </button>
+              <button class="project-skills-item">
+                <span><strong>humanizer</strong><small>not enabled</small></span>
+                <span class="status-badge">未启用</span>
+              </button>
+            </div>
+          </aside>
+
+          <section class="project-skills-main">
+            <div class="project-skill-head">
+              <div>
+                <button class="back-link" data-switch="projects">← 返回项目列表</button>
+                <h2>AIRadar / frontend-design</h2>
+                <p>当前项目下该 Skill 的工具启用状态。导入、市场、分类和来源更新仍回到 Skills 模块处理。</p>
+              </div>
+              <div class="filter-row">
+                <button class="button">打开项目 Skills 目录</button>
+                <button class="button primary">启用推荐工具</button>
+              </div>
+            </div>
+            <div class="project-stats">
+              <span class="summary-chip">1 个工具已启用</span>
+              <span class="summary-chip">1 个冲突</span>
+              <span class="summary-chip">2 个工具支持项目级</span>
+              <span class="summary-chip">项目路径正常</span>
+            </div>
+            <div class="tool-status-table">
+              <div class="tool-status-head">
+                <span>工具</span><span>状态</span><span>同步方式</span><span>目标路径 / 状态说明</span><span>操作</span>
+              </div>
+              <div class="tool-status-row">
+                <strong>Codex</strong>
+                <span class="status-badge success">已启用</span>
+                <span>symlink</span>
+                <span class="mono muted">E:\Development\01-Web-全栈\ai-radar\.codex\skills\frontend-design</span>
+                <span class="row-actions"><button class="button">停用</button></span>
+              </div>
+              <div class="tool-status-row">
+                <strong>Claude Code</strong>
+                <span class="status-badge">未启用</span>
+                <span>-</span>
+                <span class="muted">支持项目级 Skills，可启用到项目目录</span>
+                <span class="row-actions"><button class="button primary">启用</button></span>
+              </div>
+              <div class="tool-status-row">
+                <strong>OpenCode</strong>
+                <span class="status-badge danger">内容冲突</span>
+                <span>existing</span>
+                <span class="muted">目标位置已有非 Workbench 管理内容，需要选择版本来源</span>
+                <span class="row-actions"><button class="button primary">解决</button></span>
+              </div>
+              <div class="tool-status-row">
+                <strong>Gemini CLI</strong>
+                <span class="status-badge warning">不支持项目级</span>
+                <span>-</span>
+                <span class="muted">该工具仅支持全局 Skills 目录</span>
+                <span class="row-actions"><span class="summary-chip">只读</span></span>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="workspace full" data-page="project-log">
+        <div class="drill">
+          <div class="drill-head">
+            <button class="back-link" data-switch="projects">← 返回项目列表</button>
+            <div class="drill-title">
+              <div>
+                <h2>AIRadar / 启动日志</h2>
+                <p>深层页面仍属于项目模块，左侧主导航不增加“启动日志”。这里用全页空间承载高密度终端输出。</p>
+              </div>
+              <div class="filter-row"><button class="button">停止全部</button><button class="button primary">重新启动</button></div>
+            </div>
+          </div>
+          <div class="drill-body">
+            <aside class="drill-side">
+              <div class="run-list">
+                <button class="run-item is-active"><strong>全部输出</strong><small>2 个启动项 · 运行中</small></button>
+                <button class="run-item"><strong>api</strong><small>uvicorn · 127.0.0.1:8001</small></button>
+                <button class="run-item"><strong>worker</strong><small>python worker.py · 运行中</small></button>
+              </div>
+            </aside>
+            <div class="drill-main">
+              <div class="log-tabs">
+                <button class="is-active">全部</button>
+                <button>stdout</button>
+                <button>stderr</button>
+                <span class="summary-chip">本次会话内存日志</span>
+              </div>
+              <pre class="terminal"><span class="ok">[15:20:01]</span> Starting AIRadar launch group
+<span class="ok">[15:20:02]</span> uv run uvicorn app.main:app --host 127.0.0.1 --port 8001
+<span class="ok">[15:20:03]</span> Application startup complete.
+<span class="link">[15:20:03]</span> http://127.0.0.1:8001
+<span class="warn">[15:20:05]</span> GitHub token not configured, star sync will use gh CLI
+<span class="ok">[15:20:08]</span> Worker ready. Watching inbox directory...</pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="workspace" data-page="radar">
+        <div class="list-pane">
+          <div class="list-summary"><b>资源 Radar</b><span class="summary-chip">220 total</span><span>Row Card 改成扁平列表行，减少卡片墙感。</span></div>
+          <div class="radar-list">
+            <button class="radar-row is-selected"><span class="item-title"><strong>2025Emma/vibe-coding-cn</strong><small>项目 · 未分类 · 手动添加 · Python · 21810 stars · 2026-06-23</small><span class="meta-line">Vibe coding 中文资料与实践记录</span></span><span class="row-actions"><span class="star">★</span><span class="icon-button danger"><svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6 7l1 14h10l1-14"/><path d="M9 7V4h6v3"/></svg></span></span></button>
+            <button class="radar-row"><span class="item-title"><strong>2dust/v2rayN</strong><small>项目 · GitHub Stars · C# · 109724 stars · 2026-06-23</small><span class="meta-line">A GUI client for Windows, Linux and macOS</span></span><span class="row-actions"><span class="star muted">☆</span><span class="icon-button danger"><svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6 7l1 14h10l1-14"/><path d="M9 7V4h6v3"/></svg></span></span></button>
+            <button class="radar-row"><span class="item-title"><strong>3b1b/manim</strong><small>项目 · GitHub Stars · Python · 87820 stars · 2026-06-23</small><span class="meta-line">Animation engine for explanatory math videos</span></span><span class="row-actions"><span class="star muted">☆</span><span class="icon-button danger"><svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6 7l1 14h10l1-14"/><path d="M9 7V4h6v3"/></svg></span></span></button>
+          </div>
+          <div class="pager"><span>1-50 / 220</span><div class="pager-controls"><button class="button">上一页</button><input value="1"><span>页 / 5</span><button class="button">下一页</button></div></div>
+        </div>
+        <aside class="inspector">
+          <div class="inspector-head"><div class="inspector-title"><div><h2>2025Emma/vibe-coding-cn</h2><p>详情作为 inspector 呈现，链接和编辑是当前对象的上下文动作。</p></div><button class="icon-button"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button></div></div>
+          <div class="inspector-body">
+            <section class="section"><h3>资源信息</h3><dl class="kv"><dt>分类</dt><dd>项目</dd><dt>领域</dt><dd>未分类</dd><dt>来源</dt><dd>手动添加</dd><dt>语言</dt><dd>Python</dd><dt>Stars</dt><dd>21810</dd></dl></section>
+            <section class="section"><h3>链接</h3><p class="note mono">https://github.com/2025Emma/vibe-coding-cn</p></section>
+            <section class="section"><h3>备注</h3><p class="note">保留用户维护的标签、备注和收藏状态，GitHub 同步不覆盖。</p></section>
+          </div>
+        </aside>
+      </section>
+
+      <section class="card-workspace" data-page="radar-cards">
+        <div class="card-pane">
+          <div class="list-summary">
+            <b>资源卡片</b>
+            <span class="summary-chip">适合阅读和收藏</span>
+            <span class="summary-chip">2 列浏览</span>
+            <span>Radar 比项目和 Skills 更适合卡片，因为资源有摘要和来源描述。</span>
+          </div>
+          <div class="chip-toolbar">
+            <div class="chip-line">
+              <span>分类</span>
+              <div class="chip-strip">
+                <span class="chip is-active">全部</span>
+                <span class="chip code">项目</span>
+                <span class="chip web">资讯</span>
+                <span class="chip">论文</span>
+                <span class="chip">其他</span>
+              </div>
+            </div>
+            <div class="chip-line">
+              <span>来源</span>
+              <div class="chip-strip">
+                <span class="chip is-active">全部来源</span>
+                <span class="chip">GitHub Stars</span>
+                <span class="chip">手动添加</span>
+                <span class="chip">仅收藏</span>
+              </div>
+            </div>
+          </div>
+          <div class="card-grid radar-card-grid">
+            <button class="skill-card resource-card is-selected is-synced">
+              <span class="skill-card-head"><strong>2025Emma/vibe-coding-cn</strong><span class="star">★</span></span>
+              <span class="resource-meta"><span>项目</span><span>Python</span><span>21810 stars</span><span>2026-06-23</span></span>
+              <span class="skill-card-desc">Vibe coding 中文资料与实践记录，适合长期跟踪和补充本地备注。</span>
+              <span class="skill-card-tags"><span class="chip code">项目</span><span class="chip">手动添加</span></span>
+              <span class="skill-card-foot"><span class="sync-badge">已收藏</span><span class="mono muted">github.com/2025Emma/...</span><span class="card-action">↗</span></span>
+            </button>
+            <button class="skill-card resource-card">
+              <span class="skill-card-head"><strong>2dust/v2rayN</strong><span class="star muted">☆</span></span>
+              <span class="resource-meta"><span>项目</span><span>C#</span><span>109724 stars</span><span>2026-06-23</span></span>
+              <span class="skill-card-desc">A GUI client for Windows, Linux and macOS, support Xray and sing-box.</span>
+              <span class="skill-card-tags"><span class="chip code">项目</span><span class="chip">GitHub Stars</span></span>
+              <span class="skill-card-foot"><span class="scope-badge">未收藏</span><span class="mono muted">github.com/2dust/v2rayN</span><span class="card-action">↗</span></span>
+            </button>
+            <button class="skill-card resource-card">
+              <span class="skill-card-head"><strong>3b1b/manim</strong><span class="star muted">☆</span></span>
+              <span class="resource-meta"><span>项目</span><span>Python</span><span>87820 stars</span><span>2026-06-23</span></span>
+              <span class="skill-card-desc">Animation engine for explanatory math videos and technical visualizations.</span>
+              <span class="skill-card-tags"><span class="chip code">项目</span><span class="chip">GitHub Stars</span></span>
+              <span class="skill-card-foot"><span class="scope-badge">未收藏</span><span class="mono muted">github.com/3b1b/manim</span><span class="card-action">↗</span></span>
+            </button>
+            <button class="skill-card resource-card">
+              <span class="skill-card-head"><strong>OpenAI Codex release notes</strong><span class="star">★</span></span>
+              <span class="resource-meta"><span>资讯</span><span>AI Agent</span><span>官方文档</span><span>2026-06-20</span></span>
+              <span class="skill-card-desc">用于跟踪 Codex 相关能力变化、模型策略和本地工作流影响。</span>
+              <span class="skill-card-tags"><span class="chip web">资讯</span><span class="chip">官方</span></span>
+              <span class="skill-card-foot"><span class="sync-badge">已收藏</span><span class="mono muted">openai.com/...</span><span class="card-action">↗</span></span>
+            </button>
+          </div>
+          <div class="pager">
+            <span>资源卡片 · 1-20 / 220</span>
+            <div class="pager-controls"><button class="button">列表视图</button><button class="button primary">卡片视图</button></div>
+          </div>
+        </div>
+        <aside class="inspector">
+          <div class="inspector-head"><div class="inspector-title"><div><h2>2025Emma/vibe-coding-cn</h2><p>资源卡片强调摘要、来源和收藏；字段编辑仍在右侧 Inspector 或编辑弹窗完成。</p></div><button class="icon-button"><svg viewBox="0 0 24 24"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg></button></div></div>
+          <div class="inspector-body">
+            <section class="section"><h3>资源字段</h3><dl class="kv"><dt>分类</dt><dd>项目</dd><dt>来源</dt><dd>手动添加</dd><dt>语言</dt><dd>Python</dd><dt>Stars</dt><dd>21810</dd></dl></section>
+            <section class="section"><h3>布局判断</h3><p class="note">Radar 可以默认提供卡片浏览，因为用户常按标题、摘要和收藏状态阅读；但重复合并和批量维护仍使用详情页或列表。</p></section>
+          </div>
+        </aside>
+      </section>
+
+      <section class="workspace full" data-page="radar-merge">
+        <div class="drill merge-layout">
+          <div class="drill-head">
+            <button class="back-link" data-switch="radar">← 返回资源列表</button>
+            <div class="drill-title">
+              <div>
+                <h2>重复资源合并</h2>
+                <p>需要横向比较多个候选时，使用模块内 drill-in 页面；比右侧详情栏更适合承载比较任务。</p>
+              </div>
+              <div class="filter-row"><button class="button">跳过</button><button class="button primary">合并到主资源</button></div>
+            </div>
+          </div>
+          <div class="merge-summary">
+            <strong>GitHub Stars 同步发现 3 条 URL 指向同一仓库</strong>
+            <p>选择一个主资源，Workbench 会合并来源、标签、备注和收藏状态；不会自动覆盖分类和领域。</p>
+          </div>
+          <div class="candidate-grid">
+            <article class="candidate is-primary">
+              <span class="tag">主资源</span>
+              <h3>2025Emma/vibe-coding-cn</h3>
+              <p>用户手动维护的记录，保留分类、领域、备注和收藏状态。</p>
+              <dl class="kv"><dt>来源</dt><dd>手动添加</dd><dt>分类</dt><dd>项目</dd><dt>标签</dt><dd>vibe coding, 中文</dd><dt>收藏</dt><dd class="star">已收藏</dd></dl>
+              <button class="button primary">选为主资源</button>
+            </article>
+            <article class="candidate">
+              <span class="summary-chip">GitHub</span>
+              <h3>2025Emma / vibe-coding-cn</h3>
+              <p>来自 GitHub Stars，本次同步新增来源元数据。</p>
+              <dl class="kv"><dt>来源</dt><dd>GitHub Stars</dd><dt>语言</dt><dd>Python</dd><dt>Stars</dt><dd>21810</dd><dt>更新</dt><dd>2026-06-23</dd></dl>
+              <button class="button">选为主资源</button>
+            </article>
+            <article class="candidate">
+              <span class="summary-chip">旧记录</span>
+              <h3>vibe coding cn</h3>
+              <p>早期手动条目，只有链接和备注，缺少来源元数据。</p>
+              <dl class="kv"><dt>来源</dt><dd>手动添加</dd><dt>分类</dt><dd>其他</dd><dt>标签</dt><dd>AI, 学习</dd><dt>收藏</dt><dd>未收藏</dd></dl>
+              <button class="button">选为主资源</button>
+            </article>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="workbench-redesign.js"></script>
+</body>
+</html>
+

@@ -9,7 +9,7 @@ import type { AppSettings, Project, Skill, SkillCategory, SkillMarketDetail, Ski
 import { SkillUpdatesView } from "./SkillUpdatesView";
 import { SkillsMarketView, type MarketInstallTask } from "./SkillsMarketView";
 import { buildMarketStats, localMarketDetail } from "./skillMarketFormatters";
-import { globalStatusLabel, skillMatchesStatusFilter, skillMatchesToolProjectFilter, syncMethodLabel } from "./skillFilters";
+import { globalStatusLabel, skillMatchesStatusFilter, skillMatchesToolProjectFilter } from "./skillFilters";
 
 let skillMarketRuntimeCache: { response: SkillMarketResponse; updatedAt: number } | null = null;
 const MARKET_DEFAULT_SEARCH_LIMIT = 100;
@@ -124,7 +124,6 @@ export function SkillsView({
       .catch((error) => setMarketError(String(error)));
   });
   const categories = ["全部分类", ...skillCategories.map((category) => category.name)];
-  const projectToolTargets = settings.toolTargets.filter((tool) => tool.supportsProjectScope);
   const visibleSkills = skills.filter((skill) => {
     const normalizedQuery = query.trim().toLowerCase();
     const matchesQuery =
@@ -510,44 +509,7 @@ export function SkillsView({
               {visibleSelectedSkill.globalToolStates.some((state) => state.status === "conflict") && (
                 <SkillConflictPanel skill={visibleSelectedSkill} settings={settings} onResolve={onResolve} />
               )}
-              <div className="setting-group">
-                <h3>项目启用</h3>
-                {projects.map((project) => (
-                  <div className="project-skill-row" key={project.id}>
-                    <div className="project-skill-head">
-                      <span><strong>{project.name}</strong><small>{project.path}</small></span>
-                      <SwitchControl
-                        checked={projectToolTargets.length > 0 && projectToolTargets.every((tool) =>
-                          visibleSelectedSkill.enabledProjects.some(
-                            (entry) => entry.projectPath === project.path && entry.tool === tool.key
-                          )
-                        )}
-                        onChange={(enabled) => onToggleProjectAll(project, enabled)}
-                        title={`${project.name} 全部工具启用`}
-                      />
-                    </div>
-                    <div className="project-tool-toggles">
-                      {projectToolTargets.map((tool) => {
-                        const enablement = visibleSelectedSkill.enabledProjects.find(
-                          (entry) => entry.projectPath === project.path && entry.tool === tool.key
-                        );
-                        const enabled = Boolean(enablement);
-                        return (
-                          <label key={tool.key} title={`${project.name} · ${tool.name}`}>
-                            <small>{tool.name}{enablement ? ` · ${syncMethodLabel(enablement.syncMethod)}` : ""}</small>
-                            <input
-                              type="checkbox"
-                              checked={enabled}
-                              onChange={(event) => onToggle(tool.key, event.target.checked, project)}
-                            />
-                            <span className="switch" />
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <SkillProjectEnablementSummary skill={visibleSelectedSkill} projects={projects} />
               <div className="file-block"><span>SKILL.md</span><code>{visibleSelectedSkill.skillPath}</code></div>
             </>
           ) : (
@@ -619,20 +581,50 @@ export function SkillsView({
   );
 }
 
-export function SwitchControl({
-  checked,
-  onChange,
-  title
-}: {
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-  title: string;
-}) {
+function SkillProjectEnablementSummary({ skill, projects }: { skill: Skill; projects: Project[] }) {
+  const enabledProjectPaths = new Set(skill.enabledProjects.map((entry) => entry.projectPath));
+  const enabledProjectCount = enabledProjectPaths.size;
+  const enabledToolCount = skill.enabledProjects.length;
+  const copySyncCount = skill.enabledProjects.filter((entry) => entry.syncMethod === "copy").length;
+  const knownEnabledProjects = projects.filter((project) => enabledProjectPaths.has(project.path));
+  const externalProjectCount = Math.max(0, enabledProjectCount - knownEnabledProjects.length);
+  const sampleProjects = knownEnabledProjects.slice(0, 3);
+
   return (
-    <label className="switch-control" title={title}>
-      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
-      <span className="switch" />
-    </label>
+    <div className="setting-group">
+      <h3>项目启用</h3>
+      <div className="inspector-summary">
+        <div className="inspector-summary-row">
+          <span>已启用项目</span>
+          <strong>{enabledProjectCount}</strong>
+        </div>
+        <div className="inspector-summary-row">
+          <span>项目级工具启用</span>
+          <strong>{enabledToolCount}</strong>
+        </div>
+        <div className="inspector-summary-row">
+          <span>Copy 同步</span>
+          <strong>{copySyncCount}</strong>
+        </div>
+        {externalProjectCount > 0 && (
+          <div className="inspector-summary-row">
+            <span>未在当前项目列表中</span>
+            <strong>{externalProjectCount}</strong>
+          </div>
+        )}
+        {sampleProjects.length > 0 && (
+          <div className="summary-list">
+            {sampleProjects.map((project) => (
+              <div key={project.id}>
+                <strong>{project.name}</strong>
+                <small>{project.path}</small>
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="note">项目级启用后续进入独立的 Skill 项目工作区管理，右侧详情只保留当前 Skill 的轻量摘要。</p>
+      </div>
+    </div>
   );
 }
 
