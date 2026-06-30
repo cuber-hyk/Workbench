@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Ban, ChevronDown, CircleAlert, CircleCheck, Download, FileText, FolderOpen, RefreshCcw, Settings, Trash2 } from "lucide-react";
+import { Ban, ChevronDown, CircleAlert, CircleCheck, Download, ExternalLink, FileText, FolderOpen, RefreshCcw, Settings, Trash2 } from "lucide-react";
 import { ActionGroup, Button, DetailHeader, IconButton, PaginationBar, Panel, SearchInput, StatusBadge, Toolbar } from "../../components/ui";
 import { DeleteMarketSkillDialog } from "../../components/dialogs/skills/DeleteMarketSkillDialog";
 import { workbenchApi } from "../../lib/api/workbenchApi";
@@ -61,6 +61,7 @@ export function SkillsView({
   onCategorySkill,
   onCreateCategorySkill,
   onResolve,
+  onOpenSource = (url) => void workbenchApi.openExternalLink(url),
   onDeleteSkill
 }: {
   skills: Skill[];
@@ -83,6 +84,7 @@ export function SkillsView({
   onCategorySkill: (directoryName: string, categoryId: string) => void;
   onCreateCategorySkill: (directoryName: string, name: string) => void;
   onResolve: (source: SkillVersionSource) => void;
+  onOpenSource?: (url: string) => void;
   onDeleteSkill: (skillId: string) => void;
 }) {
   const [activeSkillsTab, setActiveSkillsTab] = useState<"local" | "market" | "updates">("local");
@@ -506,6 +508,19 @@ export function SkillsView({
             <>
               <DetailHeader title={visibleSelectedSkill.name} />
               <p className="description">{visibleSelectedSkill.description}</p>
+              {visibleSelectedSkill.sourceUrl && (
+                <div className="form-grid">
+                  <label className="full">
+                    来源
+                    <span className="field-with-action">
+                      <input value={visibleSelectedSkill.sourceUrl} readOnly />
+                      <IconButton title="查看来源" onClick={() => onOpenSource(visibleSelectedSkill.sourceUrl)}>
+                        <ExternalLink size={15} />
+                      </IconButton>
+                    </span>
+                  </label>
+                </div>
+              )}
               {visibleSelectedSkill.globalToolStates.some((state) => state.status === "conflict") && (
                 <SkillConflictPanel skill={visibleSelectedSkill} settings={settings} onResolve={onResolve} />
               )}
@@ -547,7 +562,7 @@ export function SkillsView({
           onSelect={(item) => setSelectedMarketKey(`${item.source}/${item.skillId}`)}
           onInstall={handleMarketInstall}
           onUninstall={setDeletingMarketItem}
-          onOpenSource={(url) => void workbenchApi.openRadarLink(url)}
+          onOpenSource={onOpenSource}
         />
       )}
       {activeSkillsTab === "updates" && (

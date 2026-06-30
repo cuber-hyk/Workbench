@@ -301,7 +301,7 @@ pub(super) fn list_skill_source_records(
     let mut statement = connection
         .prepare(
             "SELECT directory_name, source, package_slug, repo_url, skill_path, installed_ref,
-                    installed_hash, remote_ref, last_checked_at, installed_at, updated_at
+                    installed_hash, remote_ref, last_checked_at, installed_at, updated_at, source_url
              FROM skill_sources
              ORDER BY directory_name",
         )
@@ -320,6 +320,7 @@ pub(super) fn list_skill_source_records(
                 last_checked_at: row.get(8)?,
                 installed_at: row.get(9)?,
                 updated_at: row.get(10)?,
+                source_url: row.get(11)?,
             })
         })
         .map_err(error_message)?
@@ -336,9 +337,9 @@ pub(super) fn upsert_skill_source_record(
         .execute(
             "INSERT INTO skill_sources(
                 directory_name, source, package_slug, repo_url, skill_path, installed_ref,
-                installed_hash, remote_ref, last_checked_at, installed_at, updated_at
+                installed_hash, remote_ref, last_checked_at, installed_at, updated_at, source_url
              )
-             VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+             VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?9)
              ON CONFLICT(directory_name) DO UPDATE SET
                 source = excluded.source,
                 package_slug = excluded.package_slug,
@@ -357,7 +358,8 @@ pub(super) fn upsert_skill_source_record(
                 record.skill_path,
                 record.installed_ref,
                 record.installed_hash,
-                record.remote_ref
+                record.remote_ref,
+                record.source_url
             ],
         )
         .map_err(error_message)?;
@@ -371,7 +373,7 @@ pub(super) fn source_record_for_directory(
     connection
         .query_row(
             "SELECT directory_name, source, package_slug, repo_url, skill_path, installed_ref,
-                    installed_hash, remote_ref, last_checked_at, installed_at, updated_at
+                    installed_hash, remote_ref, last_checked_at, installed_at, updated_at, source_url
              FROM skill_sources WHERE directory_name = ?1",
             [directory_name],
             |row| {
@@ -387,6 +389,7 @@ pub(super) fn source_record_for_directory(
                     last_checked_at: row.get(8)?,
                     installed_at: row.get(9)?,
                     updated_at: row.get(10)?,
+                    source_url: row.get(11)?,
                 })
             },
         )

@@ -163,6 +163,11 @@ fn import_github_skills_in(
                 source: "github".to_string(),
                 package_slug: github_package_slug(&request, &candidate.skill_path),
                 repo_url: format!("https://github.com/{}/{}", request.owner, request.repo),
+                source_url: github_skill_source_url(
+                    &request,
+                    &repository.revision,
+                    &candidate.skill_path,
+                ),
                 skill_path: candidate.skill_path.clone(),
                 installed_ref: github_installed_ref(&repository),
                 installed_hash: hash.clone(),
@@ -841,6 +846,25 @@ fn github_package_slug(request: &GithubImportRequest, skill_path: &str) -> Strin
     )
 }
 
+fn github_skill_source_url(
+    request: &GithubImportRequest,
+    revision: &str,
+    skill_path: &str,
+) -> String {
+    let base = format!(
+        "https://github.com/{}/{}/tree/{}",
+        request.owner,
+        request.repo,
+        encode_ref_path(revision)
+    );
+    let path = normalize_relative_path(skill_path);
+    if path.is_empty() {
+        base
+    } else {
+        format!("{base}/{}", encode_ref_path(&path))
+    }
+}
+
 fn github_installed_ref(repository: &PreparedGithubRepository) -> String {
     let prefix = if repository.fixed {
         if looks_like_commit(&repository.ref_name) {
@@ -1026,6 +1050,18 @@ mod tests {
         };
 
         assert_eq!(github_installed_ref(&repository), "branch:main@abc");
+    }
+
+    #[test]
+    fn builds_github_skill_source_urls_at_the_installed_revision() {
+        let request =
+            parse_github_skill_url("https://github.com/acme/skills/tree/main/packages/demo")
+                .unwrap();
+
+        assert_eq!(
+            github_skill_source_url(&request, "abc123", "packages/demo"),
+            "https://github.com/acme/skills/tree/abc123/packages/demo"
+        );
     }
 
     #[test]

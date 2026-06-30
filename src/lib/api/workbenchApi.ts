@@ -102,6 +102,7 @@ const previewUpdateStatuses: SkillUpdateStatus[] = [
       source: "skills_sh",
       packageSlug: "github/awesome-copilot/excalidraw-diagram-generator",
       repoUrl: "https://github.com/github/awesome-copilot",
+      sourceUrl: "",
       skillPath: "skills/excalidraw-diagram-generator",
       installedRef: "local-a84c2b7",
       installedHash: "local-a84c2b7",
@@ -182,6 +183,7 @@ export const workbenchApi = {
         id: projectId,
         name: projectName,
         path: projectPath,
+        sourceUrl: previewGithubSourceUrl(request.repoUrl),
         note: request.note.trim(),
         tags: request.tags.map((tag) => tag.trim()).filter(Boolean),
         archived: false,
@@ -311,7 +313,7 @@ export const workbenchApi = {
     }
     return markDataChangedAfter(invoke<RadarItem[]>("delete_radar_item", { id }));
   },
-  async openRadarLink(url: string) {
+  async openExternalLink(url: string) {
     if (!isTauri) {
       window.open(url, "_blank", "noopener,noreferrer");
       return;
@@ -921,6 +923,11 @@ function previewProjectNameFromRemote(repoUrl: string) {
     ? trimmed.slice(trimmed.lastIndexOf("/") + 1)
     : trimmed.split("/").pop() ?? "remote-project";
   return lastSegment.replace(/\.git$/i, "") || "remote-project";
+}
+
+function previewGithubSourceUrl(repoUrl: string) {
+  const match = repoUrl.trim().match(/^(?:https:\/\/github\.com\/|git@github\.com:)([^/]+)\/([^/#?]+?)(?:\.git)?\/?$/i);
+  return match ? `https://github.com/${match[1]}/${match[2]}` : "";
 }
 
 function previewRemoteProjectPath(request: RemoteProjectImportRequest) {

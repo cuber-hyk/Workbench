@@ -94,6 +94,7 @@ export function ProjectDialog({
       id: project?.id ?? createProjectId(trimmedName, trimmedPath),
       name: trimmedName,
       path: trimmedPath,
+      sourceUrl: project?.sourceUrl ?? "",
       note: note.trim(),
       tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean),
       archived: project?.archived ?? false,

@@ -27,6 +27,7 @@ const activeProject: Project = {
   id: "active",
   name: "Active Project",
   path: "E:\\Active",
+  sourceUrl: "",
   note: "active note",
   tags: ["Tauri"],
   archived: false,
@@ -45,6 +46,7 @@ const archivedProject: Project = {
   id: "archived",
   name: "Archived Project",
   path: "E:\\Archived",
+  sourceUrl: "",
   note: "archived note",
   tags: ["参考"],
   archived: true,
@@ -55,6 +57,7 @@ const secondActiveProject: Project = {
   id: "second",
   name: "Second Project",
   path: "E:\\Second",
+  sourceUrl: "",
   note: "second note",
   tags: ["Node"],
   archived: false,
@@ -200,6 +203,7 @@ const skillsForView: Skill[] = [
     directoryName: "global-codex",
     name: "global-codex",
     description: "Global Codex skill",
+    sourceUrl: "",
     categoryId: "security",
     category: "安全",
     skillPath: "C:\\Users\\dev\\.workbench\\skills\\global-codex\\SKILL.md",
@@ -217,6 +221,7 @@ const skillsForView: Skill[] = [
     directoryName: "project-claude-active",
     name: "project-claude-active",
     description: "Active project Claude skill",
+    sourceUrl: "",
     categoryId: "testing",
     category: "测试",
     skillPath: "C:\\Users\\dev\\.workbench\\skills\\project-claude-active\\SKILL.md",
@@ -234,6 +239,7 @@ const skillsForView: Skill[] = [
     directoryName: "project-codex-second",
     name: "project-codex-second",
     description: "Second project Codex skill",
+    sourceUrl: "",
     categoryId: "docs",
     category: "文档",
     skillPath: "C:\\Users\\dev\\.workbench\\skills\\project-codex-second\\SKILL.md",
@@ -251,6 +257,7 @@ const skillsForView: Skill[] = [
     directoryName: "disabled-skill",
     name: "disabled-skill",
     description: "Disabled skill",
+    sourceUrl: "",
     categoryId: "writing",
     category: "写作",
     skillPath: "C:\\Users\\dev\\.workbench\\skills\\disabled-skill\\SKILL.md",
@@ -454,6 +461,38 @@ describe("Workbench UI interactions", () => {
     await user.click(screen.getByRole("button", { name: "添加项目" }));
     await user.click(screen.getByRole("menuitem", { name: "GitHub/Gitee 导入" }));
     expect(onAddRemote).toHaveBeenCalledOnce();
+  });
+
+  it("shows the source action in project details only for trusted source URLs", async () => {
+    const user = userEvent.setup();
+    const onOpenSource = vi.fn();
+    const sourcedProject = {
+      ...activeProject,
+      sourceUrl: "https://github.com/acme/active"
+    };
+    render(
+      <ProjectsView
+        projects={[sourcedProject, secondActiveProject]}
+        selectedProject={sourcedProject}
+        projectLaunchTimes={{}}
+        loading={false}
+        loadError=""
+        onSelect={vi.fn()}
+        onOpenSource={onOpenSource}
+        onLaunch={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onAdd={vi.fn()}
+      />
+    );
+
+    const sourceAction = screen.getByRole("button", { name: "查看来源" });
+    expect(screen.getByDisplayValue(sourcedProject.sourceUrl)).toBeInTheDocument();
+
+    await user.click(sourceAction);
+
+    expect(onOpenSource).toHaveBeenCalledWith(sourcedProject.sourceUrl);
+    expect(within(screen.getByRole("group", { name: "Second Project 项目" })).queryByRole("button", { name: "查看来源" })).not.toBeInTheDocument();
   });
 
   it("paginates projects and selects the first project on the new page", async () => {
@@ -2204,6 +2243,44 @@ describe("Workbench UI interactions", () => {
     await user.selectOptions(screen.getByLabelText("按启用项目筛选 Skills"), activeProject.path);
     expect(screen.getByRole("group", { name: "project-claude-active Skill" })).toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "project-codex-second Skill" })).not.toBeInTheDocument();
+  });
+
+  it("shows the source action in skill details only for trusted source URLs", async () => {
+    const user = userEvent.setup();
+    const onOpenSource = vi.fn();
+    const sourcedSkill = {
+      ...skillsForView[0],
+      sourceUrl: "https://skills.sh/vercel-labs/skills/find-skills"
+    };
+    render(
+      <SkillsView
+        skills={[sourcedSkill, ...skillsForView.slice(1)]}
+        selectedSkill={sourcedSkill}
+        categories={skillCategoriesForView}
+        settings={skillsSettings}
+        projects={[activeProject, secondActiveProject]}
+        onSelect={vi.fn()}
+        onImport={vi.fn()}
+        onRefresh={vi.fn()}
+        onManageCategories={vi.fn()}
+        onToggle={vi.fn()}
+        onToggleSkillGlobal={vi.fn()}
+        onToggleProjectAll={vi.fn()}
+        onCategorySkill={vi.fn()}
+        onCreateCategorySkill={vi.fn()}
+        onResolve={vi.fn()}
+        onOpenSource={onOpenSource}
+        onDeleteSkill={vi.fn()}
+      />
+    );
+
+    const sourceAction = screen.getByRole("button", { name: "查看来源" });
+    expect(screen.getByDisplayValue(sourcedSkill.sourceUrl)).toBeInTheDocument();
+
+    await user.click(sourceAction);
+
+    expect(onOpenSource).toHaveBeenCalledWith(sourcedSkill.sourceUrl);
+    expect(within(screen.getByRole("group", { name: "project-claude-active Skill" })).queryByRole("button", { name: "查看来源" })).not.toBeInTheDocument();
   });
 
   it("disables the skills sync action while syncing", () => {

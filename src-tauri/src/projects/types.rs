@@ -6,6 +6,7 @@ pub struct ProjectRecord {
     pub id: String,
     pub name: String,
     pub path: String,
+    pub source_url: String,
     pub note: String,
     pub tags: Vec<String>,
     pub launch_configs: Vec<ProjectLaunchConfig>,

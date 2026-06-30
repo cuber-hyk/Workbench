@@ -849,6 +849,11 @@ function WorkbenchApp() {
             loadError={loadError}
             onSelect={setSelectedProjectId}
             onOpenDirectory={(project) => void openProjectDirectory(project)}
+            onOpenSource={(url) => {
+              void workbenchApi.openExternalLink(url).catch((error) => {
+                showToast(error instanceof Error ? error.message : String(error));
+              });
+            }}
             onOpenWithProfile={(project, profile) => void openProjectWithProfile(project, profile)}
             onLaunch={async (project) => {
               try {
@@ -917,7 +922,7 @@ function WorkbenchApp() {
             }}
             onOpenLogUrl={async (url) => {
               try {
-                await workbenchApi.openRadarLink(url);
+                await workbenchApi.openExternalLink(url);
               } catch (error) {
                 showToast(error instanceof Error ? error.message : String(error));
               }
@@ -941,6 +946,11 @@ function WorkbenchApp() {
             categories={skillCategories}
             settings={settings}
             projects={activeProjects}
+            onOpenSource={(url) => {
+              void workbenchApi.openExternalLink(url).catch((error) => {
+                showToast(error instanceof Error ? error.message : String(error));
+              });
+            }}
             onSelect={setSelectedSkillId}
             onImport={async (kind) => {
               try {
@@ -1066,7 +1076,7 @@ function WorkbenchApp() {
             }}
             onDelete={() => setActiveDialog("radar-delete")}
             onToggleFavorite={(item) => void toggleRadarFavorite(item)}
-            onOpenLink={(url) => void workbenchApi.openRadarLink(url).catch((error) => showToast(String(error)))}
+            onOpenLink={(url) => void workbenchApi.openExternalLink(url).catch((error) => showToast(String(error)))}
             syncingGithubStars={syncingGithubStars}
             onSyncGithubStars={() => void syncGithubStars()}
             onMergeDuplicateGroup={(groupId, primaryItemId) => void mergeRadarDuplicateGroup(groupId, primaryItemId)}

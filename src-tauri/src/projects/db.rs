@@ -20,6 +20,7 @@ pub(crate) fn open_database(workbench_root: &Path) -> ProjectResult<Connection> 
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
                 path TEXT NOT NULL UNIQUE,
+                source_url TEXT NOT NULL DEFAULT '',
                 note TEXT NOT NULL DEFAULT '',
                 tags_json TEXT NOT NULL DEFAULT '[]',
                 launch_command TEXT NOT NULL DEFAULT '',
@@ -62,6 +63,12 @@ pub(crate) fn open_database(workbench_root: &Path) -> ProjectResult<Connection> 
         "archived",
         "ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
     )?;
+    ensure_column(
+        &connection,
+        "projects",
+        "source_url",
+        "ALTER TABLE projects ADD COLUMN source_url TEXT NOT NULL DEFAULT ''",
+    )?;
     migrate_legacy_launch_configs(&connection)?;
     seed_default_project_open_profiles(&connection)?;
     Ok(connection)
@@ -71,7 +78,7 @@ pub(crate) fn load_projects(connection: &Connection) -> ProjectResult<Vec<Projec
     let mut statement = connection
         .prepare(
             "
-            SELECT id, name, path, note, tags_json, archived
+            SELECT id, name, path, source_url, note, tags_json, archived
             FROM projects
             ORDER BY lower(name)
             ",
@@ -79,16 +86,17 @@ pub(crate) fn load_projects(connection: &Connection) -> ProjectResult<Vec<Projec
         .map_err(error_message)?;
     let rows = statement
         .query_map([], |row| {
-            let tags_json: String = row.get(4)?;
+            let tags_json: String = row.get(5)?;
             let id: String = row.get(0)?;
             Ok(ProjectRecord {
                 launch_configs: load_launch_configs(connection, &id).unwrap_or_default(),
                 id,
                 name: row.get(1)?,
                 path: row.get(2)?,
-                note: row.get(3)?,
+                source_url: row.get(3)?,
+                note: row.get(4)?,
                 tags: serde_json::from_str(&tags_json).unwrap_or_default(),
-                archived: row.get::<_, i64>(5)? != 0,
+                archived: row.get::<_, i64>(6)? != 0,
             })
         })
         .map_err(error_message)?;
@@ -109,8 +117,8 @@ pub(crate) fn upsert_project(
     transaction
         .execute(
             "
-            INSERT INTO projects(id, name, path, note, tags_json, archived)
-            VALUES(?1, ?2, ?3, ?4, ?5, ?6)
+            INSERT INTO projects(id, name, path, source_url, note, tags_json, archived)
+            VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)
             ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 path = excluded.path,
@@ -123,6 +131,7 @@ pub(crate) fn upsert_project(
                 project.id,
                 project.name,
                 project.path,
+                project.source_url,
                 project.note,
                 tags_json,
                 if project.archived { 1_i64 } else { 0_i64 }
