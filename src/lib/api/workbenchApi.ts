@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { markLocalDataChanged } from "./dataBackupApi";
 import { projects, radarItems, settings, skillCategories, skills } from "./mockData";
-import type { CloseBehavior, CustomToolTargetInput, ExternalSkillCandidateGroup, ExternalSkillSyncResult, ExternalSkillSyncSelection, GitHubCliStatus, GitHubStarsSyncResult, GithubSkillImportInspection, GithubSkillImportSelection, GithubTokenStatus, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, ManagedTargetRebuildResult, ManagedTargetRebuildSelection, Project, ProjectImportProgress, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, RemoteProjectImportInspection, RemoteProjectImportRequest, RootSkillMigrationCandidate, SkillInstallProgress, SkillMarketDetail, SkillMarketItem, SkillMarketResponse, SkillUpdateProgress, SkillUpdateResult, SkillUpdateStatus, SkillVersionSource, SkillsRootMigrationState, SkillsState, ToolKey } from "../types/domain";
+import type { CloseBehavior, CustomToolTargetInput, ExternalSkillCandidateGroup, ExternalSkillSyncResult, ExternalSkillSyncSelection, GitHubCliStatus, GitHubStarsSyncResult, GithubSkillImportInspection, GithubSkillImportSelection, GithubTokenStatus, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, ManagedTargetRebuildResult, ManagedTargetRebuildSelection, Project, ProjectImportProgress, ProjectOpenProfile, ProjectSkillAction, ProjectSkillBatchEnableRequest, ProjectSkillOperationResult, ProjectSkillsState, RadarDuplicateGroup, RadarItem, RemoteProjectImportInspection, RemoteProjectImportRequest, RootSkillMigrationCandidate, SkillInstallProgress, SkillMarketDetail, SkillMarketItem, SkillMarketResponse, SkillUpdateProgress, SkillUpdateResult, SkillUpdateStatus, SkillVersionSource, SkillsRootMigrationState, SkillsState, ToolKey } from "../types/domain";
 
 const delay = async () => new Promise((resolve) => window.setTimeout(resolve, 80));
 const isTauri = "__TAURI_INTERNALS__" in window;
@@ -761,6 +761,55 @@ export const workbenchApi = {
       projectPath
     }));
   },
+  async inspectProjectSkills(projectName: string, projectPath: string) {
+    if (!isTauri) {
+      await delay();
+      return previewProjectSkills(projectName, projectPath);
+    }
+    return invoke<ProjectSkillsState>("inspect_project_skills", { projectName, projectPath });
+  },
+  async applyProjectSkillAction(
+    directoryName: string,
+    tool: ToolKey,
+    projectName: string,
+    projectPath: string,
+    action: ProjectSkillAction
+  ) {
+    if (!isTauri) {
+      await delay();
+      return {
+        directoryName,
+        tool,
+        status: action === "disable" ? "disabled" : action === "rebuild" ? "rebuilt" : action === "clear_record" ? "cleared" : "enabled",
+        syncMethod: action === "disable" || action === "clear_record" ? null : "copy",
+        backupPath: action === "rebuild" || action === "use_workbench" ? `${settings.workbenchRoot}\\backups\\skills\\${directoryName}` : null,
+        message: "预览模式已模拟执行"
+      } satisfies ProjectSkillOperationResult;
+    }
+    return markDataChangedAfter(invoke<ProjectSkillOperationResult>("apply_project_skill_action", {
+      directoryName,
+      tool,
+      projectName,
+      projectPath,
+      action
+    }));
+  },
+  async batchEnableProjectSkills(request: ProjectSkillBatchEnableRequest) {
+    if (!isTauri) {
+      await delay();
+      return request.directoryNames.flatMap((directoryName) =>
+        request.tools.map((tool) => ({
+          directoryName,
+          tool,
+          status: "enabled" as const,
+          syncMethod: "copy" as const,
+          backupPath: null,
+          message: "预览模式已模拟启用"
+        }))
+      ) satisfies ProjectSkillOperationResult[];
+    }
+    return markDataChangedAfter(invoke<ProjectSkillOperationResult[]>("batch_enable_project_skills", { request }));
+  },
   async setCloseBehavior(closeBehavior: CloseBehavior) {
     if (!isTauri) {
       settings.closeBehavior = closeBehavior;
@@ -899,6 +948,47 @@ export const workbenchApi = {
     return invoke<void>("open_skill_source_directory", { directoryName });
   }
 };
+
+function previewProjectSkills(projectName: string, projectPath: string): ProjectSkillsState {
+  const tools = settings.toolTargets.filter((tool) => tool.supportsProjectScope);
+  return {
+    projectName,
+    projectPath,
+    projectExists: true,
+    tools,
+    targets: skills.flatMap((skill, skillIndex) =>
+      tools.map((tool, toolIndex) => {
+        const status = skillIndex === 0 && toolIndex === 0
+          ? "managed_copy"
+          : skillIndex === 1 && toolIndex === 0
+            ? "stale_copy"
+            : skillIndex === 2 && toolIndex === 1
+              ? "conflict"
+              : "disabled";
+        return {
+          directoryName: skill.directoryName,
+          skillName: skill.name,
+          description: skill.description,
+          categoryId: skill.categoryId,
+          category: skill.category,
+          tool: tool.key,
+          toolName: tool.name,
+          targetPath: `${projectPath}\\.${tool.key}\\skills\\${skill.directoryName}`,
+          status,
+          syncMethod: status === "managed_copy" || status === "stale_copy" ? "copy" : null,
+          message: previewProjectSkillStatusMessage(status)
+        };
+      })
+    )
+  };
+}
+
+function previewProjectSkillStatusMessage(status: ProjectSkillsState["targets"][number]["status"]) {
+  if (status === "managed_copy") return "已通过 Copy 启用";
+  if (status === "stale_copy") return "Copy 副本与统一根目录内容不一致";
+  if (status === "conflict") return "项目目标已存在但未由 Workbench 管理";
+  return "未启用";
+}
 
 function uniqueCustomToolKey(name: string) {
   const base = (name

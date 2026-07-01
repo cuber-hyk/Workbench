@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Edit3, ExternalLink, FileText, FolderOpen, MonitorUp, Pause, Play, RefreshCcw, Square, Terminal, Trash2, X } from "lucide-react";
+import { ArrowLeft, Edit3, ExternalLink, FileText, FolderOpen, MonitorUp, Pause, Play, RefreshCcw, Sparkles, Square, Terminal, Trash2, X } from "lucide-react";
 import { ActionGroup, Button, DetailHeader, IconButton, PageHeader, PaginationBar, Panel, SearchInput, StatusBadge, TagList, Toolbar } from "../../components/ui";
-import type { LaunchRun, LaunchSession, Project, ProjectLaunchConfig, ProjectOpenProfile } from "../../lib/types/domain";
+import type { LaunchRun, LaunchSession, Project, ProjectLaunchConfig, ProjectOpenProfile, ProjectSkillAction, ProjectSkillOperationResult, ProjectSkillsState, ProjectSkillTarget, ToolKey } from "../../lib/types/domain";
 import { clampPage, DEFAULT_PAGE_SIZE, paginateItems } from "../../lib/ui/pagination";
 import { enabledLaunchConfigs, getProjectLaunchStatus, isActiveLaunchStatus, isProjectRunning } from "./launchState";
 import { ProjectAddMenu } from "./ProjectAddMenu";
+import { ProjectSkillsView } from "./ProjectSkillsView";
 
 export function ProjectsView({
   projects,
@@ -13,6 +14,11 @@ export function ProjectsView({
   launchRuns,
   launchRun,
   projectOpenProfiles = [],
+  projectSkillsState,
+  projectSkillsLoading = false,
+  projectSkillsError = "",
+  projectSkillsBusy = false,
+  projectSkillResults = [],
   loading,
   loadError,
   onSelect,
@@ -26,6 +32,12 @@ export function ProjectsView({
   onSyncLaunchRun = () => undefined,
   onOpenLogUrl = () => undefined,
   onClearLaunchRun = () => undefined,
+  onRefreshProjectSkills = () => undefined,
+  onApplyProjectSkillAction = () => undefined,
+  onBatchRebuildProjectSkills = () => undefined,
+  onBatchEnableProjectSkills = () => undefined,
+  onOpenProjectSkillPath = () => undefined,
+  onOpenProjectSkillSource = () => undefined,
   onEdit,
   onDelete,
   onAdd,
@@ -37,6 +49,11 @@ export function ProjectsView({
   launchRuns?: Record<string, LaunchRun>;
   launchRun?: LaunchRun | null;
   projectOpenProfiles?: ProjectOpenProfile[];
+  projectSkillsState?: ProjectSkillsState | null;
+  projectSkillsLoading?: boolean;
+  projectSkillsError?: string;
+  projectSkillsBusy?: boolean;
+  projectSkillResults?: ProjectSkillOperationResult[];
   loading: boolean;
   loadError: string;
   onSelect: (id: string) => void;
@@ -50,6 +67,12 @@ export function ProjectsView({
   onSyncLaunchRun?: (launchRunId: string) => void;
   onOpenLogUrl?: (url: string) => void;
   onClearLaunchRun?: (projectId: string) => void;
+  onRefreshProjectSkills?: () => void;
+  onApplyProjectSkillAction?: (target: ProjectSkillTarget, action: ProjectSkillAction) => void;
+  onBatchRebuildProjectSkills?: (targets: ProjectSkillTarget[]) => void;
+  onBatchEnableProjectSkills?: (directoryNames: string[], tools: ToolKey[]) => void;
+  onOpenProjectSkillPath?: (path: string) => void;
+  onOpenProjectSkillSource?: (directoryName: string) => void;
   onEdit: (project: Project) => void;
   onDelete: (project: Project) => void;
   onAdd: () => void;
@@ -59,6 +82,7 @@ export function ProjectsView({
   const [tagFilter, setTagFilter] = useState("全部标签");
   const [statusFilter, setStatusFilter] = useState("全部状态");
   const [launchLogProjectId, setLaunchLogProjectId] = useState("");
+  const [projectSkillsProjectId, setProjectSkillsProjectId] = useState("");
   const [openProfileProjectId, setOpenProfileProjectId] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
@@ -69,6 +93,7 @@ export function ProjectsView({
   const currentLaunchRuns = launchRuns ?? (launchRun ? { [launchRun.projectId]: launchRun } : {});
   const launchLogProject = projects.find((project) => project.id === launchLogProjectId);
   const launchLogRun = launchLogProject ? currentLaunchRuns[launchLogProject.id] ?? null : null;
+  const projectSkillsProject = projects.find((project) => project.id === projectSkillsProjectId);
   const visibleProjects = projects.filter((project) => {
     const normalizedQuery = query.trim().toLowerCase();
     const matchesQuery = !normalizedQuery
@@ -115,6 +140,26 @@ export function ProjectsView({
           onClearLaunchRun(launchLogProject.id);
           setLaunchLogProjectId("");
         }}
+      />
+    );
+  }
+
+  if (projectSkillsProject) {
+    return (
+      <ProjectSkillsWorkspacePage
+        project={projectSkillsProject}
+        state={projectSkillsState}
+        loading={projectSkillsLoading}
+        error={projectSkillsError}
+        busy={projectSkillsBusy}
+        results={projectSkillResults}
+        onBack={() => setProjectSkillsProjectId("")}
+        onRefresh={onRefreshProjectSkills}
+        onApplyAction={onApplyProjectSkillAction}
+        onBatchRebuild={onBatchRebuildProjectSkills}
+        onBatchEnable={onBatchEnableProjectSkills}
+        onOpenPath={onOpenProjectSkillPath}
+        onOpenSource={onOpenProjectSkillSource}
       />
     );
   }
@@ -302,6 +347,15 @@ export function ProjectsView({
                 <div><small>项目状态</small><strong>已记录</strong></div>
                 <div><small>启动方式</small><strong>内嵌启动会话</strong></div>
               </div>
+              <section className="project-skills-summary">
+                <span>
+                  <h3>项目 Skills</h3>
+                  <small>{projectSkillsSummary(projectSkillsState, detailProject)}</small>
+                </span>
+                <Button onClick={() => setProjectSkillsProjectId(detailProject.id)}>
+                  <Sparkles size={14} />管理项目 Skills
+                </Button>
+              </section>
               <LaunchItemsPanel
                 project={detailProject}
                 launchRun={selectedLaunchRun}
@@ -329,6 +383,85 @@ export function ProjectsView({
     </section>
   );
 }
+
+function ProjectSkillsWorkspacePage({
+  project,
+  state,
+  loading,
+  error,
+  busy,
+  results,
+  onBack,
+  onRefresh,
+  onApplyAction,
+  onBatchRebuild,
+  onBatchEnable,
+  onOpenPath,
+  onOpenSource
+}: {
+  project: Project;
+  state?: ProjectSkillsState | null;
+  loading: boolean;
+  error: string;
+  busy: boolean;
+  results: ProjectSkillOperationResult[];
+  onBack: () => void;
+  onRefresh: () => void;
+  onApplyAction: (target: ProjectSkillTarget, action: ProjectSkillAction) => void;
+  onBatchRebuild: (targets: ProjectSkillTarget[]) => void;
+  onBatchEnable: (directoryNames: string[], tools: ToolKey[]) => void;
+  onOpenPath: (path: string) => void;
+  onOpenSource: (directoryName: string) => void;
+}) {
+  return (
+    <section className="view project-skills-page">
+      <header className="launch-log-page-header">
+        <div className="launch-log-heading">
+          <span className="breadcrumb">项目 / {project.name} / 项目 Skills</span>
+          <div className="launch-log-title-row">
+            <h1>项目 Skills</h1>
+            <span className="launch-log-meta"><span>{project.path}</span></span>
+          </div>
+        </div>
+        <span className="launch-log-actions">
+          <Button onClick={onBack}><ArrowLeft size={14} />返回项目列表</Button>
+        </span>
+      </header>
+      <main className="project-skills-page-body">
+        <ProjectSkillsView
+          project={project}
+          state={state}
+          loading={loading}
+          error={error}
+          busy={busy}
+          results={results}
+          onRefresh={onRefresh}
+          onApplyAction={onApplyAction}
+          onBatchRebuild={onBatchRebuild}
+          onBatchEnable={onBatchEnable}
+          onOpenPath={onOpenPath}
+          onOpenSource={onOpenSource}
+        />
+      </main>
+    </section>
+  );
+}
+
+function projectSkillsSummary(state: ProjectSkillsState | null | undefined, project: Project) {
+  if (!state || state.projectPath !== project.path) return "点击进入独立工作区扫描当前项目。";
+  if (!state.projectExists) return "项目路径不存在，项目 Skills 当前只读。";
+  const enabledCount = state.targets.filter((target) => target.status === "managed_copy" || target.status === "managed_symlink").length;
+  const attentionCount = state.targets.filter((target) =>
+    target.status === "conflict"
+    || target.status === "stale_copy"
+    || target.status === "missing_target"
+    || target.status === "source_missing"
+  ).length;
+  if (attentionCount > 0) return `${enabledCount} 个启用目标，${attentionCount} 项需要处理。`;
+  if (enabledCount > 0) return `${enabledCount} 个项目级启用目标。`;
+  return "当前项目尚未启用项目级 Skills。";
+}
+
 function ProjectOpenProfileMenu({
   project,
   profiles,

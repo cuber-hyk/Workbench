@@ -13,7 +13,7 @@ import { SkillsRootMigrationDialog } from "./components/dialogs/skills/SkillsRoo
 import { AppUpdateProvider } from "./contexts/AppUpdateContext";
 import { getDiagnosticEnvironment } from "./lib/api/diagnosticsApi";
 import { workbenchApi } from "./lib/api/workbenchApi";
-import type { AppSettings, ExternalSkillCandidateGroup, LaunchSessionEvent, Project, ProjectImportProgress, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, RemoteProjectImportInspection, RemoteProjectImportRequest, Skill, SkillCategory, SkillMarketItem, SkillMarketResponse, SkillUpdateResult, SkillsRootMigrationState, SkillsState } from "./lib/types/domain";
+import type { AppSettings, ExternalSkillCandidateGroup, LaunchSessionEvent, Project, ProjectImportProgress, ProjectOpenProfile, ProjectSkillsState, RadarDuplicateGroup, RadarItem, RemoteProjectImportInspection, RemoteProjectImportRequest, Skill, SkillCategory, SkillMarketItem, SkillMarketResponse, SkillUpdateResult, SkillsRootMigrationState, SkillsState } from "./lib/types/domain";
 import { ProjectsView } from "./views/projects/ProjectsView";
 import { applyPendingLaunchEvents, markLaunchRunStopped, mergeLaunchRunSnapshots } from "./views/projects/launchState";
 import { RadarView } from "./views/radar/RadarView";
@@ -162,28 +162,28 @@ const expandedSkillsSettings: AppSettings = {
       key: "deveco",
       name: "DevEco Code",
       globalSkillsDir: "C:\\Users\\dev\\.config\\deveco\\skills",
-      supportsProjectScope: false,
+      supportsProjectScope: true,
       available: false
     },
     {
       key: "hermes",
       name: "Hermes",
       globalSkillsDir: "C:\\Users\\dev\\.hermes\\skills",
-      supportsProjectScope: false,
+      supportsProjectScope: true,
       available: false
     },
     {
       key: "kimi",
       name: "Kimi Code",
       globalSkillsDir: "C:\\Users\\dev\\.kimi-code\\skills",
-      supportsProjectScope: false,
+      supportsProjectScope: true,
       available: false
     },
     {
       key: "pi",
       name: "Pi Agent",
       globalSkillsDir: "C:\\Users\\dev\\.pi\\agent\\skills",
-      supportsProjectScope: false,
+      supportsProjectScope: true,
       available: false
     }
   ]
@@ -432,6 +432,149 @@ describe("Workbench UI interactions", () => {
     expect(screen.getByRole("group", { name: "Active Project 项目" })).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "Archived Project 项目" })).toBeInTheDocument();
     expect(screen.queryByLabelText("按归档状态筛选项目")).not.toBeInTheDocument();
+  });
+
+  it("manages project skills from the project detail workspace", async () => {
+    const user = userEvent.setup();
+    const onBatchEnableProjectSkills = vi.fn();
+    const onApplyProjectSkillAction = vi.fn();
+    const projectSkillsState: ProjectSkillsState = {
+      projectName: activeProject.name,
+      projectPath: activeProject.path,
+      projectExists: true,
+      tools: [
+        ...skillsSettings.toolTargets.slice(0, 2),
+        {
+          key: "my-agent",
+          name: "My Agent",
+          globalSkillsDir: "C:\\Users\\dev\\.my-agent\\skills",
+          supportsProjectScope: false,
+          available: true
+        }
+      ],
+      targets: [
+        {
+          directoryName: "security-review",
+          skillName: "security-review",
+          description: "Review security-sensitive changes.",
+          categoryId: "security",
+          category: "安全",
+          tool: "codex",
+          toolName: "Codex",
+          targetPath: "E:\\Active\\.codex\\skills\\security-review",
+          status: "disabled",
+          syncMethod: null,
+          message: "未启用"
+        },
+        {
+          directoryName: "security-review",
+          skillName: "security-review",
+          description: "Review security-sensitive changes.",
+          categoryId: "security",
+          category: "安全",
+          tool: "claude",
+          toolName: "Claude Code",
+          targetPath: "E:\\Active\\.claude\\skills\\security-review",
+          status: "managed_copy",
+          syncMethod: "copy",
+          message: "已通过 Copy 启用"
+        }
+      ]
+    };
+
+    render(
+      <ProjectsView
+        projects={[activeProject]}
+        selectedProject={activeProject}
+        projectLaunchTimes={{}}
+        projectSkillsState={projectSkillsState}
+        loading={false}
+        loadError=""
+        onSelect={vi.fn()}
+        onLaunch={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onAdd={vi.fn()}
+        onApplyProjectSkillAction={onApplyProjectSkillAction}
+        onBatchEnableProjectSkills={onBatchEnableProjectSkills}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: "管理项目 Skills" }));
+
+    expect(screen.getByText("项目 / Active Project / 项目 Skills")).toBeInTheDocument();
+    const codexTable = screen.getByRole("table", { name: "Codex 项目 Skills" });
+    expect(codexTable).toHaveTextContent("security-review");
+    expect(screen.getByRole("combobox", { name: "按项目 Skill 分类筛选" })).toHaveTextContent("安全");
+    expect(screen.getByLabelText("项目 Skill 详情")).toHaveTextContent("Codex");
+    await user.click(within(codexTable).getByRole("button", { name: "未启用" }));
+    expect(onApplyProjectSkillAction).toHaveBeenCalledWith(projectSkillsState.targets[0], "enable");
+    await user.click(screen.getByRole("button", { name: /Claude Code/ }));
+    expect(screen.getByRole("table", { name: "Claude Code 项目 Skills" })).toHaveTextContent("Copy");
+    expect(screen.getByLabelText("项目 Skill 详情")).toHaveTextContent("Claude Code");
+    expect(screen.queryByText("My Agent")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Codex/ }));
+    await user.click(screen.getByLabelText("选择 security-review"));
+    await user.click(screen.getByRole("button", { name: "批量启用" }));
+    await user.click(screen.getByRole("button", { name: "启用到 1 个工具" }));
+
+    expect(onBatchEnableProjectSkills).toHaveBeenCalledWith(["security-review"], ["codex"]);
+    await user.click(screen.getByRole("button", { name: "跨工具对比" }));
+    const projectSkillsMatrix = screen.getByRole("table", { name: "项目 Skills 矩阵" });
+    expect(projectSkillsMatrix).toHaveTextContent("security-review");
+    expect(projectSkillsMatrix).toHaveTextContent("安全");
+    expect(within(projectSkillsMatrix).getByRole("button", { name: "+ 启用" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Skill" })).toHaveClass("project-skill-sticky-cell");
+    await user.click(screen.getByRole("button", { name: "列 2/2" }));
+    expect(screen.getByRole("menu", { name: "项目级工具列" })).toHaveTextContent("Claude Code");
+    expect(screen.queryByText("My Agent")).not.toBeInTheDocument();
+  });
+
+  it("keeps project skills visible while refreshing existing state", async () => {
+    const user = userEvent.setup();
+    const projectSkillsState: ProjectSkillsState = {
+      projectName: activeProject.name,
+      projectPath: activeProject.path,
+      projectExists: true,
+      tools: [skillsSettings.toolTargets[0]],
+      targets: [
+        {
+          directoryName: "security-review",
+          skillName: "security-review",
+          description: "Review security-sensitive changes.",
+          categoryId: "security",
+          category: "安全",
+          tool: "codex",
+          toolName: "Codex",
+          targetPath: "E:\\Active\\.codex\\skills\\security-review",
+          status: "disabled",
+          syncMethod: null,
+          message: "未启用"
+        }
+      ]
+    };
+
+    render(
+      <ProjectsView
+        projects={[activeProject]}
+        selectedProject={activeProject}
+        projectLaunchTimes={{}}
+        projectSkillsState={projectSkillsState}
+        projectSkillsLoading={true}
+        loading={false}
+        loadError=""
+        onSelect={vi.fn()}
+        onLaunch={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onAdd={vi.fn()}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: "管理项目 Skills" }));
+
+    expect(screen.queryByText("正在扫描项目 Skills")).not.toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "Codex 项目 Skills" })).toHaveTextContent("security-review");
   });
 
   it("opens local or remote project import from the add menu", async () => {

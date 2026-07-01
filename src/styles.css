@@ -345,6 +345,125 @@ code { font-family: Consolas, monospace; }
 .command-box span { min-width: 0; overflow-wrap: anywhere; }
 .boundary-note { display: flex; gap: 10px; margin-top: 12px; padding: 12px; border-radius: 7px; background: var(--danger-bg); color: var(--danger-text); line-height: 1.55; }
 .boundary-note .status-dot { flex: 0 0 auto; margin-top: 6px; }
+.project-skills-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; margin: 12px 0; padding: 12px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.project-skills-summary span { display: grid; gap: 3px; min-width: 0; }
+.project-skills-summary h3 { margin: 0; color: var(--muted); font-size: 11px; }
+.project-skills-summary small { color: var(--muted); font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
+.project-skills-summary .button { width: auto; flex: 0 0 auto; }
+.project-skills-page { gap: 0; min-height: 0; padding: 0; background: var(--panel); }
+.project-skills-page-body { display: grid; flex: 1 1 auto; min-height: 0; padding: 16px; overflow: hidden; }
+.project-skills-page .project-skills-view { height: 100%; min-height: 0; }
+.project-skills-page .project-skills-view .toolbar { margin: 0 -16px; padding-left: 16px; padding-right: 16px; }
+.project-skills-page .project-skills-matrix { max-height: none; }
+.project-skills-view { display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 0; min-width: 0; min-height: 0; }
+.project-skills-view .toolbar { flex-wrap: nowrap; margin: 0 -16px; padding-left: 16px; padding-right: 16px; overflow-x: auto; }
+.project-skills-view .toolbar .search { flex: 1 1 280px; min-width: 220px; }
+.project-skills-view .toolbar select { width: 132px; min-width: 118px; }
+.project-skills-view .toolbar .button { width: auto; min-width: 96px; padding-left: 12px; padding-right: 12px; white-space: nowrap; }
+.project-skills-view .toolbar .button.primary { min-width: 108px; }
+.project-skills-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: center; min-width: 0; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.project-skills-toolbar > span:first-child { display: grid; gap: 3px; min-width: 0; }
+.project-skills-toolbar-summary { white-space: nowrap; }
+.project-skills-toolbar small { color: var(--muted); overflow-wrap: anywhere; }
+.project-tool-column-picker { position: relative; display: inline-flex; }
+.project-tool-column-popover { position: absolute; top: calc(100% + 6px); right: 0; z-index: 10; display: grid; gap: 6px; width: 360px; max-height: min(440px, calc(100vh - 220px)); padding: 10px; overflow: auto; border: 1px solid var(--border); border-radius: 7px; background: var(--panel); box-shadow: var(--shadow); }
+.project-tool-column-popover > strong { padding: 2px 2px 6px; color: var(--muted); font-size: 11px; }
+.project-tool-column-row { display: grid; grid-template-columns: minmax(0, 1fr) 72px; gap: 8px; align-items: center; min-height: 34px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; }
+.project-tool-column-row > span:first-child { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.project-tool-column-row img,
+.project-tool-column-row > span:first-child > span,
+.project-skill-tool-head img,
+.project-skill-tool-head > span { width: 18px; height: 18px; border-radius: 5px; object-fit: contain; }
+.project-tool-column-row > span:first-child > span,
+.project-skill-tool-head > span { display: inline-flex; align-items: center; justify-content: center; background: var(--accent-soft); color: var(--accent); font-size: 9px; font-weight: 800; }
+.project-tool-column-row b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-tool-column-row label { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; font-weight: 700; }
+.project-skills-workspace { display: grid; gap: 0; min-height: 0; height: 100%; overflow: hidden; border: 1px solid var(--border); border-radius: 7px; background: color-mix(in srgb, var(--panel), var(--bg) 12%); }
+.project-skills-workspace.tool-mode { grid-template-columns: 180px minmax(0, 1fr) minmax(280px, 300px); }
+.project-skills-workspace.matrix-mode { grid-template-columns: minmax(0, 1fr) minmax(280px, 300px); }
+.project-tools-sidebar { display: grid; align-content: start; gap: 10px; min-width: 0; min-height: 0; height: 100%; padding: 12px; overflow: auto; border-right: 1px solid var(--border); background: var(--panel); }
+.project-tools-sidebar header { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); }
+.project-tools-sidebar header strong { color: var(--text); }
+.project-tool-list { display: grid; gap: 6px; min-width: 0; }
+.project-tool-list button { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 9px; align-items: center; width: 100%; min-height: 44px; padding: 8px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
+.project-tool-list button:hover,
+.project-tool-list button.selected { border-color: color-mix(in srgb, var(--accent), transparent 62%); background: var(--accent-soft); }
+.project-tool-list img,
+.project-tool-list button > svg,
+.project-tool-list button > span:first-child { width: 20px; height: 20px; border-radius: 5px; object-fit: contain; }
+.project-tool-list button > span:last-child { display: grid; gap: 2px; min-width: 0; }
+.project-tool-list strong,
+.project-tool-list small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-tool-list small { color: var(--muted); font-size: 10px; }
+.project-tool-skill-table { min-width: 0; min-height: 0; height: 100%; overflow: auto; background: color-mix(in srgb, var(--panel), var(--bg) 12%); scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--muted), transparent 42%) transparent; }
+.project-tool-skill-row { display: grid; grid-template-columns: minmax(320px, 1fr) 96px 92px; align-items: center; width: 100%; min-width: 540px; min-height: 54px; padding: 0; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text); text-align: left; }
+.project-tool-skill-row:not(.project-tool-skill-head) { cursor: pointer; }
+.project-tool-skill-row:not(.project-tool-skill-head):hover,
+.project-tool-skill-row.selected { background: var(--accent-soft); }
+.project-tool-skill-row:last-child { border-bottom: 0; }
+.project-tool-skill-row > span,
+.project-tool-skill-row > code { min-width: 0; padding: 10px 12px; overflow-wrap: anywhere; }
+.project-tool-skill-head { position: sticky; top: 0; z-index: 2; min-height: 38px; background: var(--panel); color: var(--muted); font-size: 11px; font-weight: 800; }
+.project-tool-skill-name { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 9px; align-items: center; }
+.project-tool-skill-name > span,
+.project-tool-skill-row > span:nth-child(2) { display: grid; gap: 4px; min-width: 0; }
+.project-tool-skill-name strong { line-height: 1.25; overflow-wrap: anywhere; }
+.project-tool-skill-name b { color: var(--accent); font-weight: 700; }
+.project-tool-skill-name small,
+.project-tool-skill-row > span:nth-child(2) small { display: -webkit-box; color: var(--muted); font-size: 11px; line-height: 1.35; overflow: hidden; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.project-status-action { display: inline-flex; align-items: center; justify-content: center; min-height: 26px; padding: 0 10px; border: 1px solid color-mix(in srgb, var(--muted), transparent 62%); border-radius: 999px; background: color-mix(in srgb, var(--panel), var(--bg) 12%); color: var(--muted); font-size: 12px; font-weight: 800; cursor: pointer; }
+.project-status-action:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent), transparent 86%); }
+.project-status-action.enabled { border-color: color-mix(in srgb, var(--accent), transparent 58%); background: var(--accent-soft); color: var(--accent); }
+.project-status-action.compact-disabled { min-height: 24px; padding: 0 8px; border-color: transparent; background: transparent; color: color-mix(in srgb, var(--accent), var(--muted) 28%); }
+.project-status-action.compact-disabled:hover { border-color: color-mix(in srgb, var(--accent), transparent 68%); background: color-mix(in srgb, var(--accent), transparent 90%); }
+.project-status-action:disabled { opacity: .55; cursor: not-allowed; }
+.project-skills-matrix { min-width: 0; min-height: 0; height: 100%; overflow: auto; background: color-mix(in srgb, var(--panel), var(--bg) 16%); scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--muted), transparent 42%) transparent; }
+.project-skills-row { display: grid; grid-template-columns: minmax(240px, 1.35fr) repeat(3, minmax(128px, .8fr)); min-width: 760px; border-bottom: 1px solid var(--border); }
+.project-skills-row:last-child { border-bottom: 0; }
+.project-skills-head { position: sticky; top: 0; z-index: 2; min-height: 38px; background: var(--panel); color: var(--muted); font-size: 11px; font-weight: 800; }
+.project-skills-head span { display: flex; align-items: center; gap: 7px; padding: 0 12px; border-right: 1px solid var(--border); }
+.project-skill-sticky-cell { position: sticky; left: 0; z-index: 1; background: var(--panel); }
+.project-skills-head .project-skill-sticky-cell { z-index: 3; }
+.project-skill-name-cell { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 9px; align-items: center; min-width: 0; padding: 12px; border-right: 1px solid var(--border); }
+.project-skill-name-cell span { display: grid; gap: 4px; min-width: 0; }
+.project-skill-name-cell strong { line-height: 1.25; overflow-wrap: anywhere; }
+.project-skill-name-cell small { display: -webkit-box; color: var(--muted); font-size: 11px; line-height: 1.35; overflow: hidden; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.project-skill-name-cell b { color: var(--accent); font-weight: 700; }
+.project-skill-cell { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 8px; min-width: 0; min-height: 72px; padding: 10px 11px; border-right: 1px solid var(--border); cursor: pointer; }
+.project-skill-cell:last-child { border-right: 0; }
+.project-skill-cell:hover,
+.project-skill-cell.selected { background: var(--accent-soft); }
+.project-skill-cell .project-status-action { justify-self: start; }
+.project-skill-cell small { color: var(--muted); font-size: 11px; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-skill-inspector { display: grid; align-content: start; gap: 14px; min-width: 0; min-height: 0; height: 100%; padding: 14px; overflow: auto; border-left: 1px solid var(--border); background: color-mix(in srgb, var(--panel), var(--bg) 12%); }
+.project-tool-skill-table::-webkit-scrollbar,
+.project-skills-matrix::-webkit-scrollbar { display: block; width: 10px; height: 10px; }
+.project-tool-skill-table::-webkit-scrollbar-track,
+.project-skills-matrix::-webkit-scrollbar-track { background: transparent; }
+.project-tool-skill-table::-webkit-scrollbar-thumb,
+.project-skills-matrix::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 999px; background: color-mix(in srgb, var(--muted), transparent 42%); background-clip: padding-box; }
+.project-tool-skill-table::-webkit-scrollbar-thumb:hover,
+.project-skills-matrix::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--muted), transparent 20%); background-clip: padding-box; }
+.project-skill-inspector header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.project-skill-inspector header span { display: grid; gap: 3px; min-width: 0; }
+.project-skill-inspector h2 { margin: 0; overflow-wrap: anywhere; font-size: 20px; }
+.project-skill-inspector p { margin: 0; color: var(--muted); line-height: 1.5; overflow-wrap: anywhere; }
+.project-skill-inspector-fields { display: grid; gap: 0; border-top: 1px solid var(--border); }
+.project-skill-inspector-fields div { display: grid; gap: 4px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.project-skill-inspector-fields small { color: var(--muted); font-size: 10px; font-weight: 700; }
+.project-skill-inspector-fields strong,
+.project-skill-inspector-fields code { min-width: 0; color: var(--text); overflow-wrap: anywhere; }
+.project-skill-inspector-actions { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 8px; }
+.project-skill-inspector-actions .button { width: auto; min-height: 32px; }
+.project-skill-inspector-actions .icon-button { width: 32px; height: 32px; }
+.project-skill-results { max-height: 180px; }
+.project-batch-tool-list { display: grid; gap: 8px; }
+.project-batch-tool-list label { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; }
+.project-batch-tool-list label > span { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.project-batch-tool-list img,
+.project-batch-tool-list label > span > span { width: 20px; height: 20px; border-radius: 5px; object-fit: contain; }
+.project-batch-tool-list label > span > span { display: inline-flex; align-items: center; justify-content: center; background: var(--accent-soft); color: var(--accent); font-size: 9px; font-weight: 800; }
+.project-batch-tool-list strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .launch-items-panel { display: grid; gap: 10px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
 .launch-items-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .launch-items-panel > header span { display: grid; gap: 3px; min-width: 0; }

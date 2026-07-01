@@ -43,7 +43,7 @@ import { applyLaunchSessionEvent, applyPendingLaunchEvents, enabledLaunchConfigs
 import { DeleteRadarDialog, RadarDialog, RadarView } from "./views/radar/RadarView";
 import { clearSkillMarketRuntimeCache, SkillsView } from "./views/skills/SkillsView";
 import type { MarketInstallTask } from "./views/skills/SkillsMarketView";
-import type { AppSettings, CloseBehavior, CustomToolTargetInput, ExternalSkillCandidateGroup, ExternalSkillSyncResult, ExternalSkillSyncSelection, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, ManagedTargetRebuildResult, ManagedTargetRebuildSelection, Project, ProjectImportProgress, ProjectOpenProfile, RadarDuplicateGroup, RadarItem, RemoteProjectImportRequest, Skill, SkillCategory, SkillMarketItem, SkillsRootMigrationState, ToolKey, ViewKey } from "./lib/types/domain";
+import type { AppSettings, CloseBehavior, CustomToolTargetInput, ExternalSkillCandidateGroup, ExternalSkillSyncResult, ExternalSkillSyncSelection, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, ManagedTargetRebuildResult, ManagedTargetRebuildSelection, Project, ProjectImportProgress, ProjectOpenProfile, ProjectSkillAction, ProjectSkillOperationResult, ProjectSkillsState, ProjectSkillTarget, RadarDuplicateGroup, RadarItem, RemoteProjectImportRequest, Skill, SkillCategory, SkillMarketItem, SkillsRootMigrationState, ToolKey, ViewKey } from "./lib/types/domain";
 
 const views: Array<{ key: ViewKey; label: string; icon: JSX.Element }> = [
   { key: "projects", label: "项目", icon: <Box size={16} /> },
@@ -123,6 +123,11 @@ function WorkbenchApp() {
   const [selectedRadarId, setSelectedRadarId] = useState("mcp");
   const [projectLaunchTimes, setProjectLaunchTimes] = useState<Record<string, string>>({});
   const [launchRuns, setLaunchRuns] = useState<Record<string, LaunchRun>>({});
+  const [projectSkillsState, setProjectSkillsState] = useState<ProjectSkillsState | null>(null);
+  const [projectSkillsLoading, setProjectSkillsLoading] = useState(false);
+  const [projectSkillsError, setProjectSkillsError] = useState("");
+  const [projectSkillsBusy, setProjectSkillsBusy] = useState(false);
+  const [projectSkillResults, setProjectSkillResults] = useState<ProjectSkillOperationResult[]>([]);
   const pendingLaunchEventsRef = useRef<Record<string, LaunchSessionEvent[]>>({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -253,6 +258,107 @@ function WorkbenchApp() {
   const editingCustomTool = toolTargets.find((tool) => tool.key === editingCustomToolKey && tool.source === "custom");
   const deletingCustomTool = toolTargets.find((tool) => tool.key === deleteCustomToolKey && tool.source === "custom");
   const selectedRadar = radarItems.find((item) => item.id === selectedRadarId) ?? radarItems[0];
+
+  const refreshProjectSkills = useCallback(async (project = selectedProject) => {
+    if (!project) {
+      setProjectSkillsState(null);
+      return;
+    }
+    setProjectSkillsLoading(true);
+    setProjectSkillsError("");
+    try {
+      const state = await workbenchApi.inspectProjectSkills(project.name, project.path);
+      setProjectSkillsState(state);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setProjectSkillsError(message);
+      showToast(message, { tone: "danger" });
+    } finally {
+      setProjectSkillsLoading(false);
+    }
+  }, [selectedProject?.id, selectedProject?.name, selectedProject?.path]);
+
+  useEffect(() => {
+    setProjectSkillResults([]);
+    void refreshProjectSkills(selectedProject);
+  }, [refreshProjectSkills, selectedProject?.id]);
+
+  async function applyProjectSkillAction(target: ProjectSkillTarget, action: ProjectSkillAction) {
+    if (!selectedProject || projectSkillsBusy) return;
+    if (action === "disable" && !window.confirm(`停用 ${target.skillName} / ${target.toolName}？`)) return;
+    if (action === "rebuild" && !window.confirm(`重建 ${target.skillName} / ${target.toolName}？旧目标会先备份。`)) return;
+    if (action === "use_workbench" && !window.confirm(`使用统一根目录版本接管 ${target.skillName} / ${target.toolName}？现有目标会先备份。`)) return;
+    if (action === "clear_record" && !window.confirm(`清理 ${target.skillName} / ${target.toolName} 的失效启用记录？`)) return;
+    setProjectSkillsBusy(true);
+    try {
+      const result = await workbenchApi.applyProjectSkillAction(
+        target.directoryName,
+        target.tool,
+        selectedProject.name,
+        selectedProject.path,
+        action
+      );
+      setProjectSkillResults([result]);
+      showToast(result.message, { tone: result.status === "failed" || result.status === "conflict" ? "warning" : "success" });
+      await refreshProjectSkills(selectedProject);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error), { tone: "danger" });
+    } finally {
+      setProjectSkillsBusy(false);
+    }
+  }
+
+  async function batchEnableProjectSkills(directoryNames: string[], tools: ToolKey[]) {
+    if (!selectedProject || projectSkillsBusy || directoryNames.length === 0 || tools.length === 0) return;
+    setProjectSkillsBusy(true);
+    try {
+      const results = await workbenchApi.batchEnableProjectSkills({
+        projectName: selectedProject.name,
+        projectPath: selectedProject.path,
+        directoryNames,
+        tools
+      });
+      setProjectSkillResults(results);
+      const failedCount = results.filter((result) => result.status === "failed" || result.status === "conflict").length;
+      showToast(
+        failedCount > 0 ? `批量启用完成，${failedCount} 项需要处理` : `批量启用完成：${results.length} 项`,
+        { tone: failedCount > 0 ? "warning" : "success" }
+      );
+      await refreshProjectSkills(selectedProject);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error), { tone: "danger" });
+    } finally {
+      setProjectSkillsBusy(false);
+    }
+  }
+
+  async function batchRebuildProjectSkills(targets: ProjectSkillTarget[]) {
+    if (!selectedProject || projectSkillsBusy || targets.length === 0) return;
+    if (!window.confirm(`重建 ${targets.length} 个项目级 Skill 目标？旧目标会先备份。`)) return;
+    setProjectSkillsBusy(true);
+    try {
+      const results = await Promise.all(targets.map((target) =>
+        workbenchApi.applyProjectSkillAction(
+          target.directoryName,
+          target.tool,
+          selectedProject.name,
+          selectedProject.path,
+          "rebuild"
+        )
+      ));
+      setProjectSkillResults(results);
+      const failedCount = results.filter((result) => result.status === "failed" || result.status === "conflict").length;
+      showToast(
+        failedCount > 0 ? `重建完成，${failedCount} 项需要处理` : `重建完成：${results.length} 项`,
+        { tone: failedCount > 0 ? "warning" : "success" }
+      );
+      await refreshProjectSkills(selectedProject);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error), { tone: "danger" });
+    } finally {
+      setProjectSkillsBusy(false);
+    }
+  }
 
   function showToast(message: string, options?: { actionLabel?: string; onAction?: () => void; duration?: number; tone?: ToastState["tone"] }) {
     if (toastTimerRef.current) {
@@ -845,6 +951,11 @@ function WorkbenchApp() {
             projectLaunchTimes={projectLaunchTimes}
             launchRuns={launchRuns}
             projectOpenProfiles={settings?.projectOpenProfiles ?? []}
+            projectSkillsState={projectSkillsState}
+            projectSkillsLoading={projectSkillsLoading}
+            projectSkillsError={projectSkillsError}
+            projectSkillsBusy={projectSkillsBusy}
+            projectSkillResults={projectSkillResults}
             loading={loading}
             loadError={loadError}
             onSelect={setSelectedProjectId}
@@ -932,6 +1043,16 @@ function WorkbenchApp() {
                 const { [projectId]: _removed, ...remaining } = current;
                 return remaining;
               });
+            }}
+            onRefreshProjectSkills={() => void refreshProjectSkills(selectedProject)}
+            onApplyProjectSkillAction={(target, action) => void applyProjectSkillAction(target, action)}
+            onBatchRebuildProjectSkills={(targets) => void batchRebuildProjectSkills(targets)}
+            onBatchEnableProjectSkills={(directoryNames, tools) => void batchEnableProjectSkills(directoryNames, tools)}
+            onOpenProjectSkillPath={(path) => {
+              void workbenchApi.openLocalPath(path).catch((error) => showToast(error instanceof Error ? error.message : String(error), { tone: "warning" }));
+            }}
+            onOpenProjectSkillSource={(directoryName) => {
+              void workbenchApi.openSkillSourceDirectory(directoryName).catch((error) => showToast(error instanceof Error ? error.message : String(error), { tone: "warning" }));
             }}
             onEdit={(project) => openProjectDialog(project.id)}
             onDelete={(project) => promptDeleteProject(project, "manual")}

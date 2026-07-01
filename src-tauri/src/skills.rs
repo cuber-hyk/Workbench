@@ -15,6 +15,7 @@ mod github_import;
 mod importer;
 mod market;
 mod migration;
+mod project_scope;
 mod tool_targets;
 mod types;
 
@@ -27,6 +28,7 @@ use self::github_import::*;
 use self::importer::*;
 use self::market::*;
 use self::migration::*;
+use self::project_scope::*;
 use self::tool_targets::*;
 use self::types::*;
 
@@ -478,6 +480,32 @@ pub fn get_skills_state() -> SkillResult<SkillsState> {
         skills: enrich_skills(&connection, skills)?,
         categories: list_skill_categories(&connection)?,
     })
+}
+
+#[tauri::command]
+pub fn inspect_project_skills(
+    project_name: String,
+    project_path: String,
+) -> SkillResult<ProjectSkillsState> {
+    inspect_project_skills_state(project_name, project_path)
+}
+
+#[tauri::command]
+pub fn apply_project_skill_action(
+    directory_name: String,
+    tool: String,
+    project_name: String,
+    project_path: String,
+    action: ProjectSkillAction,
+) -> SkillResult<ProjectSkillOperationResult> {
+    apply_project_skill_action_state(directory_name, tool, project_name, project_path, action)
+}
+
+#[tauri::command]
+pub fn batch_enable_project_skills(
+    request: ProjectSkillBatchEnableRequest,
+) -> SkillResult<Vec<ProjectSkillOperationResult>> {
+    batch_enable_project_skills_state(request)
 }
 
 #[tauri::command]
@@ -1662,8 +1690,25 @@ mod tests {
     }
 
     #[test]
-    fn rejects_project_scope_for_global_only_tools() {
-        let result = tool_target_path("deveco", Some("E:\\Project"));
+    fn resolves_registered_project_tool_paths_for_all_builtins() {
+        assert!(TOOL_TARGET_DEFINITIONS
+            .iter()
+            .all(|definition| definition.project_path.is_some()));
+
+        assert!(tool_target_path("deveco", Some("E:\\Project"))
+            .unwrap()
+            .ends_with(Path::new(".deveco").join("skills")));
+        assert!(tool_target_path("kimi", Some("E:\\Project"))
+            .unwrap()
+            .ends_with(Path::new(".kimi-code").join("skills")));
+        assert!(tool_target_path("goose", Some("E:\\Project"))
+            .unwrap()
+            .ends_with(Path::new(".goose").join("skills")));
+    }
+
+    #[test]
+    fn rejects_project_scope_for_unknown_or_custom_tools() {
+        let result = tool_target_path("custom-agent", Some("E:\\Project"));
 
         assert!(result.unwrap_err().contains("工具不支持项目级 Skills"));
     }
