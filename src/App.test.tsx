@@ -2798,7 +2798,7 @@ describe("Workbench UI interactions", () => {
     expect(onToggleSkillGlobal).toHaveBeenCalledWith("global-codex", "pi", true);
   });
 
-  it("summarizes project enablement in the skill inspector", () => {
+  it("keeps project enablement summary out of the skill inspector", () => {
     render(
       <SkillsView
         skills={skillsForView}
@@ -2820,11 +2820,11 @@ describe("Workbench UI interactions", () => {
       />
     );
 
-    expect(screen.getByText("已启用项目")).toBeInTheDocument();
-    expect(screen.getByText("项目级工具启用")).toBeInTheDocument();
-    expect(screen.getByText("Copy 同步")).toBeInTheDocument();
-    expect(screen.getAllByText("Active Project").length).toBeGreaterThan(1);
-    expect(screen.getByText(activeProject.path)).toBeInTheDocument();
+    expect(screen.queryByText("已启用项目")).not.toBeInTheDocument();
+    expect(screen.queryByText("项目级工具启用")).not.toBeInTheDocument();
+    expect(screen.queryByText("Copy 同步")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Active Project")).toHaveLength(1);
+    expect(screen.queryByText(activeProject.path)).not.toBeInTheDocument();
     expect(screen.queryByTitle("Active Project · Codex")).not.toBeInTheDocument();
     expect(screen.queryByTitle("Active Project · DevEco Code")).not.toBeInTheDocument();
   });

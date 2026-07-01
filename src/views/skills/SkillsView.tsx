@@ -430,7 +430,7 @@ export function SkillsView({
           </Toolbar>
           <div className="split-layout skills-layout">
         <Panel className="list-panel">
-          <div className="table-head skills-grid"><span>Skill</span><span>分类</span><span>全局启用</span><span>项目启用</span><span className="table-action-heading">操作</span></div>
+          <div className="table-head skills-grid"><span>Skill</span><span>分类</span><span>全局启用</span><span className="table-action-heading">操作</span></div>
           <div className="list-body">
             {pagedSkills.map((skill) => (
               <div
@@ -460,7 +460,6 @@ export function SkillsView({
                   onExpandedChange={(expanded) => setExpandedToolSkillId(expanded ? skill.id : "")}
                   onToggle={(tool, enabled) => onToggleSkillGlobal(skill.directoryName, tool, enabled)}
                 />
-                <span>{skill.enabledProjects.length ? `${skill.enabledProjects.length} 个项目` : "未启用"}</span>
                 <ActionGroup align="start" className="row-actions table-actions">
                   <IconButton
                     title="打开 SKILL.md"
@@ -524,13 +523,12 @@ export function SkillsView({
               {visibleSelectedSkill.globalToolStates.some((state) => state.status === "conflict") && (
                 <SkillConflictPanel skill={visibleSelectedSkill} settings={settings} onResolve={onResolve} />
               )}
-              <SkillProjectEnablementSummary skill={visibleSelectedSkill} projects={projects} />
               <div className="file-block"><span>SKILL.md</span><code>{visibleSelectedSkill.skillPath}</code></div>
             </>
           ) : (
             <div className="empty-state detail-empty">
               <strong>选择一个 Skill</strong>
-              <small>查看项目启用状态和文件路径。</small>
+              <small>查看文件路径。</small>
             </div>
           )}
         </Panel>
@@ -593,53 +591,6 @@ export function SkillsView({
         />
       )}
     </section>
-  );
-}
-
-function SkillProjectEnablementSummary({ skill, projects }: { skill: Skill; projects: Project[] }) {
-  const enabledProjectPaths = new Set(skill.enabledProjects.map((entry) => entry.projectPath));
-  const enabledProjectCount = enabledProjectPaths.size;
-  const enabledToolCount = skill.enabledProjects.length;
-  const copySyncCount = skill.enabledProjects.filter((entry) => entry.syncMethod === "copy").length;
-  const knownEnabledProjects = projects.filter((project) => enabledProjectPaths.has(project.path));
-  const externalProjectCount = Math.max(0, enabledProjectCount - knownEnabledProjects.length);
-  const sampleProjects = knownEnabledProjects.slice(0, 3);
-
-  return (
-    <div className="setting-group">
-      <h3>项目启用</h3>
-      <div className="inspector-summary">
-        <div className="inspector-summary-row">
-          <span>已启用项目</span>
-          <strong>{enabledProjectCount}</strong>
-        </div>
-        <div className="inspector-summary-row">
-          <span>项目级工具启用</span>
-          <strong>{enabledToolCount}</strong>
-        </div>
-        <div className="inspector-summary-row">
-          <span>Copy 同步</span>
-          <strong>{copySyncCount}</strong>
-        </div>
-        {externalProjectCount > 0 && (
-          <div className="inspector-summary-row">
-            <span>未在当前项目列表中</span>
-            <strong>{externalProjectCount}</strong>
-          </div>
-        )}
-        {sampleProjects.length > 0 && (
-          <div className="summary-list">
-            {sampleProjects.map((project) => (
-              <div key={project.id}>
-                <strong>{project.name}</strong>
-                <small>{project.path}</small>
-              </div>
-            ))}
-          </div>
-        )}
-        <p className="note">项目级启用后续进入独立的 Skill 项目工作区管理，右侧详情只保留当前 Skill 的轻量摘要。</p>
-      </div>
-    </div>
   );
 }
 

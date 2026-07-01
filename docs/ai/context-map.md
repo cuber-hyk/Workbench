@@ -22,7 +22,7 @@ Do not read `docs/plans/`, `docs/audits/`, or archived directories by default.
 - `src/views/settings/DiagnosticsSettings.tsx`：设置页“诊断”入口，展示运行信息、本地路径、日志目录、复制诊断信息和手动健康检查操作。
 - `src/views/settings/SettingsView.tsx`：设置页分类视图，包含 Skills 根目录、工具目录、自定义工具和 GitHub Token 配置入口。
 - `src/views/settings/settingsLayout.tsx`、`src/views/settings/settingsFormatters.ts`：设置页专用布局组件和展示格式化逻辑。
-- `src/views/skills/SkillsView.tsx`：Skills 本地列表、项目启用、市场/更新子视图编排和 Skills 前端交互入口。
+- `src/views/skills/SkillsView.tsx`：Skills 本地列表、全局工具启用、市场/更新子视图编排和 Skills 前端交互入口。
 - `src/views/skills/SkillsMarketView.tsx`：skills.sh 市场前端列表、详情、安装和卸载入口。
 - `src/views/skills/SkillUpdatesView.tsx`：远程来源 Skill 的更新检查和批量更新视图，当前覆盖 skills.sh 与 GitHub 分支来源。
 - `src/views/skills/skillFilters.ts`、`src/views/skills/skillMarketFormatters.ts`、`src/views/skills/SkillStatusIndicator.tsx`：Skills 筛选、展示格式化与状态标识。
