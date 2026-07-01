@@ -21,6 +21,87 @@ pub struct ProjectEnablement {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectSkillTargetStatus {
+    Disabled,
+    ManagedSymlink,
+    ManagedCopy,
+    StaleCopy,
+    MissingTarget,
+    SourceMissing,
+    Conflict,
+    ProjectMissing,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectSkillTarget {
+    pub directory_name: String,
+    pub skill_name: String,
+    pub description: String,
+    pub category_id: String,
+    pub category: String,
+    pub tool: String,
+    pub tool_name: String,
+    pub target_path: String,
+    pub status: ProjectSkillTargetStatus,
+    pub sync_method: Option<SyncMethod>,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectSkillsState {
+    pub project_name: String,
+    pub project_path: String,
+    pub project_exists: bool,
+    pub tools: Vec<ToolTarget>,
+    pub targets: Vec<ProjectSkillTarget>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectSkillAction {
+    Enable,
+    Disable,
+    Rebuild,
+    UseWorkbench,
+    ClearRecord,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectSkillOperationStatus {
+    Enabled,
+    Disabled,
+    Rebuilt,
+    Cleared,
+    Conflict,
+    Failed,
+    Skipped,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectSkillOperationResult {
+    pub directory_name: String,
+    pub tool: String,
+    pub status: ProjectSkillOperationStatus,
+    pub sync_method: Option<SyncMethod>,
+    pub backup_path: Option<String>,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectSkillBatchEnableRequest {
+    pub project_name: String,
+    pub project_path: String,
+    pub directory_names: Vec<String>,
+    pub tools: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolEnablement {
     pub tool: String,

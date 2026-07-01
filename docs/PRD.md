@@ -110,7 +110,7 @@ Workbench 使用统一 Skills 根目录保存所有 Skills。该目录是 Skills
 - 自定义 Agent 工具只要求用户填写名称、全局 Skills 目录和可选图标；内部标识由 Workbench 自动生成。
 - 自定义 Agent 工具名称不能与已有工具重复。
 - 自定义工具图标由用户选择本地图标文件，保存到 `~/.workbench/tool-icons/`。
-- 项目级启用当前只支持 Codex、Claude Code 和 OpenCode；其他工具先作为全局 Skills 目标管理。
+- 项目级启用支持全部内置 Agent 工具；自定义工具先作为全局 Skills 目标管理，后续如需项目级启用需补充项目目录模板。
 - Skills 列表中的全局工具列按用户设置顺序展示前 4 个工具和 `+N` 浮层。
 - Skills 列表在默认窗口宽度下应隐藏可见滚动条，并避免产生横向滚动条；桌面应用默认窗口宽度应为 Skills 表格操作列预留足够空间。
 - 在 Skills 列表中通过分类下拉选择已有分类或创建新分类。

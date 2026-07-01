@@ -14,7 +14,8 @@ Do not read `docs/plans/`, `docs/audits/`, or archived directories by default.
 
 - `docs/ARCHITECTURE.md`：技术栈、目录结构、核心模块、数据模型和关键流程。
 - `src/App.tsx`：当前前端应用壳、全局状态和主要交互入口。
-- `src/views/projects/ProjectsView.tsx`：项目列表、详情、启动项面板和本次启动日志前端视图。
+- `src/views/projects/ProjectsView.tsx`：项目列表、详情摘要、项目 Skills 独立工作区入口、启动项面板和本次启动日志前端视图。
+- `src/views/projects/ProjectSkillsView.tsx`：当前项目的项目级 Skills 工具视图、跨工具对比矩阵、项目级工具选择、右侧选中详情、筛选和批量启用入口。
 - `src/views/projects/ProjectAddMenu.tsx`：项目页添加入口下拉，分流本地导入和 GitHub/Gitee 导入。
 - `src/views/projects/launchState.ts`：项目启动状态、启动事件归并、停止状态标记和启动配置筛选的前端纯逻辑。
 - `src/views/radar/RadarView.tsx`：资源 Radar 前端列表、详情、筛选和增删弹窗。
@@ -48,7 +49,7 @@ Do not read `docs/plans/`, `docs/audits/`, or archived directories by default.
 - `src-tauri/src/radar.rs`、`src-tauri/src/radar/`：资源 Radar command facade、类型、SQLite 持久化、GitHub Stars 手动同步、URL/source 规范化、重复组合并、校验和链接打开逻辑。
 - `docs/capabilities/resource-radar.md`：资源 Radar 当前能力、领域分类、数据所有权、同步规则和重复组合并规则。
 - `docs/adr/2026-06-16-resource-radar-duplicate-merge.md`：资源 Radar 重复组合并后删除副资源的长期决策。
-- `src-tauri/src/skills.rs`、`src-tauri/src/skills/`：Skills command 入口、类型、SQLite、GitHub Token 设置、文件系统同步、工具目标、分类、自定义工具目标、ZIP/文件夹导入、GitHub 导入、根目录迁移、受管目标重建、skills.sh 市场/CLI、来源更新、启用、冲突和删除逻辑。
+- `src-tauri/src/skills.rs`、`src-tauri/src/skills/`：Skills command 入口、类型、SQLite、GitHub Token 设置、文件系统同步、工具目标、分类、自定义工具目标、ZIP/文件夹导入、GitHub 导入、根目录迁移、项目级 Skills 工作区、受管目标重建、skills.sh 市场/CLI、来源更新、启用、冲突和删除逻辑。
 - `docs/capabilities/skills-management.md`：Skills 当前能力、外部同步接管、根目录迁移、skills.sh 与 GitHub 来源、GitHub Token API 优先路径、自定义工具目标、分类与筛选语义、数据所有权、同步边界和验证。
 - `docs/adr/2026-06-18-skill-categories-table.md`：Skills 分类使用独立分类表和 `category_id` 的长期决策。
 - `docs/adr/2026-06-20-skills-sh-cli-adapter.md`：skills.sh 市场安装/更新通过官方 CLI 临时提取、Workbench 统一落盘和记录的决策。

@@ -296,98 +296,98 @@ export const settings: AppSettings = {
       key: "deveco",
       name: "DevEco Code",
       globalSkillsDir: "C:\\Users\\dev\\.config\\deveco\\skills",
-      supportsProjectScope: false,
+      supportsProjectScope: true,
       available: false
     },
     {
       key: "hermes",
       name: "Hermes",
       globalSkillsDir: "C:\\Users\\dev\\.hermes\\skills",
-      supportsProjectScope: false,
+      supportsProjectScope: true,
       available: false
     },
     {
       key: "kimi",
       name: "Kimi Code",
       globalSkillsDir: "C:\\Users\\dev\\.kimi-code\\skills",
-      supportsProjectScope: false,
+      supportsProjectScope: true,
       available: false
     },
     {
       key: "pi",
       name: "Pi Agent",
       globalSkillsDir: "C:\\Users\\dev\\.pi\\agent\\skills",
-      supportsProjectScope: false,
+      supportsProjectScope: true,
       available: false
     },
     {
       key: "gemini",
       name: "Gemini CLI",
       globalSkillsDir: "C:\\Users\\dev\\.gemini\\skills",
-      supportsProjectScope: false,
+      supportsProjectScope: true,
       available: false
     },
     {
       key: "qwen",
       name: "Qwen Code",
       globalSkillsDir: "C:\\Users\\dev\\.qwen\\skills",
-      supportsProjectScope: false,
+      supportsProjectScope: true,
       available: false
     },
     {
       key: "goose",
       name: "Goose",
       globalSkillsDir: "C:\\Users\\dev\\.agents\\skills",
-      supportsProjectScope: false,
+      supportsProjectScope: true,
       available: false
     },
     {
       key: "kilo",
       name: "Kilo Code",
       globalSkillsDir: "C:\\Users\\dev\\.kilo\\skills",
-      supportsProjectScope: false,
+      supportsProjectScope: true,
       available: false
     },
     {
       key: "cline",
       name: "Cline",
       globalSkillsDir: "C:\\Users\\dev\\.cline\\skills",
-      supportsProjectScope: false,
+      supportsProjectScope: true,
       available: false
     },
     {
       key: "roo",
       name: "Roo Code",
       globalSkillsDir: "C:\\Users\\dev\\.roo\\skills",
-      supportsProjectScope: false,
+      supportsProjectScope: true,
       available: false
     },
     {
       key: "factory",
       name: "Factory Droid",
       globalSkillsDir: "C:\\Users\\dev\\.factory\\skills",
-      supportsProjectScope: false,
+      supportsProjectScope: true,
       available: false
     },
     {
       key: "amp",
       name: "Amp",
       globalSkillsDir: "C:\\Users\\dev\\.config\\agents\\skills",
-      supportsProjectScope: false,
+      supportsProjectScope: true,
       available: false
     },
     {
       key: "kiro",
       name: "Kiro CLI",
       globalSkillsDir: "C:\\Users\\dev\\.kiro\\skills",
-      supportsProjectScope: false,
+      supportsProjectScope: true,
       available: false
     },
     {
       key: "junie",
       name: "Junie CLI",
       globalSkillsDir: "C:\\Users\\dev\\.junie\\skills",
-      supportsProjectScope: false,
+      supportsProjectScope: true,
       available: false
     }
   ]

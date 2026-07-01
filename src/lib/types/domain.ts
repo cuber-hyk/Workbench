@@ -170,6 +170,60 @@ export interface Skill {
   }>;
 }
 
+export type SyncMethod = "symlink" | "copy";
+
+export type ProjectSkillTargetStatus =
+  | "disabled"
+  | "managed_symlink"
+  | "managed_copy"
+  | "stale_copy"
+  | "missing_target"
+  | "source_missing"
+  | "conflict"
+  | "project_missing";
+
+export interface ProjectSkillTarget {
+  directoryName: string;
+  skillName: string;
+  description: string;
+  categoryId: string;
+  category: string;
+  tool: ToolKey;
+  toolName: string;
+  targetPath: string;
+  status: ProjectSkillTargetStatus;
+  syncMethod?: SyncMethod | null;
+  message: string;
+}
+
+export interface ProjectSkillsState {
+  projectName: string;
+  projectPath: string;
+  projectExists: boolean;
+  tools: ToolTarget[];
+  targets: ProjectSkillTarget[];
+}
+
+export type ProjectSkillAction = "enable" | "disable" | "rebuild" | "use_workbench" | "clear_record";
+
+export type ProjectSkillOperationStatus = "enabled" | "disabled" | "rebuilt" | "cleared" | "conflict" | "failed" | "skipped";
+
+export interface ProjectSkillOperationResult {
+  directoryName: string;
+  tool: ToolKey;
+  status: ProjectSkillOperationStatus;
+  syncMethod?: SyncMethod | null;
+  backupPath?: string | null;
+  message: string;
+}
+
+export interface ProjectSkillBatchEnableRequest {
+  projectName: string;
+  projectPath: string;
+  directoryNames: string[];
+  tools: ToolKey[];
+}
+
 export type SkillUpdateState = "not_installed" | "installed" | "up_to_date" | "update_available" | "check_failed" | "unsupported";
 
 export interface SkillMarketItem {

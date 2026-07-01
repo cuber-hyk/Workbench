@@ -126,7 +126,7 @@ Workbench/
 - `src/views/` 保存从 `App.tsx` 拆出的页面级视图模块。
 - `src/components/dialogs/` 保存按功能域拆分的项目、设置和 Skills 弹窗。
 - `src-tauri/src/projects.rs` 是当前 Project command facade；类型、SQLite、项目打开方式 Profiles 和启动会话进程管理位于 `src-tauri/src/projects/`。
-- `src-tauri/src/skills.rs` 是当前 Skills command facade；类型、SQLite、文件系统同步、工具目标、分类、自定义工具、导入、GitHub 导入、根目录迁移、skills.sh 市场和 CLI 适配位于 `src-tauri/src/skills/`。
+- `src-tauri/src/skills.rs` 是当前 Skills command facade；类型、SQLite、文件系统同步、工具目标、分类、自定义工具、导入、GitHub 导入、根目录迁移、项目级 Skills 工作区、skills.sh 市场和 CLI 适配位于 `src-tauri/src/skills/`。
 
 ## 4. 前端模块说明
 
@@ -164,6 +164,7 @@ Workbench/
 - 使用全局项目打开方式 Profiles 打开项目目录。
 - 配置一个或多个启动项。
 - 通过启动按钮调用 Tauri command，为所有启用启动项创建本次内嵌启动会话。
+- 通过项目详情入口进入独立 `项目 Skills` 工作区，管理当前项目的项目级 Skill 与工具关系。
 
 边界：
 
@@ -174,6 +175,7 @@ Workbench/
 - 访问项目目录或启动工作目录时发现路径不存在，前端提示用户是否删除 Workbench 项目记录。
 - 远程导入通过无副作用预检查组合判断项目记录和目标目录状态；任何已有本地目录都不会被覆盖。
 - 项目打开方式是外部工具入口，不捕获输出，不管理外部进程生命周期。
+- 项目 Skills 刷新只读扫描当前项目，不创建、不修复；写入项目目录的启用、停用、重建和接管动作必须由用户显式触发。
 
 ### 4.3 Skills 管理模块
 
@@ -186,7 +188,6 @@ Workbench/
 - 搜索和按分类筛选 Skills。
 - 管理 Skill 分类。
 - 管理 Skill 的全局工具启用关系。
-- 管理 Skill 的项目级工具启用关系。
 - 管理自定义 Agent 工具的全局 Skills 目录。
 - 通过“同步 Skills”刷新统一根目录，并在用户确认后导入和接管已注册工具全局目录中的既有 Skills。
 - 切换统一 Skills 根目录后检查旧根目录迁移和受管启用目标重建。
@@ -264,7 +265,7 @@ Workbench/
 
 `src-tauri/src/lib.rs` 注册前端唯一可调用的 Tauri commands。
 
-当前已实现的 Skills command 入口位于 `src-tauri/src/skills.rs`，类型、SQLite、文件系统同步、工具目标、分类、自定义工具、导入、GitHub 导入、根目录迁移、skills.sh 市场和 CLI 适配位于 `src-tauri/src/skills/`：
+当前已实现的 Skills command 入口位于 `src-tauri/src/skills.rs`，类型、SQLite、文件系统同步、工具目标、分类、自定义工具、导入、GitHub 导入、根目录迁移、项目级 Skills 工作区、skills.sh 市场和 CLI 适配位于 `src-tauri/src/skills/`：
 
 - 扫描和解析 `SKILL.md`。
 - 系统选择器、ZIP / 文件夹导入与冲突检查。
@@ -272,6 +273,7 @@ Workbench/
 - 已注册工具全局目录只读发现、显式导入、旧根目录迁移检查和受管启用目标重建。
 - SQLite 设置、分类和启用关系读写。
 - 固定工具目标注册表、目标路径计算和项目级支持守卫。
+- 当前项目下项目级 Skills 状态扫描、单项操作和批量启用。
 - 工具目录创建与打开。
 - Auto 同步：优先创建受管符号链接，失败时复制完整目录。
 - 检测全局工具目录中的内容一致状态和内容冲突。
@@ -281,7 +283,7 @@ Workbench/
 - `skills.sh` 市场列表、详情、安装、卸载，以及远程来源更新检查、单项更新和批量更新。
 - 打开本地文件或目录。
 
-当前 Skills 后端按 command facade、类型、数据库、文件系统同步、工具目标、分类、自定义工具、导入、GitHub 导入、根目录迁移、受管目标重建、skills.sh 市场和 CLI 适配拆分；启用、冲突、删除、市场和更新 command wrapper 仍由 `src-tauri/src/skills.rs` 承载 command 编排。
+当前 Skills 后端按 command facade、类型、数据库、文件系统同步、工具目标、分类、自定义工具、导入、GitHub 导入、根目录迁移、项目级 scope、受管目标重建、skills.sh 市场和 CLI 适配拆分；启用、冲突、删除、市场和更新 command wrapper 仍由 `src-tauri/src/skills.rs` 承载 command 编排。
 
 ## 6. 核心数据模型
 
@@ -386,13 +388,27 @@ Workbench/
 
 ### 6.5 工具目标
 
-工具目标由后端内置注册表和 `custom_tool_targets` 表合并得到。内置注册表包含工具 key、展示名、全局 Skills 目录和是否支持项目级 Skills；自定义工具由用户在设置页维护，只支持全局 Skills 目录。
+工具目标由后端内置注册表和 `custom_tool_targets` 表合并得到。内置注册表包含工具 key、展示名、全局 Skills 目录和项目级 Skills 目录；自定义工具由用户在设置页维护，只支持全局 Skills 目录。
 
 | 工具 | 全局 Skills 目录 | 项目级目录 |
 | --- | --- | --- |
 | Codex | `~/.codex/skills` | `<project>/.codex/skills` |
 | Claude Code | `~/.claude/skills` | `<project>/.claude/skills` |
 | OpenCode | `~/.config/opencode/skills` | `<project>/.opencode/skills` |
+| DevEco Code | `~/.config/deveco/skills` | `<project>/.deveco/skills` |
+| Hermes | `~/.hermes/skills` | `<project>/.hermes/skills` |
+| Kimi Code | `~/.kimi-code/skills` | `<project>/.kimi-code/skills` |
+| Pi Agent | `~/.pi/agent/skills` | `<project>/.pi/agent/skills` |
+| Gemini CLI | `~/.gemini/skills` | `<project>/.gemini/skills` |
+| Qwen Code | `~/.qwen/skills` | `<project>/.qwen/skills` |
+| Goose | `~/.agents/skills` | `<project>/.goose/skills` |
+| Kilo Code | `~/.kilo/skills` | `<project>/.kilo/skills` |
+| Cline | `~/.cline/skills` | `<project>/.cline/skills` |
+| Roo Code | `~/.roo/skills` | `<project>/.roo/skills` |
+| Factory Droid | `~/.factory/skills` | `<project>/.factory/skills` |
+| Amp | `~/.config/agents/skills` | `<project>/.amp/skills` |
+| Kiro CLI | `~/.kiro/skills` | `<project>/.kiro/skills` |
+| Junie CLI | `~/.junie/skills` | `<project>/.junie/skills` |
 | DevEco Code | `~/.config/deveco/skills` | 不支持 |
 | Hermes | `~/.hermes/skills` | 不支持 |
 | Kimi Code | `~/.kimi-code/skills` | 不支持 |
@@ -408,7 +424,7 @@ Workbench/
 | Kiro CLI | `~/.kiro/skills` | 不支持 |
 | Junie CLI | `~/.junie/skills` | 不支持 |
 
-项目级启用必须先通过 `supports_project_scope` 守卫。当前只有 Codex、Claude Code 和 OpenCode 支持项目级 Skills；自定义工具固定不支持项目级 Skills。
+项目级启用必须先通过 `supports_project_scope` 守卫。当前内置工具均支持项目级 Skills；自定义工具固定不支持项目级 Skills，直到后续为自定义工具增加项目目录模板。
 
 ### 6.5.1 custom_tool_targets
 
