@@ -12,6 +12,8 @@ use super::{
 
 pub(super) const CLOSE_BEHAVIOR_SETTING: &str = "close_behavior";
 pub(super) const CLOSE_TRAY_HINT_DISMISSED_SETTING: &str = "close_tray_hint_dismissed";
+pub(super) const LOCAL_STATUS_REFRESH_INTERVAL_SETTING: &str =
+    "local_status_refresh_interval_seconds";
 pub(super) const START_HIDDEN_TO_TRAY_SETTING: &str = "start_hidden_to_tray";
 pub(super) const GITHUB_API_TOKEN_SETTING: &str = "github_api_token";
 
@@ -315,6 +317,28 @@ pub(super) fn configured_bool_setting(
     match configured {
         Ok(value) => serde_json::from_str(&value).map_err(error_message),
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(default_value),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+pub(super) fn configured_local_status_refresh_interval(
+    connection: &Connection,
+) -> SkillResult<u64> {
+    let configured = connection.query_row(
+        "SELECT value FROM app_settings WHERE key = ?1",
+        [LOCAL_STATUS_REFRESH_INTERVAL_SETTING],
+        |row| row.get::<_, String>(0),
+    );
+    match configured {
+        Ok(value) => {
+            let interval = serde_json::from_str::<u64>(&value).map_err(error_message)?;
+            if matches!(interval, 0 | 30 | 60 | 300) {
+                Ok(interval)
+            } else {
+                Err("本机状态刷新间隔无效".to_string())
+            }
+        }
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(60),
         Err(error) => Err(error.to_string()),
     }
 }

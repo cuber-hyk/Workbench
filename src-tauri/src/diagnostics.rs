@@ -1,4 +1,5 @@
 mod health;
+mod system;
 
 use serde::Serialize;
 
@@ -22,4 +23,9 @@ pub fn run_diagnostic_health_check(
     tool_targets: Vec<health::HealthToolTarget>,
 ) -> health::DiagnosticHealthCheck {
     health::run_diagnostic_health_check(tool_targets)
+}
+
+#[tauri::command]
+pub fn get_local_workspace_system_status() -> system::LocalWorkspaceSystemStatus {
+    system::local_workspace_system_status()
 }

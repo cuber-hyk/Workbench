@@ -16,6 +16,7 @@ import {
   X
 } from "lucide-react";
 import { AppUpdateDialog } from "./components/AppUpdatePanel";
+import { LocalWorkspaceStatus } from "./components/LocalWorkspaceStatus";
 import { UpdateBadge } from "./components/UpdateBadge";
 import { Button, FilterMore, IconButton, Modal, PageHeader, Panel, TagList } from "./components/ui";
 import { DeleteProjectDialog } from "./components/dialogs/projects/DeleteProjectDialog";
@@ -43,7 +44,7 @@ import { applyLaunchSessionEvent, applyPendingLaunchEvents, enabledLaunchConfigs
 import { DeleteRadarDialog, RadarDialog, RadarView } from "./views/radar/RadarView";
 import { clearSkillMarketRuntimeCache, SkillsView } from "./views/skills/SkillsView";
 import type { MarketInstallTask } from "./views/skills/SkillsMarketView";
-import type { AppSettings, CloseBehavior, CustomToolTargetInput, ExternalSkillCandidateGroup, ExternalSkillSyncResult, ExternalSkillSyncSelection, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, ManagedTargetRebuildResult, ManagedTargetRebuildSelection, Project, ProjectImportProgress, ProjectOpenProfile, ProjectSkillAction, ProjectSkillOperationResult, ProjectSkillsState, ProjectSkillTarget, RadarDuplicateGroup, RadarItem, RemoteProjectImportRequest, Skill, SkillCategory, SkillMarketItem, SkillsRootMigrationState, ToolKey, ViewKey } from "./lib/types/domain";
+import type { AppSettings, CloseBehavior, CustomToolTargetInput, ExternalSkillCandidateGroup, ExternalSkillSyncResult, ExternalSkillSyncSelection, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, LocalStatusRefreshIntervalSeconds, ManagedTargetRebuildResult, ManagedTargetRebuildSelection, Project, ProjectImportProgress, ProjectOpenProfile, ProjectSkillAction, ProjectSkillOperationResult, ProjectSkillsState, ProjectSkillTarget, RadarDuplicateGroup, RadarItem, RemoteProjectImportRequest, Skill, SkillCategory, SkillMarketItem, SkillsRootMigrationState, ToolKey, ViewKey } from "./lib/types/domain";
 
 const views: Array<{ key: ViewKey; label: string; icon: JSX.Element }> = [
   { key: "projects", label: "项目", icon: <Box size={16} /> },
@@ -109,6 +110,10 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, { error: strin
 function WorkbenchApp() {
   const { hasUpdate, legacyInstall, updateInfo } = useAppUpdate();
   const [activeView, setActiveView] = useState<ViewKey>("projects");
+  const [settingsNavigation, setSettingsNavigation] = useState<{ category: "general" | "diagnostics"; requestId: number }>({
+    category: "general",
+    requestId: 0
+  });
   const [theme, setTheme] = useState<"light" | "dark">(() => {
     return (localStorage.getItem("workbench-theme") as "light" | "dark") || "light";
   });
@@ -427,6 +432,19 @@ function WorkbenchApp() {
       setSkills(state.skills);
       setSkillCategories(state.categories);
       showToast(enabled ? "启动后隐藏到托盘已开启" : "启动后隐藏到托盘已关闭");
+    } catch (error) {
+      showToast(String(error), { tone: "warning" });
+    }
+  }
+
+  async function updateLocalStatusRefreshInterval(intervalSeconds: LocalStatusRefreshIntervalSeconds) {
+    try {
+      const state = await workbenchApi.setLocalStatusRefreshInterval(intervalSeconds);
+      setSettings(state.settings);
+      setSkills(state.skills);
+      setSkillCategories(state.categories);
+      const message = intervalSeconds === 0 ? "本机状态自动刷新已关闭" : `本机状态刷新间隔已设为 ${intervalSeconds === 60 ? "1 分钟" : intervalSeconds === 300 ? "5 分钟" : "30 秒"}`;
+      showToast(message);
     } catch (error) {
       showToast(String(error), { tone: "warning" });
     }
@@ -902,7 +920,15 @@ function WorkbenchApp() {
             <button
               key={view.key}
               className={`nav-item ${activeView === view.key ? "active" : ""}`}
-              onClick={() => setActiveView(view.key)}
+              onClick={() => {
+                if (view.key === "settings") {
+                  setSettingsNavigation((current) => ({
+                    category: "general",
+                    requestId: current.requestId + 1
+                  }));
+                }
+                setActiveView(view.key);
+              }}
             >
               {view.icon}
               {view.label}
@@ -910,23 +936,11 @@ function WorkbenchApp() {
           ))}
         </nav>
 
-        <section className="local-strip" aria-label="本机工作区状态">
-          <strong>本机工作区</strong>
-          <div>
-            <span>
-              <b>SQLite</b>
-              <small>本地数据</small>
-            </span>
-            <span>
-              <b>Auto</b>
-              <small>Skills 启用</small>
-            </span>
-            <span>
-              <b>Tauri</b>
-              <small>桌面壳</small>
-            </span>
-          </div>
-        </section>
+        <LocalWorkspaceStatus
+          refreshIntervalSeconds={settings?.localStatusRefreshIntervalSeconds ?? 60}
+          projectCount={projects.length}
+          skillCount={skills.length}
+        />
 
         <div className="sidebar-footer">
           <button className="theme-toggle" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
@@ -1206,6 +1220,8 @@ function WorkbenchApp() {
         {activeView === "settings" && settings && (
           <SettingsView
             settings={settings}
+            initialCategory={settingsNavigation.category}
+            initialCategoryRequestId={settingsNavigation.requestId}
             theme={theme}
             onOpenUpdateDetails={openUpdateDialog}
             onThemeToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -1226,6 +1242,7 @@ function WorkbenchApp() {
               setActiveDialog("custom-tool-delete");
             }}
             onCloseBehaviorChange={(behavior) => void runSkillAction(() => workbenchApi.setCloseBehavior(behavior), "关闭窗口行为已更新")}
+            onLocalStatusRefreshIntervalChange={(intervalSeconds) => void updateLocalStatusRefreshInterval(intervalSeconds)}
             onLaunchAtStartupChange={(enabled) => void updateLaunchAtStartup(enabled)}
             onStartHiddenToTrayChange={(enabled) => void updateStartHiddenToTray(enabled)}
             onSaveGithubToken={(token) => runSkillAction(() => workbenchApi.setGithubApiToken(token), token.trim() ? "GitHub Token 已保存" : "GitHub Token 已清除")}

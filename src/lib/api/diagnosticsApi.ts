@@ -23,6 +23,14 @@ export interface DiagnosticHealthCheck {
   items: DiagnosticHealthItem[];
 }
 
+export interface LocalWorkspaceSystemStatus {
+  memory: {
+    totalBytes: number;
+    usedBytes: number;
+    availableBytes: number;
+  };
+}
+
 const isTauri = "__TAURI_INTERNALS__" in window;
 
 export async function getDiagnosticEnvironment(): Promise<DiagnosticEnvironment> {
@@ -59,6 +67,15 @@ export async function runDiagnosticHealthCheck(toolTargets: ToolTarget[]): Promi
   });
 }
 
+export async function getLocalWorkspaceSystemStatus(): Promise<LocalWorkspaceSystemStatus> {
+  if (!isTauri) return webPreviewSystemStatus();
+  try {
+    return await invoke<LocalWorkspaceSystemStatus>("get_local_workspace_system_status");
+  } catch {
+    return unavailableSystemStatus();
+  }
+}
+
 function webPreviewHealthCheck(toolTargets: ToolTarget[]): DiagnosticHealthCheck {
   return {
     checkedAt: String(Date.now()),
@@ -71,5 +88,25 @@ function webPreviewHealthCheck(toolTargets: ToolTarget[]): DiagnosticHealthCheck
         detail: `预览模式不会执行外部命令或检查 ${toolTargets.length} 个工具目录。`
       }
     ]
+  };
+}
+
+function webPreviewSystemStatus(): LocalWorkspaceSystemStatus {
+  return {
+    memory: {
+      totalBytes: 16 * 1024 ** 3,
+      usedBytes: Math.round(6.2 * 1024 ** 3),
+      availableBytes: Math.round(9.8 * 1024 ** 3)
+    }
+  };
+}
+
+function unavailableSystemStatus(): LocalWorkspaceSystemStatus {
+  return {
+    memory: {
+      totalBytes: 0,
+      usedBytes: 0,
+      availableBytes: 0
+    }
   };
 }

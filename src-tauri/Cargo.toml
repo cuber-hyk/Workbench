@@ -24,6 +24,7 @@ tempfile = "3"
 walkdir = "2"
 zip = "2"
 regex = "1"
+sysinfo = "0.30"
 ureq = { version = "2", features = ["json"] }
 # Keep Tauri's cookie dependency compatible with the current stable Rust toolchain.
 time = "=0.3.36"
