@@ -15,10 +15,10 @@ import {
   type LocalDataRestoreSummary
 } from "../../lib/api/dataBackupApi";
 import { ToolIcon } from "../../lib/ui/toolIcons";
-import type { AppSettings, CloseBehavior, ProjectOpenProfile, ToolKey, ToolTarget } from "../../lib/types/domain";
+import type { AppSettings, CloseBehavior, LocalStatusRefreshIntervalSeconds, ProjectOpenProfile, ToolKey, ToolTarget } from "../../lib/types/domain";
 import { DiagnosticsSettings } from "./DiagnosticsSettings";
 import { SettingsContentHeader, SettingsRow, SettingsSection } from "./settingsLayout";
-import { closeBehaviorLabel, projectOpenProfileSummary } from "./settingsFormatters";
+import { closeBehaviorLabel, localStatusRefreshIntervalLabel, projectOpenProfileSummary } from "./settingsFormatters";
 
 type SettingsCategory = "general" | "skills" | "tools" | "profiles" | "data" | "behavior" | "diagnostics" | "appearance";
 
@@ -34,9 +34,12 @@ const settingsCategories: Array<{ key: SettingsCategory; label: string; descript
 ];
 
 const autoBackupRetentions: AutoBackupSettings["retention"][] = [10, 20, 30];
+const localStatusRefreshIntervals: LocalStatusRefreshIntervalSeconds[] = [0, 30, 60, 300];
 
 export function SettingsView({
   settings,
+  initialCategory = "general",
+  initialCategoryRequestId = 0,
   theme,
   onOpenUpdateDetails,
   onThemeToggle,
@@ -48,6 +51,7 @@ export function SettingsView({
   onEditCustomTool,
   onDeleteCustomTool,
   onCloseBehaviorChange,
+  onLocalStatusRefreshIntervalChange = () => undefined,
   onLaunchAtStartupChange,
   onStartHiddenToTrayChange,
   onSaveGithubToken = async () => undefined,
@@ -61,6 +65,8 @@ export function SettingsView({
   onDeleteProjectOpenProfile
 }: {
   settings: AppSettings;
+  initialCategory?: SettingsCategory;
+  initialCategoryRequestId?: number;
   theme: "light" | "dark";
   onOpenUpdateDetails: () => void;
   onThemeToggle: () => void;
@@ -72,6 +78,7 @@ export function SettingsView({
   onEditCustomTool: (tool: ToolTarget) => void;
   onDeleteCustomTool: (tool: ToolTarget) => void;
   onCloseBehaviorChange: (behavior: CloseBehavior) => void;
+  onLocalStatusRefreshIntervalChange?: (intervalSeconds: LocalStatusRefreshIntervalSeconds) => void;
   onLaunchAtStartupChange: (enabled: boolean) => void;
   onStartHiddenToTrayChange: (enabled: boolean) => void;
   onSaveGithubToken?: (token: string) => void | Promise<void>;
@@ -84,7 +91,11 @@ export function SettingsView({
   onEditProjectOpenProfile: (profile: ProjectOpenProfile) => void;
   onDeleteProjectOpenProfile: (profile: ProjectOpenProfile) => void;
 }) {
-  const [activeCategory, setActiveCategory] = useState<SettingsCategory>("general");
+  const [activeCategory, setActiveCategory] = useState<SettingsCategory>(initialCategory);
+
+  useEffect(() => {
+    setActiveCategory(initialCategory);
+  }, [initialCategory, initialCategoryRequestId]);
 
   const moveToolTarget = (index: number, direction: -1 | 1) => {
     const nextIndex = index + direction;
@@ -145,6 +156,7 @@ export function SettingsView({
           <BehaviorSettings
             settings={settings}
             onCloseBehaviorChange={onCloseBehaviorChange}
+            onLocalStatusRefreshIntervalChange={onLocalStatusRefreshIntervalChange}
             onLaunchAtStartupChange={onLaunchAtStartupChange}
             onStartHiddenToTrayChange={onStartHiddenToTrayChange}
           />
@@ -669,11 +681,13 @@ function formatBytes(value: number) {
 function BehaviorSettings({
   settings,
   onCloseBehaviorChange,
+  onLocalStatusRefreshIntervalChange,
   onLaunchAtStartupChange,
   onStartHiddenToTrayChange
 }: {
   settings: AppSettings;
   onCloseBehaviorChange: (behavior: CloseBehavior) => void;
+  onLocalStatusRefreshIntervalChange: (intervalSeconds: LocalStatusRefreshIntervalSeconds) => void;
   onLaunchAtStartupChange: (enabled: boolean) => void;
   onStartHiddenToTrayChange: (enabled: boolean) => void;
 }) {
@@ -722,6 +736,24 @@ function BehaviorSettings({
           >
             <option value="hide_to_tray">隐藏到托盘</option>
             <option value="exit">退出应用</option>
+          </select>
+        </SettingsRow>
+      </SettingsSection>
+      <SettingsSection title="本机状态" description="控制左侧栏本机工作区摘要的自动刷新频率。">
+        <SettingsRow
+          title="刷新间隔"
+          description="仅刷新侧栏内存状态；关闭后只在应用启动或组件重新渲染时读取一次。"
+          status={<StatusBadge tone={settings.localStatusRefreshIntervalSeconds === 0 ? "neutral" : "accent"}>{localStatusRefreshIntervalLabel(settings.localStatusRefreshIntervalSeconds)}</StatusBadge>}
+        >
+          <select
+            aria-label="本机状态刷新间隔"
+            className="settings-select"
+            value={settings.localStatusRefreshIntervalSeconds}
+            onChange={(event) => onLocalStatusRefreshIntervalChange(Number(event.target.value) as LocalStatusRefreshIntervalSeconds)}
+          >
+            {localStatusRefreshIntervals.map((intervalSeconds) => (
+              <option key={intervalSeconds} value={intervalSeconds}>{localStatusRefreshIntervalLabel(intervalSeconds)}</option>
+            ))}
           </select>
         </SettingsRow>
       </SettingsSection>

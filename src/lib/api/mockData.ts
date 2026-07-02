@@ -266,6 +266,7 @@ export const settings: AppSettings = {
   previousSkillsRoot: null,
   closeBehavior: "hide_to_tray",
   closeTrayHintDismissed: false,
+  localStatusRefreshIntervalSeconds: 60,
   launchAtStartup: false,
   startHiddenToTray: false,
   githubTokenConfigured: false,

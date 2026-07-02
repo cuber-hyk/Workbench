@@ -11,7 +11,7 @@ import { GithubSkillImportDialog } from "./components/dialogs/skills/GithubSkill
 import { SkillCategoryDialog } from "./components/dialogs/skills/SkillCategoryDialog";
 import { SkillsRootMigrationDialog } from "./components/dialogs/skills/SkillsRootMigrationDialog";
 import { AppUpdateProvider } from "./contexts/AppUpdateContext";
-import { getDiagnosticEnvironment } from "./lib/api/diagnosticsApi";
+import { getDiagnosticEnvironment, getLocalWorkspaceSystemStatus } from "./lib/api/diagnosticsApi";
 import { workbenchApi } from "./lib/api/workbenchApi";
 import type { AppSettings, ExternalSkillCandidateGroup, LaunchSessionEvent, Project, ProjectImportProgress, ProjectOpenProfile, ProjectSkillsState, RadarDuplicateGroup, RadarItem, RemoteProjectImportInspection, RemoteProjectImportRequest, Skill, SkillCategory, SkillMarketItem, SkillMarketResponse, SkillUpdateResult, SkillsRootMigrationState, SkillsState } from "./lib/types/domain";
 import { ProjectsView } from "./views/projects/ProjectsView";
@@ -102,6 +102,7 @@ const appSettings: AppSettings = {
   skillsRoot: "C:\\Users\\dev\\.workbench\\skills",
   closeBehavior: "hide_to_tray",
   closeTrayHintDismissed: false,
+  localStatusRefreshIntervalSeconds: 60,
   launchAtStartup: false,
   startHiddenToTray: false,
   githubTokenConfigured: false,
@@ -1538,6 +1539,13 @@ describe("Workbench UI interactions", () => {
       tauriAvailable: false,
       platform: "browser",
       arch: "unknown"
+    });
+    await expect(getLocalWorkspaceSystemStatus()).resolves.toEqual({
+      memory: {
+        totalBytes: 16 * 1024 ** 3,
+        usedBytes: Math.round(6.2 * 1024 ** 3),
+        availableBytes: Math.round(9.8 * 1024 ** 3)
+      }
     });
   });
 
@@ -3678,6 +3686,37 @@ describe("Workbench UI interactions", () => {
 
     expect(document.body.dataset.theme).toBe("dark");
     expect(within(navigation).getByRole("button", { name: "资源 Radar" })).toBeInTheDocument();
+  });
+
+  it("shows local workspace status values as a static sidebar summary", async () => {
+    renderWithUpdateProvider(<App />);
+
+    const localStatus = screen.getByLabelText("本机工作区状态");
+    expect(await within(localStatus).findByText("6.2 / 16 GB")).toBeInTheDocument();
+    expect(within(localStatus).queryByText("磁盘")).not.toBeInTheDocument();
+    expect(await within(localStatus).findByText("4 个")).toBeInTheDocument();
+    expect(await within(localStatus).findByText("3 个")).toBeInTheDocument();
+    expect(within(localStatus).getAllByText("正常").length).toBeGreaterThan(0);
+    expect(within(localStatus).queryByRole("button", { name: /本机工作区/ })).not.toBeInTheDocument();
+  });
+
+  it("configures the local workspace status refresh interval from settings", async () => {
+    await workbenchApi.setLocalStatusRefreshInterval(60);
+    const user = userEvent.setup();
+    renderWithUpdateProvider(<App />);
+
+    await user.click(screen.getByRole("button", { name: "设置" }));
+    const settingsNavigation = await screen.findByRole("navigation", { name: "设置分类" });
+    await user.click(within(settingsNavigation).getByRole("button", { name: /应用行为/ }));
+
+    const refreshSelect = await screen.findByLabelText("本机状态刷新间隔");
+    expect(refreshSelect).toHaveValue("60");
+
+    await user.selectOptions(refreshSelect, "30");
+
+    expect(refreshSelect).toHaveValue("30");
+    expect(await screen.findByText("本机状态刷新间隔已设为 30 秒")).toBeInTheDocument();
+    expect(screen.getAllByText("30 秒").length).toBeGreaterThan(0);
   });
 
   it("renders the Workbench brand with the app icon asset", () => {

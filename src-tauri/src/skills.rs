@@ -68,6 +68,9 @@ fn current_settings() -> SkillResult<SkillsSettings> {
             CLOSE_TRAY_HINT_DISMISSED_SETTING,
             false,
         )?,
+        local_status_refresh_interval_seconds: configured_local_status_refresh_interval(
+            &connection,
+        )?,
         start_hidden_to_tray: configured_bool_setting(
             &connection,
             START_HIDDEN_TO_TRAY_SETTING,
@@ -544,6 +547,24 @@ pub fn set_close_behavior(close_behavior: CloseBehavior) -> SkillResult<SkillsSt
             "INSERT INTO app_settings(key, value) VALUES(?1, ?2)
              ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             params![CLOSE_BEHAVIOR_SETTING, behavior_json],
+        )
+        .map_err(error_message)?;
+    get_skills_state()
+}
+
+#[tauri::command]
+pub fn set_local_status_refresh_interval(interval_seconds: u64) -> SkillResult<SkillsState> {
+    if !matches!(interval_seconds, 0 | 30 | 60 | 300) {
+        return Err("本机状态刷新间隔无效".to_string());
+    }
+    let workbench_root = default_workbench_root()?;
+    let connection = open_database(&workbench_root)?;
+    let interval_json = serde_json::to_string(&interval_seconds).map_err(error_message)?;
+    connection
+        .execute(
+            "INSERT INTO app_settings(key, value) VALUES(?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![LOCAL_STATUS_REFRESH_INTERVAL_SETTING, interval_json],
         )
         .map_err(error_message)?;
     get_skills_state()
@@ -1892,6 +1913,7 @@ mod tests {
             tool_targets: Vec::new(),
             close_behavior: CloseBehavior::HideToTray,
             close_tray_hint_dismissed: false,
+            local_status_refresh_interval_seconds: 60,
             start_hidden_to_tray: false,
             github_token_configured: false,
         };
@@ -2024,6 +2046,63 @@ mod tests {
         let error = configured_close_behavior(&connection).unwrap_err();
 
         assert!(error.contains("unknown variant"));
+    }
+
+    #[test]
+    fn local_status_refresh_interval_defaults_to_one_minute() {
+        let connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute(
+                "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+                [],
+            )
+            .unwrap();
+
+        let interval = configured_local_status_refresh_interval(&connection).unwrap();
+
+        assert_eq!(interval, 60);
+    }
+
+    #[test]
+    fn local_status_refresh_interval_reads_allowed_value() {
+        let connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute(
+                "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO app_settings(key, value) VALUES(?1, ?2)",
+                params![LOCAL_STATUS_REFRESH_INTERVAL_SETTING, "300"],
+            )
+            .unwrap();
+
+        let interval = configured_local_status_refresh_interval(&connection).unwrap();
+
+        assert_eq!(interval, 300);
+    }
+
+    #[test]
+    fn local_status_refresh_interval_rejects_unbounded_values() {
+        let connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute(
+                "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO app_settings(key, value) VALUES(?1, ?2)",
+                params![LOCAL_STATUS_REFRESH_INTERVAL_SETTING, "1"],
+            )
+            .unwrap();
+
+        let error = configured_local_status_refresh_interval(&connection).unwrap_err();
+
+        assert_eq!(error, "本机状态刷新间隔无效");
     }
 
     #[test]

@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { markLocalDataChanged } from "./dataBackupApi";
 import { projects, radarItems, settings, skillCategories, skills } from "./mockData";
-import type { CloseBehavior, CustomToolTargetInput, ExternalSkillCandidateGroup, ExternalSkillSyncResult, ExternalSkillSyncSelection, GitHubCliStatus, GitHubStarsSyncResult, GithubSkillImportInspection, GithubSkillImportSelection, GithubTokenStatus, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, ManagedTargetRebuildResult, ManagedTargetRebuildSelection, Project, ProjectImportProgress, ProjectOpenProfile, ProjectSkillAction, ProjectSkillBatchEnableRequest, ProjectSkillOperationResult, ProjectSkillsState, RadarDuplicateGroup, RadarItem, RemoteProjectImportInspection, RemoteProjectImportRequest, RootSkillMigrationCandidate, SkillInstallProgress, SkillMarketDetail, SkillMarketItem, SkillMarketResponse, SkillUpdateProgress, SkillUpdateResult, SkillUpdateStatus, SkillVersionSource, SkillsRootMigrationState, SkillsState, ToolKey } from "../types/domain";
+import type { CloseBehavior, CustomToolTargetInput, ExternalSkillCandidateGroup, ExternalSkillSyncResult, ExternalSkillSyncSelection, GitHubCliStatus, GitHubStarsSyncResult, GithubSkillImportInspection, GithubSkillImportSelection, GithubTokenStatus, ImportResult, LaunchRun, LaunchSession, LaunchSessionEvent, LaunchSessionSnapshot, LocalStatusRefreshIntervalSeconds, ManagedTargetRebuildResult, ManagedTargetRebuildSelection, Project, ProjectImportProgress, ProjectOpenProfile, ProjectSkillAction, ProjectSkillBatchEnableRequest, ProjectSkillOperationResult, ProjectSkillsState, RadarDuplicateGroup, RadarItem, RemoteProjectImportInspection, RemoteProjectImportRequest, RootSkillMigrationCandidate, SkillInstallProgress, SkillMarketDetail, SkillMarketItem, SkillMarketResponse, SkillUpdateProgress, SkillUpdateResult, SkillUpdateStatus, SkillVersionSource, SkillsRootMigrationState, SkillsState, ToolKey } from "../types/domain";
 
 const delay = async () => new Promise((resolve) => window.setTimeout(resolve, 80));
 const isTauri = "__TAURI_INTERNALS__" in window;
@@ -27,6 +27,7 @@ function normalizeSkillsState(state: SkillsState): SkillsState {
     ...state,
     settings: {
       ...state.settings,
+      localStatusRefreshIntervalSeconds: normalizeLocalStatusRefreshInterval(state.settings.localStatusRefreshIntervalSeconds),
       launchAtStartup: state.settings.launchAtStartup ?? false,
       startHiddenToTray: state.settings.startHiddenToTray ?? false,
       githubTokenConfigured: state.settings.githubTokenConfigured ?? false,
@@ -34,6 +35,10 @@ function normalizeSkillsState(state: SkillsState): SkillsState {
       projectOpenProfiles: state.settings.projectOpenProfiles ?? []
     }
   };
+}
+
+function normalizeLocalStatusRefreshInterval(value: unknown): LocalStatusRefreshIntervalSeconds {
+  return value === 0 || value === 30 || value === 60 || value === 300 ? value : 60;
 }
 
 async function invokeSkillsState(command: string, args?: Record<string, unknown>): Promise<SkillsState> {
@@ -816,6 +821,13 @@ export const workbenchApi = {
       return { settings, skills, categories: previewSkillCategories() };
     }
     return markDataChangedAfter(invokeSkillsState("set_close_behavior", { closeBehavior }));
+  },
+  async setLocalStatusRefreshInterval(intervalSeconds: LocalStatusRefreshIntervalSeconds) {
+    if (!isTauri) {
+      settings.localStatusRefreshIntervalSeconds = intervalSeconds;
+      return { settings, skills, categories: previewSkillCategories() };
+    }
+    return markDataChangedAfter(invokeSkillsState("set_local_status_refresh_interval", { intervalSeconds }));
   },
   async setCloseTrayHintDismissed(dismissed: boolean) {
     if (!isTauri) {

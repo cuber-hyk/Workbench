@@ -362,6 +362,7 @@ export interface AppSettings {
   previousSkillsRoot?: string | null;
   closeBehavior: CloseBehavior;
   closeTrayHintDismissed: boolean;
+  localStatusRefreshIntervalSeconds: LocalStatusRefreshIntervalSeconds;
   launchAtStartup: boolean;
   startHiddenToTray: boolean;
   githubTokenConfigured: boolean;
@@ -370,6 +371,7 @@ export interface AppSettings {
 }
 
 export type CloseBehavior = "exit" | "hide_to_tray";
+export type LocalStatusRefreshIntervalSeconds = 0 | 30 | 60 | 300;
 
 export interface SkillsState {
   settings: AppSettings;

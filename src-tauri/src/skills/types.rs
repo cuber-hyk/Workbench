@@ -171,6 +171,7 @@ pub struct SkillsSettings {
     pub tool_targets: Vec<ToolTarget>,
     pub close_behavior: CloseBehavior,
     pub close_tray_hint_dismissed: bool,
+    pub local_status_refresh_interval_seconds: u64,
     pub start_hidden_to_tray: bool,
     pub github_token_configured: bool,
 }

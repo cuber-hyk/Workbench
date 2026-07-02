@@ -21,8 +21,9 @@ Do not read `docs/plans/`, `docs/audits/`, or archived directories by default.
 - `src/views/radar/RadarView.tsx`：资源 Radar 前端列表、详情、筛选和增删弹窗。
 - `src/views/settings/SettingsView.tsx`：设置页分类导航和视图编排入口。
 - `src/views/settings/DiagnosticsSettings.tsx`：设置页“诊断”入口，展示运行信息、本地路径、日志目录、复制诊断信息和手动健康检查操作。
-- `src/views/settings/SettingsView.tsx`：设置页分类视图，包含 Skills 根目录、工具目录、自定义工具和 GitHub Token 配置入口。
+- `src/views/settings/SettingsView.tsx`：设置页分类视图，包含 Skills 根目录、工具目录、自定义工具、GitHub Token 和本机状态刷新间隔配置入口。
 - `src/views/settings/settingsLayout.tsx`、`src/views/settings/settingsFormatters.ts`：设置页专用布局组件和展示格式化逻辑。
+- `src/components/LocalWorkspaceStatus.tsx`：App Shell 左侧栏“本机工作区”状态摘要，展示健康、内存、项目数量和 Skills 数量。
 - `src/views/skills/SkillsView.tsx`：Skills 本地列表、全局工具启用、市场/更新子视图编排和 Skills 前端交互入口。
 - `src/views/skills/SkillsMarketView.tsx`：skills.sh 市场前端列表、详情、安装和卸载入口。
 - `src/views/skills/SkillUpdatesView.tsx`：远程来源 Skill 的更新检查和批量更新视图，当前覆盖 skills.sh 与 GitHub 分支来源。
@@ -38,7 +39,8 @@ Do not read `docs/plans/`, `docs/audits/`, or archived directories by default.
 - `src/lib/api/dataBackupApi.ts`：设置本地数据页的 SQLite 备份、恢复检查、恢复和自动备份设置 API。
 - `src-tauri/src/lib.rs`：Tauri command 注册入口。
 - `src-tauri/src/data_backup.rs`：本地数据备份、恢复和延迟自动备份 command，只处理 `workbench.sqlite` 与 `manifest.json`，不备份 Skills 实体目录。
-- `src-tauri/src/diagnostics.rs`、`src-tauri/src/diagnostics/health.rs`：诊断页使用的系统平台、处理器类型和本机依赖健康检查 command。
+- `src-tauri/src/diagnostics.rs`、`src-tauri/src/diagnostics/health.rs`、`src-tauri/src/diagnostics/system.rs`：诊断页和左侧栏本机状态使用的系统平台、处理器类型、本机依赖健康检查和内存摘要 command。
+- `docs/capabilities/diagnostics.md`：诊断页、本机工作区状态摘要、健康检查、资源摘要数据来源和边界。
 - `src-tauri/src/app_update.rs`：应用更新弹窗的 GitHub Releases notes 读取、旧版 Workbench App 安装检测和旧快捷方式清理 command。
 - `src-tauri/src/projects.rs`、`src-tauri/src/projects/`：项目 command facade、类型、SQLite 持久化、项目记录删除、GitHub/Gitee 远程导入、项目打开方式 Profiles 和启动会话进程管理。
 - `docs/capabilities/project-management.md`：项目管理当前能力、启动项、外部工具打开 Profiles、数据所有权和错误边界。
